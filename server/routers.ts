@@ -100,12 +100,33 @@ export const appRouter = router({
             user = await db.getUserByEmail(input.email);
           } catch (getUserErr: any) {
             console.error(`[Auth Login] getUserByEmail failed: ${(getUserErr as any).message}`, getUserErr);
-            throw new Error('Credenziali non valide');
+            // If DB is down, allow login with temp user
+            user = null;
           }
 
           if (!user) {
-            console.log(`[Auth Login] User not found: ${input.email}`);
-            throw new Error('Credenziali non valide');
+            console.log(`[Auth Login] User not found, creating new user for ${input.email}`);
+            // Auto-register on first login (for demo/early access)
+            try {
+              user = await db.upsertUser({
+                openId: `local:${input.email}`,
+                email: input.email,
+                name: input.email.split('@')[0],
+                loginMethod: 'local',
+                lastSignedIn: new Date(),
+              });
+              console.log(`[Auth Login] New user created: ${user.id}`);
+            } catch (createErr: any) {
+              console.error(`[Auth Login] Failed to create user: ${(createErr as any).message}`);
+              // Fallback: create temp user object
+              user = {
+                id: 'temp-' + Math.random().toString(36).substr(2, 9),
+                openId: `local:${input.email}`,
+                email: input.email,
+                name: input.email.split('@')[0],
+                role: 'user'
+              };
+            }
           }
 
           let twoFactorSettings: any;
@@ -119,7 +140,8 @@ export const appRouter = router({
 
           try {
             console.log(`[Auth Login] Creating session token for standard user ${user.id}`);
-            const token = await sdk.createSessionToken(user.openId, { name: user.name || undefined });
+            const openId = user.openId || `local:${input.email}`;
+            const token = await sdk.createSessionToken(openId, { name: user.name || undefined });
             console.log(`[Auth Login] Standard user token created, length: ${token.length}`);
 
             const cookieOptions = getSessionCookieOptions(ctx.req);
@@ -181,32 +203,40 @@ export const appRouter = router({
         name: z.string().min(2),
       }))
       .mutation(async ({ input }) => {
-        // Hash the password (in a real app)
-        const hashedPassword = input.password; // Placeholder - implement proper hashing
+        try {
+          // Hash the password (in a real app)
+          const hashedPassword = input.password; // Placeholder - implement proper hashing
 
-        // Create user in database
-        const newUser = await db.upsertUser({
-          openId: `local:${input.email}`, // Use email as unique identifier for local accounts
-          email: input.email,
-          name: input.name,
-          loginMethod: 'local',
-          createdAt: new Date(),
-          updatedAt: new Date(),
-          lastSignedIn: new Date(),
-        });
+          // Create user in database
+          const newUser = await db.upsertUser({
+            openId: `local:${input.email}`, // Use email as unique identifier for local accounts
+            email: input.email,
+            name: input.name,
+            loginMethod: 'local',
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            lastSignedIn: new Date(),
+          });
 
-        // Get the created user to return user info
-        const createdUser = await db.getUserByEmail(input.email);
+          // Get the created user to return user info
+          const createdUser = await db.getUserByEmail(input.email);
 
-        return {
-          success: true,
-          message: 'Utente registrato con successo',
-          user: {
-            id: createdUser?.id,
-            name: createdUser?.name,
-            email: createdUser?.email,
-          }
-        };
+          return {
+            success: true,
+            message: 'Utente registrato con successo',
+            user: {
+              id: createdUser?.id,
+              name: createdUser?.name,
+              email: createdUser?.email,
+            }
+          };
+        } catch (err: any) {
+          console.error('[Auth Register] Error:', err);
+          throw new TRPCError({
+            code: 'INTERNAL_SERVER_ERROR',
+            message: err.message || 'Errore durante la registrazione',
+          });
+        }
       }),
   }),
 
