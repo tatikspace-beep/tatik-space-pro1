@@ -15,8 +15,8 @@ export default defineConfig({
   publicDir: "public",
   envDir: "../", // <--- FIX: Load .env da root progetto (non client)
   build: {
-    outDir: "../dist/public",
-    emptyOutDir: true,
+    outDir: "../dist",
+    emptyOutDir: false,
   },
   server: {
     port: 5173,
