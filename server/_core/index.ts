@@ -389,4 +389,11 @@ async function startServer() {
   });
 }
 
-startServer().catch(console.error);
+// Export for Vercel serverless / external imports
+export { appRouter } from "../routers";
+export { createContext } from "./context";
+
+// Start server only if not imported as a module (i.e., only in development/local)
+if (process.env.NODE_ENV !== "production" || (process.stdin?.isTTY)) {
+  startServer().catch(console.error);
+}
