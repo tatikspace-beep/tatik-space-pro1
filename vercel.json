@@ -1,6 +1,5 @@
 {
   "version": 2,
-  "public": "dist/public",
   "buildCommand": "pnpm run build",
   "outputDirectory": "dist",
   "functions": {
