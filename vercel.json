@@ -2,17 +2,10 @@
   "version": 2,
   "buildCommand": "pnpm run build",
   "outputDirectory": "dist",
-  "functions": {
-    "index.js": {
-      "maxDuration": 60,
-      "memory": 1024
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
-  },
-  "routes": [
-    { "handle": "filesystem" },
-    { "src": "/api/(.*)", "dest": "/index.js" },
-    { "src": "/auth/(.*)", "dest": "/index.js" },
-    { "src": "/trpc/(.*)", "dest": "/index.js" },
-    { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
