@@ -23,13 +23,13 @@ export default function Register() {
   const registerMutation = trpc.auth.register.useMutation({
     onSuccess: async (data) => {
       toast.success(`${t.register} ${t.completed}! ${t.please} ${t.login} ${t.toAccess}.`);
-      
+
       // After successful registration, try to log the user in automatically
       // If the registration response includes user data, we can use it
       if (data.user) {
         // Set the user in the auth state directly using the registration response
         login(data.user);
-        
+
         // Wait briefly for auth state to sync before redirecting
         setTimeout(() => {
           window.location.href = '/editor';
@@ -46,7 +46,7 @@ export default function Register() {
 
   const handleRegister = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (password !== confirmPassword) {
       toast.error(t.passwordsDontMatch || 'Le password non coincidono');
       return;
@@ -86,7 +86,7 @@ export default function Register() {
                 required
               />
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="email">{t.email}</Label>
               <Input
@@ -98,7 +98,7 @@ export default function Register() {
                 required
               />
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="password">{t.password}</Label>
               <div className="relative">
@@ -119,7 +119,7 @@ export default function Register() {
               </div>
               <p className="text-xs text-muted-foreground">{t.passwordMinLength || "Minimo 8 caratteri"}</p>
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="confirm-password">{t.confirmPassword}</Label>
               <div className="relative">
@@ -141,14 +141,14 @@ export default function Register() {
             </div>
           </CardContent>
           <CardFooter className="flex flex-col">
-            <Button 
-              type="submit" 
-              className="w-full" 
+            <Button
+              type="submit"
+              className="w-full"
               disabled={registerMutation.isPending}
             >
               {registerMutation.isPending ? t.loading : t.register}
             </Button>
-            
+
             <div className="mt-4 text-center text-sm">
               {t.alreadyHaveAccount}{' '}
               <Link to="/login" className="text-primary hover:underline">

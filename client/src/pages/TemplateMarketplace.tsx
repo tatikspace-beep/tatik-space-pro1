@@ -30,6 +30,7 @@ export default function TemplateMarketplace() {
     const [userProjectId, setUserProjectId] = useState<number | null>(null);
     const [templateAccess, setTemplateAccess] = useState<{ hasAccess: boolean; expiresAt: Date | null } | null>(null);
     const [checkingAccess, setCheckingAccess] = useState(false);
+    const [couponCode, setCouponCode] = useState<string>('');
 
     // Check if user is admin
     const isAdmin = user?.role === 'admin' || user?.email === 'tatik.space@gmail.com';

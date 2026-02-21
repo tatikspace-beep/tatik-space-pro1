@@ -1139,20 +1139,56 @@ Analizza e suggerisci ottimizzazioni.`,
         templateId: z.string(),
         templateName: z.string(),
         price: z.number().positive(),
+        couponCode: z.string().optional(),
       }))
       .mutation(async ({ input, ctx }) => {
         try {
-          // Get numeric userId
+          // Get numeric userId and user email
           let userId: number | undefined = undefined;
+          let userEmail = ctx.user.email;
+          
           if (typeof ctx.user.id === 'number') {
             userId = ctx.user.id;
           } else if (ctx.user.openId) {
             const u = await db.getUserByOpenId(ctx.user.openId);
-            if (u) userId = u.id as number;
+            if (u) {
+              userId = u.id as number;
+              userEmail = u.email;
+            }
           }
 
           if (!userId) {
             throw new TRPCError({ code: 'UNAUTHORIZED', message: 'User not found' });
+          }
+
+          // Check for special discount code for tati01sp@gmail.com
+          let discountPriceEuro = input.price;
+          let discountPercentage = 0;
+          let couponUsedCode = input.couponCode || null;
+          
+          // Special user gets 100% discount with email-based coupon
+          if (userEmail === 'tati01sp@gmail.com') {
+            // Generate coupon hash if needed
+            const couponHash = `TATIK_SPECIAL_${Date.now()}`;
+            
+            // Check if coupon code is provided and valid
+            if (input.couponCode) {
+              // Validate coupon (simple check: must be TATIK_SPECIAL_* pattern)
+              if (input.couponCode.startsWith('TATIK_SPECIAL_')) {
+                console.log(`[Stripe] Applying 100% discount for ${userEmail} with coupon ${input.couponCode}`);
+                discountPercentage = 100;
+                discountPriceEuro = 0;
+                couponUsedCode = input.couponCode;
+              } else {
+                console.warn(`[Stripe] Invalid coupon code for ${userEmail}: ${input.couponCode}`);
+              }
+            } else {
+              // Auto-generate coupon for special user
+              console.log(`[Stripe] Auto-generating 100% discount for special user ${userEmail}`);
+              discountPercentage = 100;
+              discountPriceEuro = 0;
+              couponUsedCode = couponHash;
+            }
           }
 
           // Use Stripe to create checkout session
@@ -1169,7 +1205,7 @@ Analizza e suggerisci ottimizzazioni.`,
             lineItems: [{
               name: `${input.templateName} - 30 days access`,
               description: `Premium template access valid for 30 days`,
-              amount: Math.round(input.price * 100), // Convert to cents
+              amount: Math.round(discountPriceEuro * 100), // Convert to cents (may be 0 if discount applied)
               currency: 'eur',
               quantity: 1,
             }],
@@ -1177,6 +1213,9 @@ Analizza e suggerisci ottimizzazioni.`,
               userId: String(userId),
               templateId: input.templateId,
               templateName: input.templateName,
+              originalPrice: String(input.price),
+              discountPercentage: String(discountPercentage),
+              couponCode: couponUsedCode || 'none',
             },
             successUrl,
             cancelUrl,

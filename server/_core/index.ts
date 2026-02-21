@@ -147,6 +147,30 @@ async function startServer() {
     }
   });
 
+  // Dev-only: Generate coupon for special user tati01sp@gmail.com
+  app.get("/__generate_coupon", async (req, res) => {
+    try {
+      const couponCode = `TATIK_SPECIAL_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const expiryDate = new Date();
+      expiryDate.setDate(expiryDate.getDate() + 30); // Valid for 30 days
+      
+      console.log(`[GenerateCoupon] Generated coupon: ${couponCode}`);
+      console.log(`[GenerateCoupon] Expires at: ${expiryDate.toISOString()}`);
+      
+      return res.json({
+        success: true,
+        couponCode,
+        email: 'tati01sp@gmail.com',
+        discountPercentage: 100,
+        expiresAt: expiryDate.toISOString(),
+        message: 'Use this coupon code on checkout for 100% discount'
+      });
+    } catch (err) {
+      console.error("[GenerateCoupon] Error:", err);
+      return res.status(500).json({ success: false, error: String(err) });
+    }
+  });
+
   app.get("/__dev_register", async (req, res) => {
     try {
       const name = String(req.query.name ?? "Tatik");
