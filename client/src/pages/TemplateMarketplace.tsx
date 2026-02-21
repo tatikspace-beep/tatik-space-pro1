@@ -28,6 +28,8 @@ export default function TemplateMarketplace() {
     const [copiedId, setCopiedId] = useState<string | null>(null);
     const [savedTemplateIds, setSavedTemplateIds] = useState<string[]>([]);
     const [userProjectId, setUserProjectId] = useState<number | null>(null);
+    const [templateAccess, setTemplateAccess] = useState<{ hasAccess: boolean; expiresAt: Date | null } | null>(null);
+    const [checkingAccess, setCheckingAccess] = useState(false);
 
     // Check if user is admin
     const isAdmin = user?.role === 'admin' || user?.email === 'tatik.space@gmail.com';
@@ -120,8 +122,26 @@ export default function TemplateMarketplace() {
     };
 
     // Handle opening template details dialog
-    const handleViewTemplate = (template: Template) => {
+    const handleViewTemplate = async (template: Template) => {
         setSelectedTemplate(template);
+        setTemplateAccess(null);
+        
+        // If template is premium and user is not admin, check if they have access
+        if (template.isPremium && user && !isAdmin) {
+            setCheckingAccess(true);
+            try {
+                const result = await checkAccessMutation.mutateAsync({ templateId: template.id });
+                setTemplateAccess(result);
+            } catch (error) {
+                console.error('Error checking access:', error);
+                setTemplateAccess({ hasAccess: false, expiresAt: null });
+            } finally {
+                setCheckingAccess(false);
+            }
+        } else {
+            // Admin or free template - has access
+            setTemplateAccess({ hasAccess: true, expiresAt: null });
+        }
     };
 
     return (
@@ -534,12 +554,15 @@ export default function TemplateMarketplace() {
                                         <div className="text-xs text-muted-foreground px-4 py-2 border-b border-border/50 bg-accent/30">
                                             💻 Codice sorgente
                                         </div>
-                                        {selectedTemplate.isPremium && !isAdmin ? (
+                                        {selectedTemplate.isPremium && !isAdmin && !templateAccess?.hasAccess ? (
                                             <div className="flex-1 p-4 flex items-center justify-center bg-gradient-to-br from-slate-950 to-slate-900">
                                                 <div className="text-center space-y-3">
                                                     <Lock className="h-8 w-8 text-amber-400 mx-auto" />
                                                     <p className="text-white font-semibold text-sm">Contenuto Premium</p>
-                                                    <p className="text-slate-400 text-xs">€{selectedTemplate.price}</p>
+                                                    <p className="text-slate-400 text-xs">Acquista per €{selectedTemplate.price}</p>
+                                                    {templateAccess === null && checkingAccess && (
+                                                        <p className="text-slate-500 text-xs">Verificando accesso...</p>
+                                                    )}
                                                 </div>
                                             </div>
                                         ) : (
@@ -553,7 +576,7 @@ export default function TemplateMarketplace() {
 
                                     {/* Actions footer */}
                                     <div className="border-t border-border px-4 py-3 shrink-0 bg-card/50 space-y-2">
-                                        {selectedTemplate.isPremium && !isAdmin ? (
+                                        {selectedTemplate.isPremium && !isAdmin && !templateAccess?.hasAccess ? (
                                             <>
                                                 <Button
                                                     className="w-full bg-amber-500 hover:bg-amber-600 text-white font-semibold gap-2"
@@ -572,7 +595,7 @@ export default function TemplateMarketplace() {
                                                             }
                                                         });
                                                     }}
-                                                    disabled={createCheckoutMutation.isPending}
+                                                    disabled={createCheckoutMutation.isPending || checkingAccess}
                                                 >
                                                     <ShoppingCart className="h-4 w-4" />
                                                     {createCheckoutMutation.isPending ? 'Caricamento...' : `Acquista per €${selectedTemplate.price}`}
@@ -581,9 +604,11 @@ export default function TemplateMarketplace() {
                                                     size="sm"
                                                     className="w-full bg-slate-600 hover:bg-slate-700 text-white font-semibold gap-1.5"
                                                     onClick={() => handleCopy(selectedTemplate)}
+                                                    disabled={true}
+                                                    title="Devi acquistare il template per copiare il codice"
                                                 >
-                                                    <Copy className={`h-4 w-4 ${copiedId === selectedTemplate.id ? 'text-green-400' : ''}`} />
-                                                    {copiedId === selectedTemplate.id ? t('copied') : t('copyCode')}
+                                                    <Copy className="h-4 w-4 opacity-50" />
+                                                    Copia (Richiede acquisto)
                                                 </Button>
                                             </>
                                         ) : (
