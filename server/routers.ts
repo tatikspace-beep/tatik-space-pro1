@@ -40,7 +40,7 @@ export const appRouter = router({
           console.log(`[Auth Login] Attempting login - email: ${input.email}`);
 
           // Dev admin login: allow when running locally (development or localhost)
-          const isDevAdmin = input.email === 'admin@tatik.space' || input.email === 'tatik.space@gmail.com';
+          const isDevAdmin = input.email === 'tatik.space@gmail.com';
           const hostHeader = String(ctx.req.headers.host || '') || '';
           // Allow dev admin when running locally, on loopback addresses or via explicit env override
           const allowDevLogin = process.env.NODE_ENV === 'development'
