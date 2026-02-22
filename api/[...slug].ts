@@ -7,8 +7,21 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import express from "express";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { appRouter } from "../server/routers";
-import { createContext } from "../server/_core/context";
+
+let appRouter: any = null;
+let createContext: any = null;
+let importError: any = null;
+
+// Try to import, catch errors
+try {
+  const routers = require("../server/routers");
+  appRouter = routers.appRouter;
+  const context = require("../server/_core/context");
+  createContext = context.createContext;
+} catch (err) {
+  importError = err;
+  console.error("[API] Import error:", err);
+}
 
 let app: any = null;
 
@@ -33,25 +46,30 @@ function getApp() {
 }
 
 export default async (req: VercelRequest, res: VercelResponse) => {
-  try {
-    // TEST ENDPOINT: respond immediately to see if handler is being called
-    if (req.url === "/api/health" || req.url === "/health") {
-      return res.status(200).json({ 
-        ok: true, 
-        path: req.url,
-        method: req.method,
-        slug: (req as any).query?.slug || "no slug"
-      });
-    }
+  // TEST ENDPOINT: respond immediately to see if handler is being called
+  if (req.url === "/api/health" || req.url === "/health") {
+    return res.status(200).json({ 
+      ok: !importError,
+      path: req.url,
+      method: req.method,
+      importError: importError ? importError.message : null,
+      errorStack: importError ? importError.stack?.split('\n').slice(0, 3) : null,
+    });
+  }
 
+  if (importError) {
+    console.error("[API] Cannot process request, import failed:", importError);
+    return res.status(500).json({ 
+      error: "Import error",
+      message: importError.message,
+    });
+  }
+
+  try {
     // DEBUG: Log the exact request details
     console.log("[API Handler] Request received:", {
       method: req.method,
       url: req.url,
-      path: (req as any).path,
-      originalUrl: (req as any).originalUrl,
-      baseUrl: (req as any).baseUrl,
-      pathname: (req as any).pathname,
     });
 
     const expressApp = getApp();
