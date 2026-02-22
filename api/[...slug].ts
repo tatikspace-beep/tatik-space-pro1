@@ -2,18 +2,12 @@
  * Vercel API Handler - /api/[...slug].ts
  * Handles ALL /api/* requests
  * 
- * CRITICAL: Register module aliases BEFORE any imports
- * This ensures @shared/* paths work in Vercel's Node.js environment
+ * CRITICAL: Import init.cjs first to register module aliases in Vercel runtime
+ * This ensures @shared/* paths work BEFORE backend code is imported
  */
 
-// MUST be done before any imports!
-import moduleAlias from "module-alias";
-import path from "path";
-const __dirname = path.resolve();
-moduleAlias.addAliases({
-  "@shared": path.resolve(__dirname, "shared"),
-  "@": path.resolve(__dirname, "client/src"),
-});
+// @ts-ignore - Import CJS init before any other imports
+import "../api/_init.cjs";
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import express from "express";
