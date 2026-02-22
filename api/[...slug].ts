@@ -2,9 +2,18 @@
  * Vercel API Handler - /api/[...slug].ts
  * Handles ALL /api/* requests
  * 
- * SIMPLE APPROACH: Import directly from TypeScript sources
- * Vercel compiles TypeScript natively with tsconfig.json support
+ * CRITICAL: Register module aliases BEFORE any imports
+ * This ensures @shared/* paths work in Vercel's Node.js environment
  */
+
+// MUST be done before any imports!
+import moduleAlias from "module-alias";
+import path from "path";
+const __dirname = path.resolve();
+moduleAlias.addAliases({
+  "@shared": path.resolve(__dirname, "shared"),
+  "@": path.resolve(__dirname, "client/src"),
+});
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import express from "express";
