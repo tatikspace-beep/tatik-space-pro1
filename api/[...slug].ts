@@ -34,6 +34,16 @@ function getApp() {
 
 export default async (req: VercelRequest, res: VercelResponse) => {
   try {
+    // TEST ENDPOINT: respond immediately to see if handler is being called
+    if (req.url === "/api/health" || req.url === "/health") {
+      return res.status(200).json({ 
+        ok: true, 
+        path: req.url,
+        method: req.method,
+        slug: (req as any).query?.slug || "no slug"
+      });
+    }
+
     // DEBUG: Log the exact request details
     console.log("[API Handler] Request received:", {
       method: req.method,
