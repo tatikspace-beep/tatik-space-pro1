@@ -9,11 +9,16 @@
 // @ts-ignore - Import CJS init before any other imports
 import "../api/_init.cjs";
 
+// Test file to verify Vercel uses latest code
+import { testVersion } from "./_test-version";
+
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import express from "express";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "../server/routers";
 import { createContext } from "../server/_core/context";
+
+console.log("[API] Handler loaded with test version:", testVersion);
 
 let app: any = null;
 
@@ -38,7 +43,7 @@ function getApp() {
 export default async (req: VercelRequest, res: VercelResponse) => {
   // Health check
   if (req.url === "/api/health" || req.url === "/health") {
-    return res.status(200).json({ ok: true });
+    return res.status(200).json({ ok: true, version: testVersion });
   }
 
   try {
