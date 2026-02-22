@@ -1,6 +1,11 @@
 /**
  * Vercel API Handler - /api/[...slug].ts
- * Handles ALL /api/* requests
+ * LAST MODIFIED: 2026-02-22T21:30:00Z - Force cache invalidation
+ * 
+ * NOTE: All @shared imports in backend have been replaced with relative paths
+ * e.g., @shared/const → ../../shared/const or ../shared/const
+ * 
+ * If you see @shared errors, Vercel is using a cached build
  */
 
 import { TEST_MARKER } from "./_test-marker";
@@ -11,7 +16,7 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "../server/routers";
 import { createContext } from "../server/_core/context";
 
-console.log(`[API] Test marker loaded: ${TEST_MARKER}`);
+console.log(`[API] Handler loaded - Test: ${TEST_MARKER}`);
 
 let app: any = null;
 
