@@ -4,11 +4,11 @@ services:
     runtime: node
     plan: free
     
-    # Build command
-    buildCommand: npm install && npm run build
+    # Build command - use pnpm (project requires it via pnpm-lock.yaml)
+    buildCommand: npm install -g pnpm && pnpm install && pnpm run build
     
     # Start command - runs the Express server
-    startCommand: npm run start:render
+    startCommand: pnpm run start:render
     
     # Environment
     envVars:
