@@ -1,58 +1,38 @@
 /**
  * Vercel API Handler - /api/[...slug].ts
- * Handles ALL /api/* requests as serverless functions
- * This is the canonical Vercel pattern
+ * Handles ALL /api/* requests
+ * Imports directly from TypeScript sources (Vercel compiles these natively)
  */
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import express from "express";
+import { createExpressMiddleware } from "@trpc/server/adapters/express";
+import { appRouter } from "../server/routers";
+import { createContext } from "../server/_core/context";
 
-// Simple health check
-if (process.env.NODE_ENV === "development") {
-  console.log("[API Handler] Loaded for", process.env.NODE_ENV);
-}
+let app: any = null;
 
-let appInstance: any = null;
+function getApp() {
+  if (app) return app;
 
-async function getApp() {
-  if (appInstance) return appInstance;
+  app = express();
+  app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-  try {
-    // Try to load Express and tRPC
-    const express = await import("express").then(m => m.default);
-    const { createExpressMiddleware } = await import("@trpc/server/adapters/express");
-    
-    // Try to load precompiled backend
-    const backend = await import("../dist/index.js");
+  app.use(
+    "/api/trpc",
+    createExpressMiddleware({
+      router: appRouter,
+      createContext,
+    })
+  );
 
-    const app = express();
-    app.use(express.json({ limit: "50mb" }));
-    app.use(express.urlencoded({ limit: "50mb", extended: true }));
-
-    // Setup tRPC if available
-    if (backend.appRouter && backend.createContext) {
-      app.use(
-        "/api/trpc",
-        createExpressMiddleware({
-          router: backend.appRouter,
-          createContext: backend.createContext,
-        })
-      );
-      console.log("[API Handler] tRPC middleware loaded");
-    } else {
-      console.warn("[API Handler] appRouter or createContext not found");
-    }
-
-    appInstance = app;
-    return app;
-  } catch (err) {
-    console.error("[API Handler] Failed to initialize app:", err);
-    throw err;
-  }
+  return app;
 }
 
 export default async (req: VercelRequest, res: VercelResponse) => {
   try {
-    const app = await getApp();
+    const expressApp = getApp();
 
     return new Promise<void>((resolve) => {
       const timeout = setTimeout(() => {
@@ -62,27 +42,22 @@ export default async (req: VercelRequest, res: VercelResponse) => {
         resolve();
       }, 30000);
 
-      // Serve with Express
-      app(req as any, res as any);
+      expressApp(req as any, res as any);
 
       res.on("finish", () => {
         clearTimeout(timeout);
         resolve();
       });
 
-      res.on("error", (err) => {
+      res.on("error", () => {
         clearTimeout(timeout);
-        console.error("[API Handler] Response error:", err);
-        resolve();
       });
     });
   } catch (error: any) {
-    console.error("[API Handler] Request error:", error);
+    console.error("[API] Error:", error);
     if (!res.headersSent) {
-      res.status(500).json({
-        error: "Internal Server Error",
-        message: process.env.NODE_ENV === "development" ? error?.message : undefined,
-      });
+      res.status(500).json({ error: error?.message });
     }
   }
 };
+
