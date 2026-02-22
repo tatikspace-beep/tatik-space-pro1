@@ -1,16 +1,9 @@
 /**
  * Vercel API Handler - /api/[...slug].ts
  * Handles ALL /api/* requests
- * 
- * CRITICAL: Import init.cjs first to register module aliases in Vercel runtime
- * This ensures @shared/* paths work BEFORE backend code is imported
  */
 
-// @ts-ignore - Import CJS init before any other imports
-import "../api/_init.cjs";
-
-// Test file to verify Vercel uses latest code
-import { testVersion } from "./_test-version";
+import { TEST_MARKER } from "./_test-marker";
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import express from "express";
@@ -18,7 +11,7 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { appRouter } from "../server/routers";
 import { createContext } from "../server/_core/context";
 
-console.log("[API] Handler loaded with test version:", testVersion);
+console.log(`[API] Test marker loaded: ${TEST_MARKER}`);
 
 let app: any = null;
 
