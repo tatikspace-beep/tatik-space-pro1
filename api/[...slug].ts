@@ -12,16 +12,17 @@ let createContext: any = null;
 let importError: any = null;
 let importInitialized = false;
 
-// Try to import dynamically
+// Try to import from the compiled dist bundle
 async function initializeImports() {
   if (importInitialized) return;
   importInitialized = true;
 
   try {
-    const routers = await import("../server/routers");
-    appRouter = routers.appRouter;
-    const context = await import("../server/_core/context");
-    createContext = context.createContext;
+    // Import from the esbuild bundled output
+    const backend = await import("../dist/index.js");
+    appRouter = backend.appRouter;
+    createContext = backend.createContext;
+    console.log("[API] Imports initialized successfully");
   } catch (err) {
     importError = err;
     console.error("[API] Import error:", err);
