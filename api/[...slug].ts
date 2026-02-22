@@ -19,13 +19,13 @@ async function initialize() {
   try {
     console.log("[API] Starting initialization...");
     
-    // Import dependencies
+    // Import from dist/ (compiled by tsc with path aliases resolved)
     console.log("[API] Importing appRouter...");
-    const { appRouter } = await import("../server/routers.js");
+    const { appRouter } = await import("../dist/server/routers.js");
     console.log("[API] appRouter imported");
     
     console.log("[API] Importing createContext...");
-    const { createContext } = await import("../server/_core/context.js");
+    const { createContext } = await import("../dist/server/_core/context.js");
     console.log("[API] createContext imported");
     
     console.log("[API] Creating Express app...");
