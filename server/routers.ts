@@ -1,9 +1,6 @@
 import { COOKIE_NAME } from "../shared/const";
 
-// SYNTAX ERROR TEST - If Vercel shows this error, it's using current code
-THIS_IS_A_SYNTAX_ERROR_ON_PURPOSE;
-
-console.log("[Server] Routers loaded - using relative imports (cache bust)");
+console.log("[Server] Routers loaded - using relative imports (cache bust - no errors)...");
 
 // simple in-memory store for password reset tokens; production should persist
 const passwordResetTokens: Map<string, { userId: number; expires: number }> = new Map();
