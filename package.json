@@ -5,7 +5,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "cross-env NODE_ENV=development tsx watch server/_core/index.ts",
-    "build": "echo 'Build started at:' && date && vite build && tsc --outDir dist --declaration false",
+    "build": "vite build",
     "start": "NODE_ENV=production node dist/server/_core/index.js",
     "check": "tsc --noEmit",
     "format": "prettier --write .",
