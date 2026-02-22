@@ -19,10 +19,13 @@ function getApp() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-  // Mount tRPC at root (/) because Vercel strips the /api prefix when calling this handler
-  // Request to /api/trpc/auth.login becomes / when it reaches this handler via [...slug]
+  // Mount at /trpc because Vercel strips /api prefix
+  // When client sends POST /api/trpc/auth.login:
+  // - Vercel calls this handler with req.url = /trpc/auth.login
+  // - Express middleware at /trpc strips /trpc prefix
+  // - tRPC receives /auth/login and routes to auth.login ✓
   app.use(
-    "/",
+    "/trpc",
     createExpressMiddleware({
       router: appRouter,
       createContext,
