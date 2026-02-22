@@ -6,28 +6,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import express from "express";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-
-let appRouter: any = null;
-let createContext: any = null;
-let importError: any = null;
-let importInitialized = false;
-
-// Try to import from the compiled dist bundle
-async function initializeImports() {
-  if (importInitialized) return;
-  importInitialized = true;
-
-  try {
-    // Import from the esbuild bundled output
-    const backend = await import("../dist/index.js");
-    appRouter = backend.appRouter;
-    createContext = backend.createContext;
-    console.log("[API] Imports initialized successfully");
-  } catch (err) {
-    importError = err;
-    console.error("[API] Import error:", err);
-  }
-}
+import { appRouter } from "../server/routers";
+import { createContext } from "../server/_core/context";
 
 let app: any = null;
 
@@ -52,26 +32,12 @@ function getApp() {
 }
 
 export default async (req: VercelRequest, res: VercelResponse) => {
-  // Initialize imports on first call
-  if (!importInitialized) {
-    await initializeImports();
-  }
-
   // TEST ENDPOINT: respond immediately to see if handler is being called
   if (req.url === "/api/health" || req.url === "/health") {
     return res.status(200).json({ 
-      ok: !importError,
+      ok: true,
       path: req.url,
       method: req.method,
-      importError: importError ? importError.message : null,
-    });
-  }
-
-  if (importError) {
-    console.error("[API] Cannot process request, import failed:", importError);
-    return res.status(500).json({ 
-      error: "Import error",
-      message: importError.message,
     });
   }
 
