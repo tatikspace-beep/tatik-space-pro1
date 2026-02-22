@@ -5,31 +5,28 @@
  */
 
 import esbuild from 'esbuild';
-import path from 'path';
-import { fileURLToPath } from 'url';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 (async () => {
   try {
     console.log('[BUILD] Starting esbuild for Vercel API...');
     
-    await esbuild.build({
-      entryPoints: [path.join(__dirname, 'server/vercel-api.ts')],
+    const result = await esbuild.build({
+      entryPoints: ['server/vercel-api.ts'],
       bundle: true,
       platform: 'node',
       format: 'esm',
-      outfile: path.join(__dirname, 'dist/server-vercel-api.js'),
+      outfile: 'dist/server-vercel-api.js',
       alias: {
-        '@shared': path.join(__dirname, 'shared'),
+        '@shared': './shared',
       },
-      external: [],
       logLevel: 'info',
     });
     
     console.log('[BUILD] ✓ Vercel API bundle created successfully');
+    console.log('[BUILD] Result:', result);
   } catch (err) {
     console.error('[BUILD] ✗ Build failed:', err.message);
+    console.error('[BUILD] Stack:', err.stack);
     process.exit(1);
   }
 })();
