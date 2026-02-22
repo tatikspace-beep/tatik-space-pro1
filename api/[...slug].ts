@@ -1,7 +1,6 @@
 /**
  * Vercel API Handler - /api/[...slug].ts
  * Handles ALL /api/* requests
- * Imports directly from TypeScript sources (Vercel compiles these natively)
  */
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
@@ -11,16 +10,22 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 let appRouter: any = null;
 let createContext: any = null;
 let importError: any = null;
+let importInitialized = false;
 
-// Try to import, catch errors
-try {
-  const routers = require("../server/routers");
-  appRouter = routers.appRouter;
-  const context = require("../server/_core/context");
-  createContext = context.createContext;
-} catch (err) {
-  importError = err;
-  console.error("[API] Import error:", err);
+// Try to import dynamically
+async function initializeImports() {
+  if (importInitialized) return;
+  importInitialized = true;
+
+  try {
+    const routers = await import("../server/routers");
+    appRouter = routers.appRouter;
+    const context = await import("../server/_core/context");
+    createContext = context.createContext;
+  } catch (err) {
+    importError = err;
+    console.error("[API] Import error:", err);
+  }
 }
 
 let app: any = null;
@@ -46,6 +51,11 @@ function getApp() {
 }
 
 export default async (req: VercelRequest, res: VercelResponse) => {
+  // Initialize imports on first call
+  if (!importInitialized) {
+    await initializeImports();
+  }
+
   // TEST ENDPOINT: respond immediately to see if handler is being called
   if (req.url === "/api/health" || req.url === "/health") {
     return res.status(200).json({ 
@@ -53,7 +63,6 @@ export default async (req: VercelRequest, res: VercelResponse) => {
       path: req.url,
       method: req.method,
       importError: importError ? importError.message : null,
-      errorStack: importError ? importError.stack?.split('\n').slice(0, 3) : null,
     });
   }
 
