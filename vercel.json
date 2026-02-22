@@ -3,16 +3,6 @@
   "buildCommand": "pnpm run build",
   "outputDirectory": "dist",
   "env": {
-    "NODE_OPTIONS": "--experimental-modules",
-    "VERCEL_FORCE_BUILD_CACHE_PRIORITY": "override"
-  },
-  "builds": [
-    {
-      "src": "api/**/*.ts",
-      "use": "@vercel/node",
-      "config": {
-        "maxDuration": 30
-      }
-    }
-  ]
+    "NODE_OPTIONS": "--experimental-modules"
+  }
 }
