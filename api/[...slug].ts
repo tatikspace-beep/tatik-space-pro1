@@ -1,24 +1,27 @@
 /**
  * Vercel API Handler - /api/[...slug].ts
- * LAST MODIFIED: 2026-02-22T21:30:00Z - Force cache invalidation
- * 
- * NOTE: All @shared imports in backend have been replaced with relative paths
- * e.g., @shared/const → ../../shared/const or ../shared/const
- * 
- * If you see @shared errors, Vercel is using a cached build
+ * Must register module aliases before importing backend code
  */
 
-import { TEST_MARKER } from "./_test-marker";
+// Register module aliases at the very top
+import moduleAlias from 'module-alias';
+import path from 'path';
+
+const root = path.resolve(__dirname, '..');
+moduleAlias.addAliases({
+  '@shared': path.join(root, 'shared'),
+  '@': path.join(root, 'client', 'src'),
+});
+
+console.log('[API] Module aliases registered');
 
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import express from "express";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
+
+// Now we can import backend code
 import { appRouter } from "../server/routers";
 import { createContext } from "../server/_core/context";
-
-console.log(`[API] Handler loaded - Test: ${TEST_MARKER}`);
-
-let app: any = null;
 
 function getApp() {
   if (app) return app;
