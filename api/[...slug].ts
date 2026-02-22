@@ -34,6 +34,16 @@ function getApp() {
 
 export default async (req: VercelRequest, res: VercelResponse) => {
   try {
+    // DEBUG: Log the exact request details
+    console.log("[API Handler] Request received:", {
+      method: req.method,
+      url: req.url,
+      path: (req as any).path,
+      originalUrl: (req as any).originalUrl,
+      baseUrl: (req as any).baseUrl,
+      pathname: (req as any).pathname,
+    });
+
     const expressApp = getApp();
 
     return new Promise<void>((resolve) => {
