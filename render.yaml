@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: tatik-space-api
+    runtime: node
+    plan: free
+    
+    # Build command
+    buildCommand: npm install && npm run build
+    
+    # Start command - runs the Express server
+    startCommand: npm run start:render
+    
+    # Environment
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+    
+    # Connect to PostgreSQL database
+    databases:
+      - name: tatik_space_db
+        plan: free
+        
+    # Auto-deploy from GitHub on push to main
+    github:
+      branch: main
