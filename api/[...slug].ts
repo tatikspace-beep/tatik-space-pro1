@@ -6,8 +6,9 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import express from "express";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { appRouter } from "../server/routers";
-import { createContext } from "../server/_core/context";
+import { appRouter, createContext } from "../server/_core/index";
+
+console.log("[API] Imports loaded successfully");
 
 let app: any = null;
 
@@ -32,22 +33,16 @@ function getApp() {
 }
 
 export default async (req: VercelRequest, res: VercelResponse) => {
-  // TEST ENDPOINT: respond immediately to see if handler is being called
+  // TEST ENDPOINT
   if (req.url === "/api/health" || req.url === "/health") {
     return res.status(200).json({ 
       ok: true,
       path: req.url,
-      method: req.method,
     });
   }
 
   try {
-    // DEBUG: Log the exact request details
-    console.log("[API Handler] Request received:", {
-      method: req.method,
-      url: req.url,
-    });
-
+    console.log("[API Handler] Request:", req.method, req.url);
     const expressApp = getApp();
 
     return new Promise<void>((resolve) => {
