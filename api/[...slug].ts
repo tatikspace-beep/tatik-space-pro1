@@ -6,7 +6,8 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import express from "express";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { appRouter, createContext } from "../server/_core/index";
+import { appRouter } from "../server/routers";
+import { createContext } from "../server/_core/context";
 
 console.log("[API] Imports loaded successfully");
 
