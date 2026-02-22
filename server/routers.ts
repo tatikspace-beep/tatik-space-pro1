@@ -1,4 +1,4 @@
-import { COOKIE_NAME } from "@shared/const";
+import { COOKIE_NAME } from "../shared/const";
 
 // simple in-memory store for password reset tokens; production should persist
 const passwordResetTokens: Map<string, { userId: number; expires: number }> = new Map();

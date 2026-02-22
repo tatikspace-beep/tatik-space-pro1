@@ -8,7 +8,7 @@ import { registerOAuthRoutes } from "./oauth";
 import { analyticsRouter } from "./analyticsRouter";
 import { sdk } from "./sdk";
 import { getSessionCookieOptions } from "./cookies";
-import { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
+import { COOKIE_NAME, ONE_YEAR_MS } from "../../shared/const";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
