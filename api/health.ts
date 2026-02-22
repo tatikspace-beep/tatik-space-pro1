@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
-// Test importing from shared
-import { COOKIE_NAME } from "../shared/const";
+// Import from local _const instead of external shared/
+import { COOKIE_NAME } from "./_const";
 
 export default function handler(req: VercelRequest, res: VercelResponse) {
   if (req.url === "/api/health") {
