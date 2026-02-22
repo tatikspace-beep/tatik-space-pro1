@@ -1,5 +1,7 @@
 import { COOKIE_NAME } from "../shared/const";
 
+console.log("[Server] Routers loaded - using relative imports (cache bust)");
+
 // simple in-memory store for password reset tokens; production should persist
 const passwordResetTokens: Map<string, { userId: number; expires: number }> = new Map();
 import { getSessionCookieOptions } from "./_core/cookies";
