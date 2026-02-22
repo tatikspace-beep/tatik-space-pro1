@@ -6,46 +6,91 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import express from "express";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { appRouter } from "../server/routers";
-import { createContext } from "../server/_core/context";
 
-console.log("[API] Imports loaded successfully");
+console.log("[API] Module loading started");
 
 let app: any = null;
+let initialized = false;
+let initError: any = null;
 
-function getApp() {
-  if (app) return app;
-
-  app = express();
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ limit: "50mb", extended: true }));
-
-  // Mount at /api/trpc because req.url includes full path /api/trpc/auth.login
-  // Express middleware strips /api/trpc prefix and passes /auth/login to tRPC
-  app.use(
-    "/api/trpc",
-    createExpressMiddleware({
-      router: appRouter,
-      createContext,
-    })
-  );
-
-  return app;
+async function initialize() {
+  if (initialized || initError) return;
+  
+  try {
+    console.log("[API] Starting initialization...");
+    
+    // Import dependencies
+    console.log("[API] Importing appRouter...");
+    const { appRouter } = await import("../server/routers.js");
+    console.log("[API] appRouter imported");
+    
+    console.log("[API] Importing createContext...");
+    const { createContext } = await import("../server/_core/context.js");
+    console.log("[API] createContext imported");
+    
+    console.log("[API] Creating Express app...");
+    app = express();
+    app.use(express.json({ limit: "50mb" }));
+    app.use(express.urlencoded({ limit: "50mb", extended: true }));
+    
+    app.use(
+      "/api/trpc",
+      createExpressMiddleware({
+        router: appRouter,
+        createContext,
+      })
+    );
+    
+    initialized = true;
+    console.log("[API] Initialization complete!");
+  } catch (err: any) {
+    initError = err;
+    console.error("[API] INIT ERROR:", err.message);
+    console.error("[API] Stack:", err.stack?.split('\n').slice(0, 3).join('\n'));
+  }
 }
 
 export default async (req: VercelRequest, res: VercelResponse) => {
-  // TEST ENDPOINT
+  // Initialize on first request
+  if (!initialized && !initError) {
+    await initialize();
+  }
+
+  // Health check endpoint
   if (req.url === "/api/health" || req.url === "/health") {
+    if (initError) {
+      return res.status(503).json({ 
+        ok: false,
+        error: initError.message,
+      });
+    }
     return res.status(200).json({ 
       ok: true,
       path: req.url,
+      initialized: true,
     });
   }
 
-  try {
-    console.log("[API Handler] Request:", req.method, req.url);
-    const expressApp = getApp();
+  // Check if initialization failed
+  if (initError) {
+    console.error("[API] Request rejected due to init error:", initError.message);
+    return res.status(503).json({ 
+      error: "Server initialization failed",
+      message: initError.message,
+    });
+  }
 
+  // Wait for initialization if needed
+  if (!initialized) {
+    await new Promise(r => setTimeout(r, 500));
+    if (!initialized) {
+      return res.status(503).json({ error: "Server still initializing" });
+    }
+  }
+
+  try {
+    console.log("[API] Request:", req.method, req.url);
+    
     return new Promise<void>((resolve) => {
       const timeout = setTimeout(() => {
         if (!res.headersSent) {
@@ -54,7 +99,7 @@ export default async (req: VercelRequest, res: VercelResponse) => {
         resolve();
       }, 30000);
 
-      expressApp(req as any, res as any);
+      app(req as any, res as any);
 
       res.on("finish", () => {
         clearTimeout(timeout);
@@ -66,7 +111,7 @@ export default async (req: VercelRequest, res: VercelResponse) => {
       });
     });
   } catch (error: any) {
-    console.error("[API] Error:", error);
+    console.error("[API] Request error:", error);
     if (!res.headersSent) {
       res.status(500).json({ error: error?.message });
     }
