@@ -4,8 +4,8 @@ services:
     runtime: node
     plan: free
     
-    # Build command - use pnpm (project requires it via pnpm-lock.yaml)
-    buildCommand: npm install -g pnpm && pnpm install && pnpm run build
+    # Build command - install pnpm via corepack, then build
+    buildCommand: corepack enable pnpm && pnpm install --frozen-lockfile && pnpm run build
     
     # Start command - runs the Express server
     startCommand: pnpm run start:render
