@@ -19,14 +19,12 @@ async function initialize() {
   try {
     console.log("[API] Starting initialization...");
     
-    // Import from dist/ (compiled by tsc with path aliases resolved)
-    console.log("[API] Importing appRouter...");
-    const { appRouter } = await import("../dist/server/routers.js");
-    console.log("[API] appRouter imported");
-    
-    console.log("[API] Importing createContext...");
-    const { createContext } = await import("../dist/server/_core/context.js");
-    console.log("[API] createContext imported");
+    // Import from esbuild bundle (all dependencies bundled)
+    console.log("[API] Importing from bundled API...");
+    const bundle = await import("../dist/server-vercel-api.js");
+    appRouter = bundle.appRouter;
+    createContext = bundle.createContext;
+    console.log("[API] Exports imported successfully");
     
     console.log("[API] Creating Express app...");
     app = express();
