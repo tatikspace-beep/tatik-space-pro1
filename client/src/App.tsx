@@ -93,14 +93,17 @@ function PromoPlacement() {
 
 function App() {
   const [queryClient] = useState(() => new QueryClient());
-  const [trpcClient] = useState(() =>
-    trpc.createClient({
+  const [trpcClient] = useState(() => {
+    // Get API URL from environment variable, or use relative path for dev proxy
+    const apiUrl = import.meta.env.VITE_API_URL || "/api/trpc";
+    const fullUrl = apiUrl.startsWith("http")
+      ? `${apiUrl}/api/trpc`
+      : apiUrl;
+
+    return trpc.createClient({
       links: [
         httpBatchLink({
-          // Server mounts tRPC at `/api/trpc` on the Express app.
-          // Use that path so requests hit the tRPC middleware in both
-          // development (via Vite proxy) and production (directly).
-          url: "/api/trpc",
+          url: fullUrl,
           transformer: superjson,
           fetch(url, options) {
             return fetch(url, {
@@ -110,8 +113,8 @@ function App() {
           },
         }),
       ],
-    })
-  );
+    });
+  });
 
   // Load theme preference from localStorage on app mount
   useEffect(() => {
