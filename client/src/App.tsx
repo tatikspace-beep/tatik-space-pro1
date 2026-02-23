@@ -94,19 +94,28 @@ function PromoPlacement() {
 function App() {
   const [queryClient] = useState(() => new QueryClient());
   const [trpcClient] = useState(() => {
-    // Get API URL from environment variable, or use relative path for dev proxy
-    const apiUrl = import.meta.env.VITE_API_URL || "/api/trpc";
-    const fullUrl = apiUrl.startsWith("http")
-      ? `${apiUrl}/api/trpc`
-      : apiUrl;
+    // Determine API URL based on environment
+    let apiUrl: string;
+    
+    if (typeof window !== 'undefined') {
+      // In production (tatik.space), use Render API
+      // In development/localhost, use relative path for Vite proxy
+      if (window.location.hostname.includes('tatik.space')) {
+        apiUrl = 'https://tatik-space-pro1.onrender.com/api/trpc';
+      } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        apiUrl = '/api/trpc'; // Vite dev server proxy
+      } else {
+        // Fallback: relative path
+        apiUrl = '/api/trpc';
+      }
+    } else {
+      apiUrl = '/api/trpc';
+    }
 
     return trpc.createClient({
       links: [
         httpBatchLink({
-          url: fullUrl,
-          transformer: superjson,
-          fetch(url, options) {
-            return fetch(url, {
+          url: apiUrl,
               ...options,
               credentials: 'include',
             });
