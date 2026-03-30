@@ -96,7 +96,7 @@ function App() {
   const [trpcClient] = useState(() => {
     // Determine API URL based on environment
     let apiUrl: string;
-    
+
     if (typeof window !== 'undefined') {
       // In production (tatik.space), use Render API
       // In development/localhost, use relative path for Vite proxy
@@ -116,6 +116,9 @@ function App() {
       links: [
         httpBatchLink({
           url: apiUrl,
+          transformer: superjson,
+          fetch(url, options) {
+            return fetch(url, {
               ...options,
               credentials: 'include',
             });
