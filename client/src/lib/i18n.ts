@@ -4631,7 +4631,6 @@ export const translations = {
     uploadFile: "Nahrát soubor",
     openEditor: "Otevřít editor",
     manageFiles: "Spravovat soubory",
-    fileExplorer: "Průzkumník souborů",
     collapsePromo: "Skrýt promo",
     expandPromo: "Zobrazit promo",
     projectStats: "Statistika projektu",
