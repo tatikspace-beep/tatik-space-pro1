@@ -4506,7 +4506,6 @@ export const translations = {
     uploadFile: "Завантажити файл",
     openEditor: "Відкрити редактор",
     manageFiles: "Керувати файлами",
-    fileExplorer: "Провідник файлів",
     collapsePromo: "Приховати промо",
     expandPromo: "Показати промо",
     projectStats: "Статистика проекту",
