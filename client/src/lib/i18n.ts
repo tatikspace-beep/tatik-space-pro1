@@ -4363,7 +4363,6 @@ export const translations = {
     uploadFile: "Lataa tiedosto",
     openEditor: "Avaa editori",
     manageFiles: "Hallitse tiedostoja",
-    fileExplorer: "Tiedostojen hallinta",
     collapsePromo: "Piilota promo",
     expandPromo: "Näytä promo",
     projectStats: "Projektin tilastot",
