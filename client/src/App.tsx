@@ -118,23 +118,18 @@ function App() {
     }
 
     // Custom fetch handler with fallback logic
-    const fetchWithFallback = async (opts: any): Promise<Response> => {
-      // tRPC httpBatchLink passes {url, body, headers}
-      const { url, body, headers } = opts;
+    const customFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = typeof input === 'string' ? input : input.toString();
 
       if (!url) {
         throw new Error('[tRPC] No URL provided to fetch');
       }
 
       try {
-        // Log the request
         console.log('[tRPC] Fetching:', url);
 
-        // Make the request with credentials
-        const response = await fetch(url, {
-          method: 'POST',
-          body: body,
-          headers: headers,
+        const response = await fetch(input, {
+          ...init,
           credentials: 'include',
         });
 
@@ -145,6 +140,7 @@ function App() {
         if (
           typeof window !== 'undefined' &&
           window.location.hostname.includes('tatik.space') &&
+          typeof url === 'string' &&
           url.includes('onrender.com')
         ) {
           console.warn('[tRPC] Render failed, trying local fallback:', error?.message);
@@ -156,9 +152,7 @@ function App() {
             );
 
             const fallbackResponse = await fetch(fallbackUrl, {
-              method: 'POST',
-              body: body,
-              headers: headers,
+              ...init,
               credentials: 'include',
             });
 
@@ -166,7 +160,7 @@ function App() {
             return fallbackResponse;
           } catch (fallbackError) {
             console.error('[tRPC] Fallback also failed:', fallbackError);
-            throw error; // Throw original error
+            throw error;
           }
         }
 
@@ -179,7 +173,7 @@ function App() {
         httpBatchLink({
           url: primaryUrl,
           transformer: superjson,
-          fetch: fetchWithFallback,
+          fetch: customFetch,
         }),
       ],
     });
