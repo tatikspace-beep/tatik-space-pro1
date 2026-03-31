@@ -7,7 +7,6 @@ import { Label } from '@/components/ui/label';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import { Eye, EyeOff } from 'lucide-react';
-import { useAuth } from '@/_core/hooks/useAuth';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 export default function Login() {
@@ -15,7 +14,6 @@ export default function Login() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [forgotMode, setForgotMode] = useState(false);
-  const { login } = useAuth();
   const { t } = useLanguage();
 
   const loginMutation = trpc.auth.login.useMutation({
@@ -24,15 +22,8 @@ export default function Login() {
         // Handle 2FA flow
         toast.info(t.twoFactorAuth);
       } else {
-        // Since the login response already has the user info we need, we can use it directly
-        // If user data is in the response, set it in auth state
-        if (data.user) {
-          login(data.user);
-          window.location.href = '/editor';
-        } else {
-          // Otherwise just redirect and let the app refetch user data
-          window.location.href = '/editor';
-        }
+        // Login successful - redirect to editor
+        window.location.href = '/editor';
       }
     },
     onError: (error) => {
