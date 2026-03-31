@@ -118,67 +118,63 @@ function App() {
     }
 
     // Custom fetch handler with fallback logic
-    const fetchWithFallback = async (url: string, options?: RequestInit): Promise<Response> => {
+    // Note: tRPC httpBatchLink passes an object {url, body, headers}, not (url, options)
+    const fetchWithFallback = async (opts: { url: string; body: string; headers: Headers }): Promise<Response> => {
+      const { url: requestUrl, body, headers } = opts;
+
+      // Determine which URL to actually use based on whether we should try fallback
+      const tryPrimary = !requestUrl.includes('onrender.com') || window.location.hostname.includes('tatik.space');
+
       try {
         // Try primary URL with a timeout
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 8000); // 8 second timeout for Render
 
         try {
-          const response = await fetch(url, {
-            ...options,
+          const response = await fetch(requestUrl, {
+            method: 'POST',
+            body: body,
+            headers: headers,
             credentials: 'include',
             signal: controller.signal,
           });
           clearTimeout(timeout);
-
-          // If response is ok, return it
-          if (response.ok) {
-            console.log('[tRPC] Primary URL succeeded:', url);
-            return response;
-          }
-
-          // If response is not ok but not a server error, return as-is
-          if (response.status >= 400 && response.status < 500) {
-            return response;
-          }
-
-          // If server error (5xx), try fallback
-          if (response.status >= 500) {
-            throw new Error(`Server error: ${response.status}`);
-          }
-
+          console.log('[tRPC] Request succeeded:', requestUrl, response.status);
           return response;
         } catch (error: any) {
           clearTimeout(timeout);
 
-          // If we're already using fallback URL, don't try again
-          if (url === fallbackUrl) {
-            console.error('[tRPC] Fallback URL also failed:', error?.message);
-            throw error;
+          // If on tatik.space and Render failed, try local fallback
+          if (window.location.hostname.includes('tatik.space') && requestUrl.includes('onrender.com')) {
+            console.warn('[tRPC] Primary URL (Render) failed, attempting local fallback:', error?.message);
+
+            const fallbackUrl = requestUrl.replace(
+              'https://tatik-space-pro1.onrender.com',
+              window.location.origin
+            );
+
+            const fallbackController = new AbortController();
+            const fallbackTimeout = setTimeout(() => fallbackController.abort(), 5000);
+
+            try {
+              const fallbackResponse = await fetch(fallbackUrl, {
+                method: 'POST',
+                body: body,
+                headers: headers,
+                credentials: 'include',
+                signal: fallbackController.signal,
+              });
+              clearTimeout(fallbackTimeout);
+              console.log('[tRPC] Fallback URL succeeded:', fallbackUrl);
+              return fallbackResponse;
+            } catch (fallbackError) {
+              clearTimeout(fallbackTimeout);
+              console.error('[tRPC] Fallback URL also failed:', fallbackError);
+              throw fallbackError;
+            }
           }
 
-          // Log the primary failure
-          console.warn('[tRPC] Primary URL failed, attempting fallback:', url, error?.message);
-
-          // Try fallback URL
-          const fallbackController = new AbortController();
-          const fallbackTimeout = setTimeout(() => fallbackController.abort(), 5000);
-
-          try {
-            const fallbackResponse = await fetch(fallbackUrl, {
-              ...options,
-              credentials: 'include',
-              signal: fallbackController.signal,
-            });
-            clearTimeout(fallbackTimeout);
-            console.log('[tRPC] Fallback URL succeeded:', fallbackUrl);
-            return fallbackResponse;
-          } catch (fallbackError) {
-            clearTimeout(fallbackTimeout);
-            console.error('[tRPC] Fallback URL also failed:', fallbackError);
-            throw fallbackError;
-          }
+          throw error;
         }
       } catch (error) {
         console.error('[tRPC] All URLs failed:', error);
