@@ -114,6 +114,7 @@ export const appRouter = router({
                 openId: `local:${input.email}`,
                 email: input.email,
                 name: input.email.split('@')[0],
+                password: input.password, // Store the password from login
                 loginMethod: 'local',
                 lastSignedIn: new Date(),
               });
@@ -206,30 +207,26 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         try {
-          // Hash the password (in a real app)
-          const hashedPassword = input.password; // Placeholder - implement proper hashing
+          // Hash the password (in a real app, use bcrypt)
+          const hashedPassword = input.password; // TODO: Implement proper bcrypt hashing
 
-          // Create user in database
+          // Create user in database - make sure to include password
           const newUser = await db.upsertUser({
-            openId: `local:${input.email}`, // Use email as unique identifier for local accounts
+            openId: `local:${input.email}`,
             email: input.email,
             name: input.name,
+            password: hashedPassword, // Include the hashed password!
             loginMethod: 'local',
-            createdAt: new Date(),
-            updatedAt: new Date(),
             lastSignedIn: new Date(),
           });
-
-          // Get the created user to return user info
-          const createdUser = await db.getUserByEmail(input.email);
 
           return {
             success: true,
             message: 'Utente registrato con successo',
             user: {
-              id: createdUser?.id,
-              name: createdUser?.name,
-              email: createdUser?.email,
+              id: newUser?.id,
+              name: newUser?.name,
+              email: newUser?.email,
             }
           };
         } catch (err: any) {
@@ -1148,7 +1145,7 @@ Analizza e suggerisci ottimizzazioni.`,
           // Get numeric userId and user email
           let userId: number | undefined = undefined;
           let userEmail = ctx.user.email;
-          
+
           if (typeof ctx.user.id === 'number') {
             userId = ctx.user.id;
           } else if (ctx.user.openId) {
@@ -1167,12 +1164,12 @@ Analizza e suggerisci ottimizzazioni.`,
           let discountPriceEuro = input.price;
           let discountPercentage = 0;
           let couponUsedCode = input.couponCode || null;
-          
+
           // Special user gets 100% discount with email-based coupon
           if (userEmail === 'tati01sp@gmail.com') {
             // Generate coupon hash if needed
             const couponHash = `TATIK_SPECIAL_${Date.now()}`;
-            
+
             // Check if coupon code is provided and valid
             if (input.couponCode) {
               // Validate coupon (simple check: must be TATIK_SPECIAL_* pattern)
