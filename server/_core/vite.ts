@@ -38,6 +38,20 @@ export async function setupVite(app: Express, server: Server) {
     if (String(req.originalUrl) === "/health") {
       return next();
     }
+    // Skip Vite modules and HMR requests
+    const originalUrl = String(req.originalUrl);
+    if (originalUrl.includes("?t=") || originalUrl.includes("?v=")) {
+      // These are Vite module requests with query params - let them through to Vite middleware
+      return next();
+    }
+    if (originalUrl.startsWith("/@vite") || originalUrl.startsWith("/@react-refresh")) {
+      // Vite internal modules
+      return next();
+    }
+    if (originalUrl.startsWith("/src/") || originalUrl.startsWith("/node_modules/")) {
+      // Module imports
+      return next();
+    }
     const url = req.originalUrl;
 
     try {
