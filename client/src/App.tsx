@@ -94,35 +94,104 @@ function PromoPlacement() {
 function App() {
   const [queryClient] = useState(() => new QueryClient());
   const [trpcClient] = useState(() => {
-    // Determine API URL based on environment
-    let apiUrl: string;
+    // Determine primary API URL based on environment
+    let primaryUrl: string;
+    let fallbackUrl: string = '/api/trpc'; // Always have fallback to relative path
 
     if (typeof window !== 'undefined') {
-      // In production (tatik.space), use Render API
+      // In production (tatik.space), use Render API with fallback to relative path
       // In development/localhost, use relative path for Vite proxy
       if (window.location.hostname.includes('tatik.space')) {
-        apiUrl = 'https://tatik-space-pro1.onrender.com/api/trpc';
+        primaryUrl = 'https://tatik-space-pro1.onrender.com/api/trpc';
+        fallbackUrl = '/api/trpc'; // Fallback to relative path if Render fails
       } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        apiUrl = '/api/trpc'; // Vite dev server proxy
+        primaryUrl = '/api/trpc'; // Vite dev server proxy
+        fallbackUrl = primaryUrl;
       } else {
-        // Fallback: relative path
-        apiUrl = '/api/trpc';
+        // Fallback: relative path for other domains
+        primaryUrl = '/api/trpc';
+        fallbackUrl = primaryUrl;
       }
     } else {
-      apiUrl = '/api/trpc';
+      primaryUrl = '/api/trpc';
+      fallbackUrl = primaryUrl;
     }
+
+    // Custom fetch handler with fallback logic
+    const fetchWithFallback = async (url: string, options?: RequestInit): Promise<Response> => {
+      try {
+        // Try primary URL with a timeout
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000); // 8 second timeout for Render
+
+        try {
+          const response = await fetch(url, {
+            ...options,
+            credentials: 'include',
+            signal: controller.signal,
+          });
+          clearTimeout(timeout);
+
+          // If response is ok, return it
+          if (response.ok) {
+            console.log('[tRPC] Primary URL succeeded:', url);
+            return response;
+          }
+
+          // If response is not ok but not a server error, return as-is
+          if (response.status >= 400 && response.status < 500) {
+            return response;
+          }
+
+          // If server error (5xx), try fallback
+          if (response.status >= 500) {
+            throw new Error(`Server error: ${response.status}`);
+          }
+
+          return response;
+        } catch (error: any) {
+          clearTimeout(timeout);
+
+          // If we're already using fallback URL, don't try again
+          if (url === fallbackUrl) {
+            console.error('[tRPC] Fallback URL also failed:', error?.message);
+            throw error;
+          }
+
+          // Log the primary failure
+          console.warn('[tRPC] Primary URL failed, attempting fallback:', url, error?.message);
+
+          // Try fallback URL
+          const fallbackController = new AbortController();
+          const fallbackTimeout = setTimeout(() => fallbackController.abort(), 5000);
+
+          try {
+            const fallbackResponse = await fetch(fallbackUrl, {
+              ...options,
+              credentials: 'include',
+              signal: fallbackController.signal,
+            });
+            clearTimeout(fallbackTimeout);
+            console.log('[tRPC] Fallback URL succeeded:', fallbackUrl);
+            return fallbackResponse;
+          } catch (fallbackError) {
+            clearTimeout(fallbackTimeout);
+            console.error('[tRPC] Fallback URL also failed:', fallbackError);
+            throw fallbackError;
+          }
+        }
+      } catch (error) {
+        console.error('[tRPC] All URLs failed:', error);
+        throw error;
+      }
+    };
 
     return trpc.createClient({
       links: [
         httpBatchLink({
-          url: apiUrl,
+          url: primaryUrl,
           transformer: superjson,
-          fetch(url, options) {
-            return fetch(url, {
-              ...options,
-              credentials: 'include',
-            });
-          },
+          fetch: fetchWithFallback,
         }),
       ],
     });
