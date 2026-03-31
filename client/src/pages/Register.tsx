@@ -7,7 +7,6 @@ import { Label } from '@/components/ui/label';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import { Eye, EyeOff } from 'lucide-react';
-import { useAuth } from '@/_core/hooks/useAuth';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 export default function Register() {
@@ -17,27 +16,16 @@ export default function Register() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const { login } = useAuth();
   const { t } = useLanguage();
 
   const registerMutation = trpc.auth.register.useMutation({
     onSuccess: async (data) => {
       toast.success(`${t.register} ${t.completed}! ${t.please} ${t.login} ${t.toAccess}.`);
 
-      // After successful registration, try to log the user in automatically
-      // If the registration response includes user data, we can use it
-      if (data.user) {
-        // Set the user in the auth state directly using the registration response
-        login(data.user);
-
-        // Wait briefly for auth state to sync before redirecting
-        setTimeout(() => {
-          window.location.href = '/editor';
-        }, 500);
-      } else {
-        // Otherwise, redirect to login page
+      // After successful registration, redirect to login
+      setTimeout(() => {
         window.location.href = '/login';
-      }
+      }, 1000);
     },
     onError: (error) => {
       toast.error(error.message || t.registrationError);
