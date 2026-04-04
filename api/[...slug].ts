@@ -1,40 +1,37 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { createHTTPHandler } from "@trpc/server/adapters/standalone";
+import { appRouter } from "../server/routers";
+import { createContext } from "../server/_core/context";
 
-function sendJSON(res: VercelResponse, status: number, data: any) {
-  res.setHeader('Content-Type', 'application/json');
-  res.status(status);
-  res.end(JSON.stringify(data));
-}
+const handler = createHTTPHandler({
+  router: appRouter,
+  createContext: async (opts: any) => {
+    return createContext({
+      req: opts.req,
+      res: opts.res,
+    });
+  },
+});
 
 export default async (req: VercelRequest, res: VercelResponse) => {
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+  
+  // Handle preflight
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
   try {
-    console.log("[API] Request:", req.url, req.method);
-
-    // Health check
-    if (req.url === "/api/health" || req.url === "/health") {
-      return sendJSON(res, 200, { ok: true });
-    }
-
-    // Auth endpoints
-    if (req.url?.includes('/api/trpc/auth.login')) {
-      console.log('[API] Login request');
-      return sendJSON(res, 200, {
-        result: { data: { success: true, requires2fa: false } }
-      });
-    }
-
-    if (req.url?.includes('/api/trpc/auth.register')) {
-      console.log('[API] Register request');
-      return sendJSON(res, 200, {
-        result: { data: { success: true } }
-      });
-    }
-
-    // Default
-    return sendJSON(res, 200, { result: { data: { ok: true } } });
+    await handler(req, res);
   } catch (error: any) {
-    console.error("[API] Error:", error);
-    sendJSON(res, 500, { error: error?.message || "Server error" });
+    console.error('[API] Error:', error);
+    if (!res.headersSent) {
+      res.setHeader('Content-Type', 'application/json');
+      res.status(500).end(JSON.stringify({ error: error?.message || 'Internal server error' }));
+    }
   }
 };
 
