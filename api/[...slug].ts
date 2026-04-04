@@ -22,6 +22,9 @@ import { createExpressMiddleware } from "@trpc/server/adapters/express";
 // Now we can import backend code
 import { appRouter } from "../server/routers";
 import { createContext } from "../server/_core/context";
+import { testVersion } from "./_test-version";
+
+let app: express.Application | undefined;
 
 function getApp() {
   if (app) return app;
