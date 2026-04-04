@@ -99,16 +99,13 @@ function App() {
     let fallbackUrl: string = '/api/trpc'; // Always have fallback to relative path
 
     if (typeof window !== 'undefined') {
-      // In production (tatik.space), use Render API with fallback to relative path
+      // Use relative path for all production deployments (Vercel, etc.)
       // In development/localhost, use relative path for Vite proxy
-      if (window.location.hostname.includes('tatik.space')) {
-        primaryUrl = 'https://tatik-space-pro1.onrender.com/api/trpc';
-        fallbackUrl = '/api/trpc'; // Fallback to relative path if Render fails
-      } else if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
         primaryUrl = '/api/trpc'; // Vite dev server proxy
         fallbackUrl = primaryUrl;
       } else {
-        // Fallback: relative path for other domains
+        // Production: use relative path (works with Vercel, custom domains, etc.)
         primaryUrl = '/api/trpc';
         fallbackUrl = primaryUrl;
       }
@@ -117,7 +114,7 @@ function App() {
       fallbackUrl = primaryUrl;
     }
 
-    // Custom fetch handler with fallback logic
+    // Custom fetch handler
     const customFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = typeof input === 'string' ? input : input.toString();
 
@@ -125,47 +122,15 @@ function App() {
         throw new Error('[tRPC] No URL provided to fetch');
       }
 
-      try {
-        console.log('[tRPC] Fetching:', url);
+      console.log('[tRPC] Fetching:', url);
 
-        const response = await fetch(input, {
-          ...init,
-          credentials: 'include',
-        });
+      const response = await fetch(input, {
+        ...init,
+        credentials: 'include',
+      });
 
-        console.log('[tRPC] Response:', url, response.status);
-        return response;
-      } catch (error: any) {
-        // If on production (tatik.space) and request to Render failed, try local fallback
-        if (
-          typeof window !== 'undefined' &&
-          window.location.hostname.includes('tatik.space') &&
-          typeof url === 'string' &&
-          url.includes('onrender.com')
-        ) {
-          console.warn('[tRPC] Render failed, trying local fallback:', error?.message);
-
-          try {
-            const fallbackUrl = url.replace(
-              'https://tatik-space-pro1.onrender.com',
-              window.location.origin
-            );
-
-            const fallbackResponse = await fetch(fallbackUrl, {
-              ...init,
-              credentials: 'include',
-            });
-
-            console.log('[tRPC] Fallback succeeded:', fallbackResponse.status);
-            return fallbackResponse;
-          } catch (fallbackError) {
-            console.error('[tRPC] Fallback also failed:', fallbackError);
-            throw error;
-          }
-        }
-
-        throw error;
-      }
+      console.log('[tRPC] Response:', url, response.status);
+      return response;
     };
 
     return trpc.createClient({
