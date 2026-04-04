@@ -153,10 +153,10 @@ async function startServer() {
       const couponCode = `TATIK_SPECIAL_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const expiryDate = new Date();
       expiryDate.setDate(expiryDate.getDate() + 30); // Valid for 30 days
-      
+
       console.log(`[GenerateCoupon] Generated coupon: ${couponCode}`);
       console.log(`[GenerateCoupon] Expires at: ${expiryDate.toISOString()}`);
-      
+
       return res.json({
         success: true,
         couponCode,
@@ -354,7 +354,8 @@ async function startServer() {
 
     await setupVite(app, server);
   } else {
-    serveStatic(app);
+    // In production, DON'T call serveStatic here - it will be called AFTER API routes
+    // are registered, so that /api/trpc and /api/analytics take precedence
   }
 
   // Register analytics routes BEFORE tRPC
@@ -369,6 +370,11 @@ async function startServer() {
       createContext,
     })
   );
+
+  // NOW serve static files in production (as the last catch-all handler)
+  if (process.env.NODE_ENV !== "development") {
+    serveStatic(app);
+  }
 
   const preferredPort = parseInt(process.env.PORT || "3000");
   const port = await findAvailablePort(preferredPort);

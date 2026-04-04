@@ -1214,8 +1214,8 @@ Analizza e suggerisci ottimizzazioni.`,
             throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Payment system not available' });
           }
 
-          const successUrl = `${process.env.VITE_BASE_URL || 'http://localhost:3000'}/profile?tab=files&purchase=success`;
-          const cancelUrl = `${process.env.VITE_BASE_URL || 'http://localhost:3000'}/templates`;
+          const successUrl = `${process.env.VITE_BASE_URL || process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'}/profile?tab=files&purchase=success`;
+          const cancelUrl = `${process.env.VITE_BASE_URL || process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'}/templates`;
 
           const session = await stripe.createCheckoutSession({
             customerEmail: ctx.user.email || undefined,

@@ -154,9 +154,9 @@ export default function EditorApp() {
 
   const createProjectMutation = trpc.projects.create.useMutation({
     onSuccess: (data) => {
-      console.log('[EditorApp] Project created:', data.projectId);
+      console.log('[EditorApp] Project created:', data.id);
       // Auto-select the newly created project
-      setCurrentProject(data.projectId);
+      setCurrentProject(data.id);
       utils.projects.list.invalidate();
     },
   });
@@ -242,7 +242,7 @@ export default function EditorApp() {
         // Detect language from filename
         const ext = foundFile.name?.split('.').pop()?.toLowerCase() || 'html';
         const langMap: any = { html: 'html', css: 'css', js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript', json: 'json', py: 'python', java: 'java', rb: 'ruby', php: 'php', xml: 'xml', sql: 'sql' };
-        setCurrentLanguage(langMap[ext] || 'html');
+        setSelectedLanguage(langMap[ext] || 'html');
         localStorage.removeItem('to_open_file_id');
         setFileToOpenId(null);
         openAttemptedRef.current = true;
@@ -276,7 +276,7 @@ export default function EditorApp() {
 
       setCurrentFile(newFile);
       setEditorContent(copiedTemplate.code);
-      setCurrentLanguage('html');
+      setSelectedLanguage('html');
       toast.success(`Template "${copiedTemplate.name}" caricato in editor!`);
 
       localStorage.removeItem('copied_template');
@@ -324,7 +324,7 @@ export default function EditorApp() {
 
         setCurrentFile(newFile);
         setEditorContent(templateToOpen.code);
-        setCurrentLanguage('html');
+        setSelectedLanguage('html');
         toast.success(`Template "${templateToOpen.name}" caricato in editor!`);
 
         localStorage.removeItem('template_to_open');
@@ -743,8 +743,18 @@ export default function EditorApp() {
       return;
     }
 
-    // Try common dev server ports
-    const candidateUrls = ['http://localhost:5173', 'http://localhost:3000', 'http://localhost:3001', 'http://localhost:5174'];
+    // Try common dev server ports and current origin
+    const baseUrl = window.location.origin;
+    const candidateUrls = [
+      `${baseUrl.replace(/^http/, 'http')}:5173`,
+      `${baseUrl.replace(/^http/, 'http')}:3000`,
+      `${baseUrl.replace(/^http/, 'http')}:3001`,
+      `${baseUrl.replace(/^http/, 'http')}:5174`,
+      'http://localhost:5173',
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://localhost:5174'
+    ];
     let cancelled = false;
     setIsCheckingDevServer(true);
     (async () => {
@@ -1010,7 +1020,7 @@ export default function EditorApp() {
         setDetectedLanguageLabel(detected);
         const extension = getExtensionByLanguage(detected);
         const newFileName = `nuovo-file.${extension}`;
-        const newPath = `/nuovo-file.${extension}`;
+        const newPath = newFileName;
 
         const newFile = {
           id: Date.now(),
@@ -1020,20 +1030,17 @@ export default function EditorApp() {
           type: 'file'
         };
 
-        // Create or update - always remove old "nuovo-file.*" entries
+        // Create or update - always remove old "nuovo-file" entries
         setCurrentFile(newFile);
         setOpenFiles(prev => {
-          // Filter out all "nuovo-file" entries (regardless of extension)
-          const filtered = prev.filter(f => !f.name?.startsWith('nuovo-file') && !f.path?.startsWith('/nuovo-file'));
-          // Add the single new file
+          const filtered = prev.filter(f => !f.name?.startsWith('nuovo-file') && !f.path?.startsWith('nuovo-file'));
           return [...filtered, newFile];
         });
         setLocalFiles(prev => {
-          // Filter out all "nuovo-file" entries (regardless of extension)
-          const filtered = prev.filter(f => !f.name?.startsWith('nuovo-file') && !f.path?.startsWith('/nuovo-file'));
-          // Add the single new file
+          const filtered = prev.filter(f => !f.name?.startsWith('nuovo-file') && !f.path?.startsWith('nuovo-file'));
           return [...filtered, newFile];
         });
+        setSelectedLanguage(detected as any);
       } else {
         setDetectedLanguageLabel('');
       }

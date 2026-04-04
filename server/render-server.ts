@@ -7,8 +7,29 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { appRouter } from "./routers";
-import { createContext } from "./_core/context";
+
+console.log('[Init] Starting imports...');
+
+let appRouter: any;
+let createContext: any;
+
+try {
+  const routersModule = await import("./routers.js");
+  appRouter = routersModule.appRouter;
+  console.log('[Init] appRouter imported successfully:', !!appRouter);
+} catch (importError) {
+  console.error('[Init] Failed to import appRouter:', importError);
+  process.exit(1);
+}
+
+try {
+  const contextModule = await import("./_core/context.js");
+  createContext = contextModule.createContext;
+  console.log('[Init] createContext imported successfully:', !!createContext);
+} catch (importError) {
+  console.error('[Init] Failed to import createContext:', importError);
+  process.exit(1);
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -36,6 +57,7 @@ app.get("/health", (req, res) => {
 });
 
 // tRPC API routes
+console.log('[Init] Registering tRPC middleware at /api/trpc...');
 app.use(
   "/api/trpc",
   createExpressMiddleware({
@@ -43,6 +65,7 @@ app.use(
     createContext,
   })
 );
+console.log('[Init] tRPC middleware registered');
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

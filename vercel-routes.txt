@@ -1,0 +1,6 @@
+# API Routes for Vercel
+# This file tells Vercel which routes should be handled by the API
+
+/api/*  dist/server/_core/index.js  200
+/auth/* dist/server/_core/index.js  200
+/trpc/* dist/server/_core/index.js  200

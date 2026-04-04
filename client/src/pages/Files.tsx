@@ -82,8 +82,8 @@ export default function Files() {
   // Update stats every 25 seconds to match GreenBoxHybrid rotation frequency
   React.useEffect(() => {
     const updateStats = () => {
-      const totalLines = files.reduce((sum, f) => sum + (f.content?.split('\n').length || 0), 0);
-      const bytes = files.reduce((sum, f) => sum + (f.content?.length || 0), 0);
+      const totalLines = files.reduce((sum: number, f: any) => sum + (f.content?.split('\n').length || 0), 0);
+      const bytes = files.reduce((sum: number, f: any) => sum + (f.content?.length || 0), 0);
       let projectSize = '0 KB';
       if (bytes < 1024) projectSize = bytes + ' B';
       else if (bytes < 1024 * 1024) projectSize = (bytes / 1024).toFixed(2) + ' KB';
@@ -415,8 +415,7 @@ export default function Files() {
               multiple
               hidden
               onChange={handleFolderUpload}
-              webkitdirectory=""
-              mozdirectory=""
+              {...({ webkitdirectory: '', mozdirectory: '' } as any)}
             />
           </div>
         </div>

@@ -24,7 +24,7 @@ export default function SearchResultsPanel({ query, localFiles, onOpenMatch }: a
             // detect if query matches a folder segment in the path
             const path = (f.path || f.name || '');
             const segments = path.split('/').filter(Boolean);
-            const folderMatch = segments.slice(0, -1).find(s => s.toLowerCase() === ql);
+            const folderMatch = segments.slice(0, -1).find((s: string) => s.toLowerCase() === ql);
             if (folderMatch) {
                 res.push({ file: f, line: 0, preview: `Cartella: ${folderMatch}`, folderMatch });
             }

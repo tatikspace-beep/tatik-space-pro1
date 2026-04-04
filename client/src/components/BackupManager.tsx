@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { Save, Trash2, RotateCcw, Clock, Cloud, HardDrive } from 'lucide-react';
+import { backups, type Backup } from '../../../drizzle/schema';
 
 interface BackupManagerProps {
   projectId: number;
@@ -25,7 +26,7 @@ interface LocalBackup {
   backupType: 'local';
 }
 
-type ServerBackup = (typeof backups)[number] & { isLocal?: false; backupType: 'local' | 'online' };
+type ServerBackup = Backup & { isLocal?: false; backupType: 'local' | 'online' };
 type AnyBackup = ServerBackup | LocalBackup;
 
 export function BackupManager({ projectId, currentFiles, onRestore }: BackupManagerProps) {

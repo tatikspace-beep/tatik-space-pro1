@@ -254,7 +254,7 @@ export async function attachCollaborationWS(server: any) {
                 ws.send(JSON.stringify({
                     type: 'invite_sent',
                     email: msg.email,
-                    shareLink: `${process.env.APP_URL || 'http://localhost:5000'}/join/${project.shareToken}`,
+                    shareLink: `${process.env.APP_URL || process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:5000'}/join/${project.shareToken}`,
                 }));
                 return;
             }

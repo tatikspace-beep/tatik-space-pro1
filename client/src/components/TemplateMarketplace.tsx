@@ -761,7 +761,7 @@ export function TemplateMarketplace({ onInsert, onInsertWithLanguage }: Template
   const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null);
 
   // Check if user is admin (only tatik.space@gmail.com can access paid templates freely)
-  const isAdmin = user?.email === 'tatik.space@gmail.com' || user?.role === 'ADMIN';
+  const isAdmin = user?.email === 'tatik.space@gmail.com' || user?.role === 'admin';
 
   const categories = ['all', 'javascript', 'typescript', 'python', 'java', 'json', 'sql', 'html', 'css', 'form', 'layout'];
   const filteredTemplates = selectedCategory === 'all'

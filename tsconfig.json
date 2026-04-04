@@ -32,6 +32,10 @@
     "allowImportingTsExtensions": true,
     "moduleResolution": "bundler",
     "baseUrl": ".",
-    "paths": {}
+    "paths": {
+      "@/*": ["client/src/*"],
+      "@shared/*": ["shared/*"],
+      "@/_core/*": ["client/src/_core/*"]
+    }
   }
 }

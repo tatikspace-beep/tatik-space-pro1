@@ -41,7 +41,7 @@ export default function ProfileBadge() {
 
     const initials = user.name
         ? user.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
-        : user.email.charAt(0).toUpperCase();
+        : user.email ? user.email.charAt(0).toUpperCase() : 'U';
 
     const handleLogout = async () => {
         setOpen(false);
