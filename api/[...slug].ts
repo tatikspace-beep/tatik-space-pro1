@@ -1,18 +1,77 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 
+function applyCookieHelpers(res: VercelResponse) {
+  const anyRes = res as any;
+
+  if (typeof anyRes.cookie === "function" && typeof anyRes.clearCookie === "function") {
+    return anyRes;
+  }
+
+  function buildCookieString(name: string, value: string, options: Record<string, any> = {}) {
+    const segments = [`${encodeURIComponent(name)}=${encodeURIComponent(value)}`];
+    if (options.maxAge !== undefined && options.maxAge !== null) {
+      segments.push(`Max-Age=${Math.floor(options.maxAge / 1000)}`);
+    }
+    if (options.domain) {
+      segments.push(`Domain=${options.domain}`);
+    }
+    if (options.path) {
+      segments.push(`Path=${options.path}`);
+    }
+    if (options.expires) {
+      const expires = options.expires instanceof Date ? options.expires : new Date(options.expires);
+      segments.push(`Expires=${expires.toUTCString()}`);
+    }
+    if (options.httpOnly) {
+      segments.push("HttpOnly");
+    }
+    if (options.secure) {
+      segments.push("Secure");
+    }
+    if (options.sameSite) {
+      segments.push(`SameSite=${options.sameSite}`);
+    }
+    return segments.join("; ");
+  }
+
+  anyRes.cookie = (name: string, value: string, options: Record<string, any> = {}) => {
+    const headerValue = buildCookieString(name, value, options);
+    const prev = anyRes.getHeader("Set-Cookie");
+    if (!prev) {
+      anyRes.setHeader("Set-Cookie", headerValue);
+    } else if (Array.isArray(prev)) {
+      anyRes.setHeader("Set-Cookie", [...prev, headerValue]);
+    } else {
+      anyRes.setHeader("Set-Cookie", [String(prev), headerValue]);
+    }
+  };
+
+  anyRes.clearCookie = (name: string, options: Record<string, any> = {}) => {
+    anyRes.cookie(name, "", {
+      ...options,
+      maxAge: 0,
+      expires: new Date(0),
+    });
+  };
+
+  return anyRes;
+}
+
 export default async (req: VercelRequest, res: VercelResponse) => {
   try {
+    const enhancedRes = applyCookieHelpers(res);
+
     // Set response type first
-    res.setHeader('Content-Type', 'application/json');
+    enhancedRes.setHeader('Content-Type', 'application/json');
     
     // CORS headers
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+    enhancedRes.setHeader('Access-Control-Allow-Origin', '*');
+    enhancedRes.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+    enhancedRes.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
     
     // Handle OPTIONS
     if (req.method === 'OPTIONS') {
-      return res.status(200).end();
+      return enhancedRes.status(200).end();
     }
 
     // Log request
@@ -20,7 +79,7 @@ export default async (req: VercelRequest, res: VercelResponse) => {
 
     // Check if tRPC request
     if (!req.url?.includes('/api/trpc')) {
-      return res.status(404).json({ error: 'Not found' });
+      return enhancedRes.status(404).json({ error: 'Not found' });
     }
 
     // Import and run tRPC handler
@@ -33,13 +92,13 @@ export default async (req: VercelRequest, res: VercelResponse) => {
         router: appRouter,
         createContext: async (opts: any) => {
           try {
+            const patchedRes = applyCookieHelpers(opts.res);
             return await createContext({
               req: opts.req,
-              res: opts.res,
+              res: patchedRes,
             });
           } catch (ctxErr) {
             console.error('[API] Context error:', ctxErr);
-            // Return minimal context on error
             return { req: opts.req, res: opts.res, user: null };
           }
         },
@@ -48,14 +107,13 @@ export default async (req: VercelRequest, res: VercelResponse) => {
         },
       });
 
-      // Run handler and ensure response
-      const handlerPromise = handler(req, res);
+      const handlerPromise = handler(req, enhancedRes);
       
       // Timeout after 25 seconds
       const timeoutPromise = new Promise((resolve) => {
         setTimeout(() => {
-          if (!res.headersSent) {
-            res.status(504).json({ error: 'Timeout' });
+          if (!enhancedRes.headersSent) {
+            enhancedRes.status(504).json({ error: 'Timeout' });
           }
           resolve(null);
         }, 25000);
@@ -63,14 +121,13 @@ export default async (req: VercelRequest, res: VercelResponse) => {
 
       await Promise.race([handlerPromise, timeoutPromise]);
       
-      // Ensure response was sent
-      if (!res.headersSent) {
-        res.status(500).json({ error: 'No response from handler' });
+      if (!enhancedRes.headersSent) {
+        enhancedRes.status(500).json({ error: 'No response from handler' });
       }
     } catch (trpcErr: any) {
       console.error('[API] tRPC handler error:', trpcErr);
-      if (!res.headersSent) {
-        res.status(500).json({ error: trpcErr?.message || 'tRPC handler error' });
+      if (!enhancedRes.headersSent) {
+        enhancedRes.status(500).json({ error: trpcErr?.message || 'tRPC handler error' });
       }
     }
   } catch (error: any) {
