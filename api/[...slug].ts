@@ -33,5 +33,4 @@ export default async (req: VercelRequest, res: VercelResponse) => {
     }
   }
 };
-};
 
