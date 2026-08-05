@@ -11,6 +11,7 @@ import { publicProcedure, router, protectedProcedure } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import * as db from "./db";
+import { hashPassword, isAdminEmail, normalizeEmail, verifyPassword } from "./auth-utils";
 import speakeasy from "speakeasy";
 import QRCode from "qrcode";
 
@@ -39,97 +40,58 @@ export const appRouter = router({
         const { sdk } = await import("./_core/sdk");
 
         try {
-          console.log(`[Auth Login] Attempting login - email: ${input.email}`);
+          const normalizedEmail = normalizeEmail(input.email);
+          console.log(`[Auth Login] Attempting login - email: ${normalizedEmail}`);
 
-          // Dev admin login: allow when running locally (development or localhost)
-          const isDevAdmin = input.email === 'tatik.space@gmail.com';
           const hostHeader = String(ctx.req.headers.host || '') || '';
-          // Allow dev admin when running locally, on loopback addresses or via explicit env override
           const allowDevLogin = process.env.NODE_ENV === 'development'
             || hostHeader.includes('localhost')
             || hostHeader.includes('127.0.0.1')
             || hostHeader.includes('::1')
             || process.env.ALLOW_DEV_ADMIN === 'true';
+          const isAdminRequest = isAdminEmail(normalizedEmail);
+          const loginRole: "user" | "admin" = isAdminRequest ? "admin" : "user";
 
-          if (allowDevLogin && isDevAdmin) {
-            console.log(`[Auth Login] Dev admin detected, attempting DB upsert for ${input.email}`);
-            let adminUser: any = null;
-
-            try {
-              adminUser = await db.upsertUser({
-                openId: `local:${input.email}`,
-                name: 'Admin',
-                email: input.email,
-                loginMethod: 'dev-admin',
-                role: 'admin',
-                lastSignedIn: new Date(),
-              });
-              console.log(`[Auth Login] Admin user created/updated successfully, ID: ${adminUser?.id}`);
-            } catch (dbErr: any) {
-              console.warn(`[Auth Login] Database upsert failed, using fallback - ${(dbErr as any).message}`);
-              // Use fallback admin user object
-              adminUser = { id: 'dev-admin-' + input.email, name: 'Admin', email: input.email, role: 'admin' };
-            }
-
-            try {
-              console.log(`[Auth Login] Creating session token for ${input.email}`);
-              const token = await sdk.createSessionToken(`local:${input.email}`, { name: 'Admin' });
-              console.log(`[Auth Login] Token created, length: ${token.length}`);
-
-              try {
-                const cookieOptions = getSessionCookieOptions(ctx.req);
-                console.log(`[Auth Login] Cookie options: ${JSON.stringify(cookieOptions)}`);
-                ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: 1000 * 60 * 60 * 24 * 365 });
-                console.log(`[Auth Login] Admin token cookie set successfully for ${input.email}`);
-              } catch (cookieErr: any) {
-                console.error(`[Auth Login] Cookie setting failed: ${(cookieErr as any).message}`, cookieErr);
-                throw cookieErr;
-              }
-            } catch (tokenErr: any) {
-              console.error(`[Auth Login] Token creation failed: ${(tokenErr as any).message}`, tokenErr);
-              throw tokenErr;
-            }
-
-            const responseObject = { success: true, requires2fa: false, user: { id: adminUser?.id || 'dev-admin', name: 'Admin', email: input.email, role: 'admin' } };
-            console.log(`[Auth Login] Dev admin login successful, returning:`, JSON.stringify(responseObject));
-            return responseObject;
-          }
-
-          // Standard login
-          console.log(`[Auth Login] Standard login for ${input.email}`);
           let user: any;
           try {
-            user = await db.getUserByEmail(input.email);
+            user = await db.getUserByEmail(normalizedEmail);
           } catch (getUserErr: any) {
             console.error(`[Auth Login] getUserByEmail failed: ${(getUserErr as any).message}`, getUserErr);
-            // If DB is down, allow login with temp user
             user = null;
           }
 
           if (!user) {
-            console.log(`[Auth Login] User not found, creating new user for ${input.email}`);
-            // Auto-register on first login (for demo/early access)
-            try {
-              user = await db.upsertUser({
-                openId: `local:${input.email}`,
-                email: input.email,
-                name: input.email.split('@')[0],
-                password: input.password, // Store the password from login
-                loginMethod: 'local',
-                lastSignedIn: new Date(),
-              });
-              console.log(`[Auth Login] New user created: ${user.id}`);
-            } catch (createErr: any) {
-              console.error(`[Auth Login] Failed to create user: ${(createErr as any).message}`);
-              // Fallback: create temp user object
-              user = {
-                id: 'temp-' + Math.random().toString(36).substr(2, 9),
-                openId: `local:${input.email}`,
-                email: input.email,
-                name: input.email.split('@')[0],
-                role: 'user'
-              };
-            }
+            console.log(`[Auth Login] User not found, creating new user for ${normalizedEmail}`);
+            const newUser = {
+              openId: `local:${normalizedEmail}`,
+              email: normalizedEmail,
+              name: normalizedEmail.split('@')[0],
+              password: hashPassword(input.password),
+              loginMethod: 'local',
+              role: loginRole,
+              lastSignedIn: new Date(),
+            };
+            user = await db.upsertUser(newUser);
+          }
+
+          if (user.password && !verifyPassword(input.password, user.password)) {
+            throw new TRPCError({
+              code: 'UNAUTHORIZED',
+              message: 'Credenziali non valide',
+            });
+          }
+
+          if (isAdminRequest || user.role === 'admin') {
+            const adminUser = await db.upsertUser({
+              openId: user.openId || `local:${normalizedEmail}`,
+              name: user.name || 'Admin',
+              email: normalizedEmail,
+              loginMethod: user.loginMethod || 'admin',
+              role: 'admin',
+              password: user.password || hashPassword(input.password),
+              lastSignedIn: new Date(),
+            });
+            user = adminUser ?? user;
           }
 
           let twoFactorSettings: any;
@@ -142,27 +104,27 @@ export const appRouter = router({
           }
 
           try {
-            console.log(`[Auth Login] Creating session token for standard user ${user.id}`);
-            const openId = user.openId || `local:${input.email}`;
-            const token = await sdk.createSessionToken(openId, { name: user.name || undefined });
-            console.log(`[Auth Login] Standard user token created, length: ${token.length}`);
+            console.log(`[Auth Login] Creating session token for user ${user.id}`);
+            const openId = user.openId || `local:${normalizedEmail}`;
+            const token = await sdk.createSessionToken(openId, { name: user.name || (isAdminRequest ? 'Admin' : undefined) });
+            console.log(`[Auth Login] Token created, length: ${token.length}`);
 
             const cookieOptions = getSessionCookieOptions(ctx.req);
             ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: 1000 * 60 * 60 * 24 * 365 });
-            console.log(`[Auth Login] Standard user token cookie set for ${input.email}`);
+            console.log(`[Auth Login] Token cookie set for ${normalizedEmail}`);
           } catch (stdTokenErr: any) {
-            console.error(`[Auth Login] Standard user token creation failed: ${(stdTokenErr as any).message}`, stdTokenErr);
+            console.error(`[Auth Login] Token creation failed: ${(stdTokenErr as any).message}`, stdTokenErr);
             throw stdTokenErr;
           }
 
-          const responseObject = { success: true, requires2fa: twoFactorSettings?.enabled === 1, user: { id: user.id, name: user.name, email: user.email } };
-          console.log(`[Auth Login] Standard login successful, returning:`, JSON.stringify(responseObject));
+          const responseObject = { success: true, requires2fa: twoFactorSettings?.enabled === 1, user: { id: user.id, name: user.name, email: user.email, role: user.role || loginRole } };
+          console.log(`[Auth Login] Login successful, returning:`, JSON.stringify(responseObject));
           return responseObject;
         } catch (err: any) {
           const errMsg = (err as any).message || String(err);
           console.error(`[Auth Login] MUTATION ERROR (caught at outer level): ${errMsg}`, err);
           throw new TRPCError({
-            code: 'INTERNAL_SERVER_ERROR',
+            code: err instanceof TRPCError ? err.code : 'INTERNAL_SERVER_ERROR',
             message: errMsg,
           });
         }
@@ -207,31 +169,31 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         try {
-          // Hash the password (in a real app, use bcrypt)
-          const hashedPassword = input.password; // TODO: Implement proper bcrypt hashing
+          const normalizedEmail = normalizeEmail(input.email);
+          const hashedPassword = hashPassword(input.password);
+          const role = isAdminEmail(normalizedEmail) ? 'admin' : 'user';
 
-          // Create user in database - make sure to include password
           let newUser: any;
           try {
             newUser = await db.upsertUser({
-              openId: `local:${input.email}`,
-              email: input.email,
+              openId: `local:${normalizedEmail}`,
+              email: normalizedEmail,
               name: input.name,
               password: hashedPassword,
               loginMethod: 'local',
+              role,
               lastSignedIn: new Date(),
             });
           } catch (dbError: any) {
             console.warn('[Auth Register] Database unavailable, using fallback:', (dbError as any).message);
-            // Fallback: create in-memory user object for development
             newUser = {
               id: Math.floor(Math.random() * 100000),
-              openId: `local:${input.email}`,
-              email: input.email,
+              openId: `local:${normalizedEmail}`,
+              email: normalizedEmail,
               name: input.name,
               password: hashedPassword,
               loginMethod: 'local',
-              role: 'user',
+              role,
               createdAt: new Date(),
               updatedAt: new Date(),
               lastSignedIn: new Date(),
@@ -245,6 +207,7 @@ export const appRouter = router({
               id: newUser?.id,
               name: newUser?.name,
               email: newUser?.email,
+              role,
             }
           };
         } catch (err: any) {
