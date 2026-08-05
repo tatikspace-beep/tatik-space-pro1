@@ -7,6 +7,7 @@ import { SignJWT, jwtVerify } from "jose";
 import type { User } from "../../drizzle/schema";
 import * as db from "../db";
 import { ENV } from "./env";
+import { isAdminOpenId } from "../auth-utils";
 import type {
   ExchangeTokenRequest,
   ExchangeTokenResponse,
@@ -288,20 +289,25 @@ class SDKServer {
         if (session.openId && session.openId.startsWith("local:")) {
           console.log("[Auth] Using local session ID, skipping OAuth info fetch:", session.openId);
           // Create a fallback user object for dev sessions
+          const fallbackEmail = session.openId.startsWith("local:")
+            ? session.openId.slice("local:".length)
+            : (session.openId.includes("@") ? session.openId : `${session.openId}@dev.local`);
           return {
-            id: `local-${session.openId}`,
+            id: 0,
             openId: session.openId,
             name: session.name || "Dev User",
-            email: session.openId.includes("@") ? session.openId.split(":")[1] : `${session.openId}@dev.local`,
+            email: fallbackEmail,
+            password: null,
             loginMethod: "dev",
-            role: session.openId.includes("admin") ? "admin" : "user",
+            role: isAdminOpenId(session.openId) ? "admin" : "user",
+            themePreference: "system",
             createdAt: new Date(),
             updatedAt: new Date(),
             trialEndsAt: null,
             subscriptionType: null,
             stripeCustomerId: null,
             lastSignedIn: signedInAt,
-          };
+          } as User;
         }
 
         const userInfo = await this.getUserInfoWithJwt(sessionCookie ?? "");
@@ -318,13 +324,18 @@ class SDKServer {
         if ((error as any)?.cause?.code === "ENOTFOUND" || (error as any)?.message?.includes("ENOTFOUND")) {
           console.log("[Auth] Database unreachable, using dev fallback user:", session.openId);
           // Return a minimal user object for dev purposes
+          const fallbackEmail = sessionUserId.startsWith("local:")
+            ? sessionUserId.slice("local:".length)
+            : (sessionUserId.includes("@") ? sessionUserId : `${sessionUserId}@dev.local`);
           return {
-            id: `dev-${sessionUserId}`,
+            id: 0,
             openId: sessionUserId,
             name: session.name || "Dev User",
-            email: sessionUserId.includes("@") ? sessionUserId.split(":")[1] : `${sessionUserId}@dev.local`,
+            email: fallbackEmail,
+            password: null,
             loginMethod: "dev",
-            role: sessionUserId.includes("admin") ? "admin" : "user",
+            role: isAdminOpenId(sessionUserId) ? "admin" : "user",
+            themePreference: "system",
             createdAt: new Date(),
             updatedAt: new Date(),
             trialEndsAt: null,

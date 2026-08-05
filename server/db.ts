@@ -3,8 +3,11 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { InsertUser, users, backups, InsertBackup, projects, files, InsertProject, InsertFile, twoFactorSettings, InsertTwoFactorSettings, contactMessages, InsertContactMessage, cookieConsents, InsertCookieConsent, bannerAdditions, InsertBannerAddition, subscriptions, InsertSubscription, subscriptionDiscounts, InsertSubscriptionDiscount, monetizationEarnings, InsertMonetizationEarning } from "../drizzle/schema";
 import { ENV } from './_core/env';
+import { normalizeEmail } from "./auth-utils";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+const _inMemoryUsers = new Map<string, any>();
+let _memoryUserCounter = 1;
 // In-memory fallback store for banner additions when no DB is configured
 const _inMemoryBannerStore: Map<number, Array<{ bannerId: string; projectId?: string; createdAt: Date }>> = new Map();
 
@@ -29,24 +32,47 @@ export async function upsertUser(user: InsertUser): Promise<import("../drizzle/s
     throw new Error("User openId is required for upsert");
   }
 
+  if (user.email) {
+    user.email = normalizeEmail(user.email) as any;
+  }
+
   const db = await getDb();
   if (!db) {
-    console.warn("[Database] Cannot upsert user: database not available");
-    // In case of no database, return a minimal user object for dev purposes
-    return {
-      id: 1,
+    const emailKey = user.email ? `email:${normalizeEmail(user.email)}` : null;
+    const openIdKey = user.openId;
+    const existing = emailKey ? _inMemoryUsers.get(emailKey) : undefined;
+    const record = existing ?? _inMemoryUsers.get(openIdKey) ?? {
+      id: _memoryUserCounter++,
       openId: user.openId,
       name: user.name || null,
       email: user.email || null,
+      password: user.password || null,
       loginMethod: user.loginMethod || null,
       role: user.role || 'user',
       trialEndsAt: user.trialEndsAt || null,
       subscriptionType: user.subscriptionType || 'free',
       stripeCustomerId: user.stripeCustomerId || null,
+      themePreference: 'system',
       createdAt: new Date(),
       updatedAt: new Date(),
       lastSignedIn: user.lastSignedIn || new Date(),
     };
+
+    if (user.name !== undefined) record.name = user.name ?? null;
+    if (user.email !== undefined) record.email = user.email ?? null;
+    if (user.password !== undefined) record.password = user.password ?? null;
+    if (user.loginMethod !== undefined) record.loginMethod = user.loginMethod ?? null;
+    if (user.role !== undefined) record.role = user.role ?? 'user';
+    if (user.trialEndsAt !== undefined) record.trialEndsAt = user.trialEndsAt ?? null;
+    if (user.subscriptionType !== undefined) record.subscriptionType = user.subscriptionType ?? 'free';
+    if (user.stripeCustomerId !== undefined) record.stripeCustomerId = user.stripeCustomerId ?? null;
+    if (user.lastSignedIn !== undefined) record.lastSignedIn = user.lastSignedIn ?? new Date();
+    record.updatedAt = new Date();
+    _inMemoryUsers.set(openIdKey, record);
+    if (record.email) {
+      _inMemoryUsers.set(`email:${normalizeEmail(record.email)}`, record);
+    }
+    return record;
   }
 
   try {
@@ -79,6 +105,7 @@ export async function upsertUser(user: InsertUser): Promise<import("../drizzle/s
       const updateData: Record<string, unknown> = {};
       if (user.name !== undefined) updateData.name = user.name ?? null;
       if (user.email !== undefined) updateData.email = user.email ?? null;
+      if (user.password !== undefined) updateData.password = user.password ?? null;
       if (user.loginMethod !== undefined) updateData.loginMethod = user.loginMethod ?? null;
       if (user.stripeCustomerId !== undefined) updateData.stripeCustomerId = user.stripeCustomerId ?? null;
       if (user.role !== undefined) updateData.role = user.role;
@@ -98,6 +125,7 @@ export async function upsertUser(user: InsertUser): Promise<import("../drizzle/s
       };
       if (user.name !== undefined) insertData.name = user.name ?? null;
       if (user.email !== undefined) insertData.email = user.email ?? null;
+      if (user.password !== undefined) insertData.password = user.password ?? null;
       if (user.loginMethod !== undefined) insertData.loginMethod = user.loginMethod ?? null;
       if (user.stripeCustomerId !== undefined) insertData.stripeCustomerId = user.stripeCustomerId ?? null;
       if (user.role !== undefined) {
@@ -125,7 +153,7 @@ export async function getUserByOpenId(openId: string) {
   const db = await getDb();
   if (!db) {
     console.warn("[Database] Cannot get user: database not available");
-    return undefined;
+    return _inMemoryUsers.get(openId);
   }
 
   const result = await db.select().from(users).where(eq(users.openId, openId)).limit(1);
@@ -134,13 +162,14 @@ export async function getUserByOpenId(openId: string) {
 }
 
 export async function getUserByEmail(email: string) {
+  const normalizedEmail = normalizeEmail(email);
   const db = await getDb();
   if (!db) {
     console.warn("[Database] Cannot get user: database not available");
-    return undefined;
+    return _inMemoryUsers.get(`email:${normalizedEmail}`);
   }
 
-  const result = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  const result = await db.select().from(users).where(eq(users.email, normalizedEmail)).limit(1);
 
   return result.length > 0 ? result[0] : undefined;
 }
