@@ -1,11 +1,12 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { COOKIE_NAME } from "../shared/const";
+import { enhanceVercelResponse } from "./_vercel-response";
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  const cookies = req.headers.cookie || "";
+export default async function handler(req: any, res: any) {
+  const enhancedRes = enhanceVercelResponse(res);
+  const cookies = String(req.headers.cookie ?? "");
   const hasCookie = cookies.includes(COOKIE_NAME);
 
-  res.status(200).json({
+  enhancedRes.status(200).json({
     hasCookie,
     cookies: cookies || "none",
     cookieName: COOKIE_NAME,

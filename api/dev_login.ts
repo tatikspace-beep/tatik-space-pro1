@@ -1,6 +1,6 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { SignJWT } from "jose";
 import { COOKIE_NAME, ONE_YEAR_MS } from "../shared/const";
+import { enhanceVercelResponse } from "./_vercel-response";
 
 function getSigningKey() {
   const secret = process.env.JWT_SECRET ?? "tatik-space-pro-secret";
@@ -43,28 +43,26 @@ function buildCookieString(name: string, value: string, options: Record<string, 
   return segments.join("; ");
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: any, res: any) {
+  const enhancedRes = enhanceVercelResponse(res);
+
   try {
-    const openId = String(req.query.openId ?? "local:dev-admin");
-    const name = String(req.query.name ?? "Dev Admin");
+    const requestUrl = new URL(req.url ?? "/", "https://example.com");
+    const openId = String(requestUrl.searchParams.get("openId") ?? "local:dev-admin");
+    const name = String(requestUrl.searchParams.get("name") ?? "Dev Admin");
     const appId = process.env.VITE_APP_ID ?? "";
     const sessionToken = await signSessionToken(openId, name, appId);
-    const isSecure = String(req.headers["x-forwarded-proto"] ?? req.protocol ?? "").toLowerCase().includes("https");
-    const cookieValue = buildCookieString(COOKIE_NAME, sessionToken, {
+    const isSecure = String(req.headers["x-forwarded-proto"] ?? "").toLowerCase().includes("https");
+    enhancedRes.cookie(COOKIE_NAME, sessionToken, {
       path: "/",
       httpOnly: true,
       secure: isSecure,
       sameSite: isSecure ? "none" : "lax",
       maxAge: ONE_YEAR_MS,
     });
-    res.writeHead(302, {
-      "Set-Cookie": cookieValue,
-      "Location": "/dashboard",
-      "Content-Type": "text/plain; charset=utf-8",
-    });
-    res.end("Redirecting to /dashboard");
+    enhancedRes.redirect("/dashboard", 302);
   } catch (error: any) {
     console.error("[DevLogin] Failed to create dev session", error);
-    res.status(500).send("Dev login failed");
+    enhancedRes.status(500).send("Dev login failed");
   }
 }

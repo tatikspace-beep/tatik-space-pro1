@@ -1,65 +1,8 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
+import { enhanceVercelResponse } from "./_vercel-response";
 
-function applyCookieHelpers(res: VercelResponse) {
-  const anyRes = res as any;
-
-  if (typeof anyRes.cookie === "function" && typeof anyRes.clearCookie === "function") {
-    return anyRes;
-  }
-
-  function buildCookieString(name: string, value: string, options: Record<string, any> = {}) {
-    const segments = [`${encodeURIComponent(name)}=${encodeURIComponent(value)}`];
-    if (options.maxAge !== undefined && options.maxAge !== null) {
-      segments.push(`Max-Age=${Math.floor(options.maxAge / 1000)}`);
-    }
-    if (options.domain) {
-      segments.push(`Domain=${options.domain}`);
-    }
-    if (options.path) {
-      segments.push(`Path=${options.path}`);
-    }
-    if (options.expires) {
-      const expires = options.expires instanceof Date ? options.expires : new Date(options.expires);
-      segments.push(`Expires=${expires.toUTCString()}`);
-    }
-    if (options.httpOnly) {
-      segments.push("HttpOnly");
-    }
-    if (options.secure) {
-      segments.push("Secure");
-    }
-    if (options.sameSite) {
-      segments.push(`SameSite=${options.sameSite}`);
-    }
-    return segments.join("; ");
-  }
-
-  anyRes.cookie = (name: string, value: string, options: Record<string, any> = {}) => {
-    const headerValue = buildCookieString(name, value, options);
-    const prev = anyRes.getHeader("Set-Cookie");
-    if (!prev) {
-      anyRes.setHeader("Set-Cookie", headerValue);
-    } else if (Array.isArray(prev)) {
-      anyRes.setHeader("Set-Cookie", [...prev, headerValue]);
-    } else {
-      anyRes.setHeader("Set-Cookie", [String(prev), headerValue]);
-    }
-  };
-
-  anyRes.clearCookie = (name: string, options: Record<string, any> = {}) => {
-    anyRes.cookie(name, "", {
-      ...options,
-      maxAge: 0,
-      expires: new Date(0),
-    });
-  };
-
-  return anyRes;
-}
-
-export default async (req: VercelRequest, res: VercelResponse) => {
+export default async (req: any, res: any) => {
   try {
-    const enhancedRes = applyCookieHelpers(res);
+    const enhancedRes = enhanceVercelResponse(res);
 
     // Set response type first
     enhancedRes.setHeader('Content-Type', 'application/json');
@@ -92,11 +35,11 @@ export default async (req: VercelRequest, res: VercelResponse) => {
         router: appRouter,
         createContext: async (opts: any) => {
           try {
-            const patchedRes = applyCookieHelpers(opts.res);
+            const patchedRes = enhanceVercelResponse(opts.res);
             return await createContext({
-              req: opts.req,
+              ...opts,
               res: patchedRes,
-            });
+            } as any);
           } catch (ctxErr) {
             console.error('[API] Context error:', ctxErr);
             return { req: opts.req, res: opts.res, user: null };

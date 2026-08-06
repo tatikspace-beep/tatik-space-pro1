@@ -1,10 +1,13 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
 import * as db from "../server/db";
+import { enhanceVercelResponse } from "./_vercel-response";
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: any, res: any) {
+  const enhancedRes = enhanceVercelResponse(res);
+
   try {
-    const name = String(req.query.name ?? "Tatik");
-    const email = String(req.query.email ?? "tatik.space@gmail.com");
+    const requestUrl = new URL(req.url ?? "/", "https://example.com");
+    const name = String(requestUrl.searchParams.get("name") ?? "Tatik");
+    const email = String(requestUrl.searchParams.get("email") ?? "tatik.space@gmail.com");
     const openId = `local:${email}`;
 
     let dbSynced = false;
@@ -25,7 +28,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    res.status(200).json({
+    enhancedRes.status(200).json({
       success: true,
       message: `User ${name} (${email}) registered for dev`,
       user: { openId, name, email },
@@ -33,6 +36,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
   } catch (error: any) {
     console.error("[DevRegister] Failed to register user", error);
-    res.status(500).json({ error: "Registration failed", details: String(error) });
+    enhancedRes.status(500).json({ error: "Registration failed", details: String(error) });
   }
 }
