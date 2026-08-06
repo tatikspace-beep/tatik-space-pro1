@@ -7,6 +7,26 @@
   },
   "rewrites": [
     {
+      "source": "/__admin_login",
+      "destination": "/api/__admin_login"
+    },
+    {
+      "source": "/__dev_login",
+      "destination": "/api/__dev_login"
+    },
+    {
+      "source": "/__dev_register",
+      "destination": "/api/__dev_register"
+    },
+    {
+      "source": "/__dev_check_cookie",
+      "destination": "/api/__dev_check_cookie"
+    },
+    {
+      "source": "/__generate_coupon",
+      "destination": "/api/__generate_coupon"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/$1"
     },
