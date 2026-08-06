@@ -57,10 +57,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       sameSite: isSecure ? "none" : "lax",
       maxAge: ONE_YEAR_MS,
     });
-    res.setHeader("Set-Cookie", cookieValue);
-    res.statusCode = 302;
-    res.setHeader("Location", "/dashboard");
-    res.end();
+    res.writeHead(302, {
+      "Set-Cookie": cookieValue,
+      "Location": "/dashboard",
+      "Content-Type": "text/plain; charset=utf-8",
+    });
+    res.end("Redirecting to /dashboard");
   } catch (error: any) {
     console.error("[DevLogin] Failed to create dev session", error);
     res.status(500).send("Dev login failed");
