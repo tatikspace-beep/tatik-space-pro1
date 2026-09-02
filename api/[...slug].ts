@@ -1,84 +1,100 @@
+import type { IncomingMessage, ServerResponse } from "http";
+
 import { enhanceVercelResponse } from "./_vercel-response";
 
-export default async (req: any, res: any) => {
-  try {
-    const enhancedRes = enhanceVercelResponse(res);
-
-    // Set response type first
-    enhancedRes.setHeader('Content-Type', 'application/json');
-    
-    // CORS headers
-    enhancedRes.setHeader('Access-Control-Allow-Origin', '*');
-    enhancedRes.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-    enhancedRes.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
-    
-    // Handle OPTIONS
-    if (req.method === 'OPTIONS') {
-      return enhancedRes.status(200).end();
+function sendJson(res: ServerResponse, status: number, data: any) {
+    if ((res as any).json) {
+        try {
+            (res as any).status?.(status);
+            return (res as any).json(data);
+        } catch { }
     }
+    res.statusCode = status;
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(data));
+}
 
-    // Log request
-    console.log('[API] Incoming request:', req.url, req.method);
+function applyCorsHeaders(res: ServerResponse, req: IncomingMessage) {
+    const origin = typeof req.headers.origin === "string" ? req.headers.origin : "*";
 
-    // Check if tRPC request
-    if (!req.url?.includes('/api/trpc')) {
-      return enhancedRes.status(404).json({ error: 'Not found' });
-    }
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+    res.setHeader(
+        "Access-Control-Allow-Headers",
+        "Content-Type,Authorization,X-Requested-With,X-TRPC-BATCH,X-TRPC-TRAILER"
+    );
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+}
 
-    // Import and run tRPC handler
+export default async (req: IncomingMessage, res: ServerResponse) => {
     try {
-      const { createHTTPHandler } = await import("@trpc/server/adapters/standalone");
-      const { appRouter } = await import("../server/routers");
-      const { createContext } = await import("../server/_core/context");
+        const enhancedRes = enhanceVercelResponse(res as ServerResponse) as any;
 
-      const handler = createHTTPHandler({
-        router: appRouter,
-        createContext: async (opts: any) => {
-          try {
-            const patchedRes = enhanceVercelResponse(opts.res);
-            return await createContext({
-              ...opts,
-              res: patchedRes,
-            } as any);
-          } catch (ctxErr) {
-            console.error('[API] Context error:', ctxErr);
-            return { req: opts.req, res: opts.res, user: null };
-          }
-        },
-        onError: (opts: any) => {
-          console.error('[API] tRPC error:', opts.error);
-        },
-      });
+        applyCorsHeaders(enhancedRes as ServerResponse, req);
 
-      const handlerPromise = handler(req, enhancedRes);
-      
-      // Timeout after 25 seconds
-      const timeoutPromise = new Promise((resolve) => {
-        setTimeout(() => {
-          if (!enhancedRes.headersSent) {
-            enhancedRes.status(504).json({ error: 'Timeout' });
-          }
-          resolve(null);
-        }, 25000);
-      });
+        // Handle OPTIONS
+        if (req.method === "OPTIONS") {
+            enhancedRes.statusCode = 204;
+            return enhancedRes.end();
+        }
 
-      await Promise.race([handlerPromise, timeoutPromise]);
-      
-      if (!enhancedRes.headersSent) {
-        enhancedRes.status(500).json({ error: 'No response from handler' });
-      }
-    } catch (trpcErr: any) {
-      console.error('[API] tRPC handler error:', trpcErr);
-      if (!enhancedRes.headersSent) {
-        enhancedRes.status(500).json({ error: trpcErr?.message || 'tRPC handler error' });
-      }
+        // Log request
+        console.log('[API] Incoming request:', { url: req.url, method: req.method, origin: req.headers.origin });
+
+        // Check if tRPC request
+        if (!req.url?.includes('/api/trpc') && !req.url?.includes('/trpc')) {
+            return sendJson(enhancedRes, 404, { error: 'Not found' });
+        }
+
+        // Import and run tRPC handler
+        try {
+            const { createHTTPHandler } = await import("@trpc/server/adapters/standalone");
+            const { appRouter } = await import("../server/routers");
+            const { createContext } = await import("../server/_core/context");
+
+            const handler = createHTTPHandler({
+                router: appRouter,
+                createContext: async (opts: any) => {
+                    try {
+                        const patchedRes = enhanceVercelResponse(opts.res as ServerResponse);
+                        return await createContext({ req: opts.req, res: patchedRes, info: opts.info });
+                    } catch (ctxErr) {
+                        console.error('[API] Context error:', ctxErr);
+                        return { req: opts.req, res: opts.res, user: null };
+                    }
+                },
+                onError: (opts: any) => {
+                    console.error('[API] tRPC error:', opts.error);
+                },
+            });
+
+            const handlerPromise = handler(req as any, enhancedRes as any);
+
+            // Timeout after 25 seconds
+            const timeoutPromise = new Promise((resolve) => {
+                setTimeout(() => {
+                    if (!(enhancedRes as any).headersSent) {
+                        sendJson(enhancedRes, 504, { error: 'Timeout' });
+                    }
+                    resolve(null);
+                }, 25000);
+            });
+
+            await Promise.race([handlerPromise, timeoutPromise]);
+
+            if (!(enhancedRes as any).headersSent) {
+                sendJson(enhancedRes, 500, { error: 'No response from handler' });
+            }
+        } catch (trpcErr: any) {
+            console.error('[API] tRPC handler error:', trpcErr);
+            if (!(enhancedRes as any).headersSent) {
+                sendJson(enhancedRes, 500, { error: trpcErr?.message || 'tRPC handler error' });
+            }
+        }
+    } catch (error: any) {
+        console.error('[API] Outer error:', error);
+        if (!(res as any).headersSent) {
+            sendJson(res as any, 500, { error: error?.message || 'Internal server error' });
+        }
     }
-  } catch (error: any) {
-    console.error('[API] Outer error:', error);
-    if (!res.headersSent) {
-      res.setHeader('Content-Type', 'application/json');
-      res.status(500).json({ error: error?.message || 'Internal server error' });
-    }
-  }
 };
-

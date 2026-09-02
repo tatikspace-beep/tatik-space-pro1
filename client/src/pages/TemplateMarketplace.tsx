@@ -98,7 +98,37 @@ export default function TemplateMarketplace() {
         });
     }, [searchQuery, selectedCategory, selectedTech, priceFilter, sortBy]);
 
-    const checkAccessMutation = trpc.templatePurchases.checkAccess.useMutation();
+    // Load purchases list to determine access locally
+    const purchasesQuery = trpc.templatePurchases.list.useQuery(undefined, { enabled: !!user });
+    const purchasedTemplateIds = purchasesQuery.data?.map((p: any) => p.templateId) ?? [];
+
+    // `checkAccess` is a query on the server; use local purchased list as primary source
+    // Keep a fallback to server-only check in future if needed.
+    const checkAccessMutation = {
+        mutateAsync: async (input: { templateId: string }) => {
+            // Use local purchases first
+            if (purchasedTemplateIds.includes(input.templateId)) {
+                return { hasAccess: true, expiresAt: null };
+            }
+            // Fallback: attempt to call the server query via a short fetch to the trpc endpoint
+            try {
+                const resp = await fetch('/api/trpc/templatePurchases.checkAccess', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({ input }),
+                    credentials: 'include',
+                });
+                const text = await resp.text();
+                if (!text || text.trim().length === 0) return { hasAccess: false, expiresAt: null };
+                const json = JSON.parse(text);
+                // trpc response envelope: { result: { data: <payload> } }
+                return (json?.result?.data) ?? { hasAccess: false, expiresAt: null };
+            } catch (err) {
+                console.error('[TemplateMarketplace] checkAccess fallback error:', err);
+                return { hasAccess: false, expiresAt: null };
+            }
+        }
+    };
     const createCheckoutMutation = trpc.templatePurchases.createCheckoutSession.useMutation();
 
     // Handle copy template to clipboard
@@ -126,7 +156,7 @@ export default function TemplateMarketplace() {
     const handleViewTemplate = async (template: Template) => {
         setSelectedTemplate(template);
         setTemplateAccess(null);
-        
+
         // If template is premium and user is not admin, check if they have access
         if (template.isPremium && user && !isAdmin) {
             setCheckingAccess(true);

@@ -132,11 +132,7 @@ export default function ProfilePage() {
     const [backupCodesVisible, setBackupCodesVisible] = useState(false);
 
     // Load initial theme preference
-    const themeQuery = trpc.user.getThemePreference.useQuery(undefined, {
-        onSuccess: (data) => {
-            setSelectedTheme(data.theme as 'light' | 'dark' | 'system');
-        },
-    });
+    const themeQuery = trpc.user.getThemePreference.useQuery();
 
     // check URL for reset token
     useEffect(() => {
@@ -277,7 +273,7 @@ export default function ProfilePage() {
 
     const initials = user.name
         ? user.name.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2)
-        : user.email.charAt(0).toUpperCase();
+        : (user.email ? user.email.charAt(0).toUpperCase() : '');
 
     return (
         <div className="profile-page-wrapper">
@@ -300,7 +296,7 @@ export default function ProfilePage() {
             )}
 
             {/* ── Tabs ── */}
-            <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v)} className="profile-tabs">
+            <Tabs value={activeTab} onValueChange={(v: string) => setActiveTab(v as typeof activeTab)} className="profile-tabs">
                 <TabsList className="profile-tabs-list">
                     <TabsTrigger value="info">
                         <User size={14} />&nbsp;{t.profileInfo ?? 'Profile'}
@@ -690,7 +686,7 @@ export default function ProfilePage() {
                                                                     checkoutMutation.mutate({
                                                                         templateId: template.id,
                                                                         templateName: template.name,
-                                                                        price: parseFloat(template.price || '0'),
+                                                                        price: parseFloat(String(template.price ?? '0')),
                                                                     });
                                                                 }}
                                                                 title={purchasedTemplateIds.includes(template.id) ? "Accesso già acquistato" : "Acquista template premium"}

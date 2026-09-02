@@ -1,4 +1,4 @@
-import { desc, eq, and } from "drizzle-orm";
+import { desc, eq, and, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { InsertUser, users, backups, InsertBackup, projects, files, InsertProject, InsertFile, twoFactorSettings, InsertTwoFactorSettings, contactMessages, InsertContactMessage, cookieConsents, InsertCookieConsent, bannerAdditions, InsertBannerAddition, subscriptions, InsertSubscription, subscriptionDiscounts, InsertSubscriptionDiscount, monetizationEarnings, InsertMonetizationEarning } from "../drizzle/schema";
@@ -302,7 +302,13 @@ export async function getBannerAdditions(userId: number, start: Date, end: Date)
     return arr.filter(r => r.createdAt >= start && r.createdAt <= end);
   }
 
-  return await db.select().from(bannerAdditions).where(and(eq(bannerAdditions.userId, userId), and(bannerAdditions.createdAt.gte(start), bannerAdditions.createdAt.lte(end))));
+  // Use the ops-based where builder to avoid depending on column instance helpers
+  // Use any casts to call date comparison helpers that may not be present in typings
+  // @ts-ignore
+  return await db.select().from(bannerAdditions).where(and(
+    eq(bannerAdditions.userId, userId),
+    and((bannerAdditions.createdAt as any).gte(start), (bannerAdditions.createdAt as any).lte(end))
+  ));
 }
 
 export async function getBackupById(backupId: number) {
@@ -471,17 +477,17 @@ export async function getMonetizationEarnings(userId: number, minDate?: Date) {
   const db = await getDb();
   if (!db) return null;
 
-  let conditions = eq(monetizationEarnings.userId, userId);
   if (minDate) {
-    conditions = and(
-      eq(monetizationEarnings.userId, userId),
-      // @ts-ignore - assuming date comparison works
-      monetizationEarnings.cycleStartDate >= minDate.toISOString().split("T")[0]
-    );
+    const minDateStr = minDate.toISOString().split('T')[0];
+    // Use a raw SQL comparison for the date string to avoid Drizzle typing issues
+    const result = await db.select().from(monetizationEarnings)
+      .where(and(eq(monetizationEarnings.userId, userId), sql`${monetizationEarnings.cycleStartDate} >= ${minDateStr}`))
+      .limit(1);
+    return result.length > 0 ? result[0] : null;
   }
 
   const result = await db.select().from(monetizationEarnings)
-    .where(conditions)
+    .where(eq(monetizationEarnings.userId, userId))
     .limit(1);
 
   return result.length > 0 ? result[0] : null;

@@ -286,6 +286,42 @@ export default function EditorApp() {
     }
   };
 
+  // Manually open the template that was marked for opening after purchase
+  const handleOpenTemplateFromPurchase = async () => {
+    if (!templateToOpen) return;
+    if (!currentProject) {
+      toast.error('Nessun progetto selezionato per aprire il template');
+      return;
+    }
+
+    try {
+      const fileResult = await createFileMutation.mutateAsync({
+        name: templateToOpen.fileName,
+        content: templateToOpen.code,
+        projectId: currentProject,
+        path: `/${templateToOpen.fileName}`,
+      });
+
+      const newFile = {
+        id: fileResult.fileId,
+        name: templateToOpen.fileName,
+        content: templateToOpen.code,
+        path: `/${templateToOpen.fileName}`,
+        projectId: currentProject,
+      };
+
+      setCurrentFile(newFile);
+      setEditorContent(templateToOpen.code);
+      setSelectedLanguage('html');
+      toast.success(`Template "${templateToOpen.name}" caricato in editor!`);
+      localStorage.removeItem('template_to_open');
+      setTemplateToOpen(null);
+    } catch (err) {
+      console.error('[EditorApp] Error opening template from purchase (manual):', err);
+      toast.error('Errore apertura template');
+    }
+  };
+
   // Auto-open template if coming from purchase
   useEffect(() => {
     const openTemplateFromPurchaseAsync = async () => {

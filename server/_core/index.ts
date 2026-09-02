@@ -15,6 +15,17 @@ import { serveStatic, setupVite } from "./vite";
 import * as db from "../db";
 import { attachCollaborationWS } from './collaboration';
 
+// Global process-level error handlers to avoid silent crashes
+process.on('uncaughtException', (err) => {
+  console.error('[Process] Uncaught Exception:', err);
+  // In development we keep the process alive for debugging; in production consider restarting
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[Process] Unhandled Rejection:', reason);
+  // Log for diagnosis; avoid crashing the process immediately in dev
+});
+
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
     const server = net.createServer();

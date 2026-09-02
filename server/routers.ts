@@ -11,6 +11,8 @@ import { publicProcedure, router, protectedProcedure } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import * as db from "./db";
+import { templatePurchases } from "../drizzle/schema";
+import { eq, gt, and, desc } from "drizzle-orm";
 import { hashPassword, isAdminEmail, normalizeEmail, verifyPassword } from "./auth-utils";
 import speakeasy from "speakeasy";
 import QRCode from "qrcode";
@@ -26,7 +28,7 @@ export const appRouter = router({
     }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
-      ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+      (ctx.res as any).clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
       return {
         success: true,
       } as const;
@@ -110,7 +112,7 @@ export const appRouter = router({
             console.log(`[Auth Login] Token created, length: ${token.length}`);
 
             const cookieOptions = getSessionCookieOptions(ctx.req);
-            ctx.res.cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: 1000 * 60 * 60 * 24 * 365 });
+            (ctx.res as any).cookie(COOKIE_NAME, token, { ...cookieOptions, maxAge: 1000 * 60 * 60 * 24 * 365 });
             console.log(`[Auth Login] Token cookie set for ${normalizedEmail}`);
           } catch (stdTokenErr: any) {
             console.error(`[Auth Login] Token creation failed: ${(stdTokenErr as any).message}`, stdTokenErr);
@@ -1095,14 +1097,13 @@ Analizza e suggerisci ottimizzazioni.`,
           if (!userId) return { hasAccess: false, expiresAt: null };
 
           // Check if user has active purchase for this template
-          const purchase = await db.query.templatePurchases.findFirst({
-            where: (tpTable, { and, eq, gt }) =>
-              and(
-                eq(tpTable.userId, userId),
-                eq(tpTable.templateId, input.templateId),
-                gt(tpTable.expiresAt, new Date())
-              ),
-          });
+          const database = await db.getDb();
+          if (!database) return { hasAccess: false, expiresAt: null };
+
+          const purchaseResult = await database.select().from(templatePurchases).where(
+            and(eq(templatePurchases.userId, userId), eq(templatePurchases.templateId, input.templateId), gt(templatePurchases.expiresAt, new Date()))
+          ).limit(1);
+          const purchase = purchaseResult.length > 0 ? purchaseResult[0] : null;
 
           return {
             hasAccess: !!purchase,
@@ -1172,15 +1173,18 @@ Analizza e suggerisci ottimizzazioni.`,
           }
 
           // Use Stripe to create checkout session
-          const { stripe } = await import('./_core/stripe');
-          if (!stripe) {
+          const stripeModule = await import('./_core/stripe');
+          const stripeClient: any = (stripeModule as any).stripe;
+          if (!stripeClient) {
             throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Payment system not available' });
           }
 
           const successUrl = `${process.env.VITE_BASE_URL || process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'}/profile?tab=files&purchase=success`;
           const cancelUrl = `${process.env.VITE_BASE_URL || process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'}/templates`;
 
-          const session = await stripe.createCheckoutSession({
+          // Use the mock Stripe client directly; its API is dynamic in dev, so cast to `any`.
+          const session: any = await (stripeClient as any).createCheckoutSession({
+            // The mock client accepts a dynamic payload in development.
             customerEmail: ctx.user.email || undefined,
             lineItems: [{
               name: `${input.templateName} - 30 days access`,
@@ -1223,14 +1227,12 @@ Analizza e suggerisci ottimizzazioni.`,
           if (!userId) return [];
 
           // Get all active purchases
-          const purchases = await db.query.templatePurchases.findMany({
-            where: (tpTable, { and, eq, gt }) =>
-              and(
-                eq(tpTable.userId, userId),
-                gt(tpTable.expiresAt, new Date())
-              ),
-            orderBy: (tpTable, { desc }) => [desc(tpTable.purchasedAt)],
-          });
+          const database = await db.getDb();
+          if (!database) return [];
+
+          const purchases = await database.select().from(templatePurchases).where(
+            and(eq(templatePurchases.userId, userId), gt(templatePurchases.expiresAt, new Date()))
+          ).orderBy(desc(templatePurchases.purchasedAt));
 
           return purchases;
         } catch (err) {

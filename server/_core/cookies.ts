@@ -1,4 +1,4 @@
-import type { CookieOptions, Request } from "express";
+import type { Request } from "express";
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
@@ -23,7 +23,7 @@ function isSecureRequest(req: Request) {
 
 export function getSessionCookieOptions(
   req: Request
-): Pick<CookieOptions, "domain" | "httpOnly" | "path" | "sameSite" | "secure"> {
+): { domain?: string; httpOnly: boolean; path: string; sameSite: "none" | "lax" | "strict"; secure: boolean } {
   // const hostname = req.hostname;
   // const shouldSetDomain =
   //   hostname &&
@@ -47,5 +47,6 @@ export function getSessionCookieOptions(
     // Browsers require `Secure` for `SameSite=None`. Use `lax` on localhost/dev.
     sameSite: secure ? "none" : "lax",
     secure,
+    // domain intentionally omitted for localhost/dev; callers may set it if needed
   };
 }

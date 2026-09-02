@@ -124,10 +124,11 @@ export async function attachCollaborationWS(server: any) {
     let WebSocketServer: any;
     let WebSocket: any;
     try {
-        const mod = await import('ws');
-        WebSocketServer = mod.WebSocketServer ?? mod.default?.WebSocketServer ?? mod.default;
-        WebSocket = mod.WebSocket ?? mod.default?.WebSocket ?? mod.default;
-    } catch (err) {
+        const modRaw = await import('ws');
+        const mod: any = modRaw;
+        WebSocketServer = mod.WebSocketServer ?? mod.default?.WebSocketServer ?? mod.default ?? mod;
+        WebSocket = mod.WebSocket ?? mod.default?.WebSocket ?? mod.default ?? mod;
+    } catch (err: any) {
         console.warn('[WS] `ws` package not installed - skipping collaboration WebSocket server');
         return;
     }
@@ -137,7 +138,7 @@ export async function attachCollaborationWS(server: any) {
     wss.on('connection', (ws: any, req: IncomingMessage) => {
         const clientId = randomUUID();
 
-        ws.on('message', (raw) => {
+        ws.on('message', (raw: any) => {
             let msg: WSMessage;
             try { msg = JSON.parse(raw.toString()); }
             catch { return; }
@@ -315,8 +316,8 @@ export async function attachCollaborationWS(server: any) {
             }
         });
 
-        ws.on('error', (err) => {
-            console.error('[WS] Errore:', (err as Error).message);
+        ws.on('error', (err: any) => {
+            console.error('[WS] Errore:', (err && err.message) ? err.message : err);
             clients.delete(clientId);
         });
     });

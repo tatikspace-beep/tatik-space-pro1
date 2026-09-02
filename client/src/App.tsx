@@ -130,7 +130,35 @@ function App() {
       });
 
       console.log('[tRPC] Response:', url, response.status);
-      return response;
+
+      // Guard against empty / non-JSON responses which cause
+      // `Unexpected end of JSON input` in downstream parsers.
+      // Read the text body and return a new Response ensuring
+      // there's always a JSON body (fallback to `{}`) so tRPC's
+      // `response.json()` does not throw on empty bodies.
+      let text = '';
+      try {
+        text = await response.text();
+      } catch (err) {
+        console.warn('[tRPC] Failed to read response text:', err);
+        text = '';
+      }
+
+      if (!text || text.trim().length === 0) {
+        const headers = new Headers(response.headers as any);
+        if (!headers.has('content-type')) headers.set('content-type', 'application/json');
+        return new Response('{}', {
+          status: response.status,
+          statusText: response.statusText,
+          headers,
+        });
+      }
+
+      return new Response(text, {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers as any,
+      });
     };
 
     return trpc.createClient({
