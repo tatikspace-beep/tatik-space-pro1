@@ -167,6 +167,9 @@ function App() {
           url: primaryUrl,
           transformer: superjson,
           fetch: customFetch,
+          // Ensure queries use GET so the server treats them as read-only queries
+          // and doesn't reject POST requests for query procedures.
+          useGETForQueries: true,
         }),
       ],
     });
