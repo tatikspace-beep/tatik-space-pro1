@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "http";
+import { resolveResponse } from "@trpc/server/unstable-core-do-not-import";
 
 import { enhanceVercelResponse } from "./_vercel-response";
 
@@ -26,6 +27,18 @@ function applyCorsHeaders(res: ServerResponse, req: IncomingMessage) {
     res.setHeader("Access-Control-Allow-Credentials", "true");
 }
 
+async function ensureRequestBody(req: IncomingMessage) {
+    const request = req as IncomingMessage & { body?: unknown };
+    if (request.body !== undefined || req.method === "GET" || req.method === "HEAD") return;
+    if (req.readableEnded) return;
+
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    request.body = Buffer.concat(chunks).toString("utf8");
+}
+
 export default async (req: IncomingMessage, res: ServerResponse) => {
     try {
         const enhancedRes = enhanceVercelResponse(res as ServerResponse) as any;
@@ -48,44 +61,33 @@ export default async (req: IncomingMessage, res: ServerResponse) => {
 
         // Import and run tRPC handler
         try {
-            const { createHTTPHandler } = await import("@trpc/server/adapters/standalone");
             const { appRouter } = await import("../server/routers");
             const { createContext } = await import("../server/_core/context");
-
-            const handler = createHTTPHandler({
-                router: appRouter,
-                basePath: "/api/trpc/",
-                createContext: async (opts: any) => {
-                    try {
-                        const patchedRes = enhanceVercelResponse(opts.res as ServerResponse);
-                        return await createContext({ req: opts.req, res: patchedRes, info: opts.info });
-                    } catch (ctxErr) {
-                        console.error('[API] Context error:', ctxErr);
-                        return { req: opts.req, res: opts.res, user: null };
-                    }
-                },
-                onError: (opts: any) => {
-                    console.error('[API] tRPC error:', opts.error);
-                },
-            });
-
-            const handlerPromise = handler(req as any, enhancedRes as any);
-
-            // Timeout after 25 seconds
-            const timeoutPromise = new Promise((resolve) => {
-                setTimeout(() => {
-                    if (!(enhancedRes as any).headersSent) {
-                        sendJson(enhancedRes, 504, { error: 'Timeout' });
-                    }
-                    resolve(null);
-                }, 25000);
-            });
-
-            await Promise.race([handlerPromise, timeoutPromise]);
-
-            if (!(enhancedRes as any).headersSent) {
-                sendJson(enhancedRes, 500, { error: 'No response from handler' });
+            await ensureRequestBody(req);
+            const parsedBody = (req as any).body;
+            const requestUrl = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+            const requestHeaders = new Headers();
+            for (const [name, value] of Object.entries(req.headers)) {
+                if (value !== undefined) requestHeaders.set(name, Array.isArray(value) ? value.join(', ') : value);
             }
+            const requestBody = parsedBody === undefined ? undefined : JSON.stringify(parsedBody);
+            const webRequest = new Request(requestUrl, {
+                method: req.method,
+                headers: requestHeaders,
+                body: requestBody,
+            });
+            const trpcPath = decodeURIComponent(requestUrl.pathname.replace(/^\/api\/trpc\/?/, ''));
+            const response = await resolveResponse({
+                router: appRouter,
+                req: webRequest,
+                path: trpcPath,
+                createContext: async (opts: any) => createContext({ req: req as any, res: enhancedRes, info: opts.info }),
+                onError: (opts: any) => console.error('[API] tRPC error:', opts.error),
+            } as any);
+
+            enhancedRes.statusCode = response.status;
+            response.headers.forEach((value, key) => enhancedRes.setHeader(key, value));
+            enhancedRes.end(Buffer.from(await response.arrayBuffer()));
         } catch (trpcErr: any) {
             console.error('[API] tRPC handler error:', trpcErr);
             if (!(enhancedRes as any).headersSent) {
