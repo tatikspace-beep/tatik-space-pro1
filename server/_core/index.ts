@@ -218,6 +218,85 @@ async function startServer() {
       return res.status(500).json({ error: "Registration failed", details: String(err) });
     }
   });
+
+  // Dev helper: request registration via GET (convenience for manual testing)
+  app.get('/__request_registration', async (req, res) => {
+    try {
+      const email = String(req.query.email || '');
+      const name = String(req.query.name || email.split('@')[0] || 'User');
+      if (!email) return res.status(400).json({ error: 'email required' });
+
+      let user: any;
+      try {
+        user = await db.upsertUser({
+          openId: `local:${email}`,
+          email,
+          name,
+          loginMethod: 'local',
+          lastSignedIn: new Date(),
+        });
+      } catch (dbErr: any) {
+        console.warn('[DevRequestRegistration] DB unavailable, creating temp user', dbErr?.message);
+        user = { id: Math.floor(Math.random() * 100000), email };
+      }
+
+      const crypto = await import('crypto');
+      const token = crypto.randomBytes(32).toString('hex');
+      // store in registrationTokens exported from routers
+      try {
+        const { registrationTokens } = await import('../routers');
+        registrationTokens.set(token, { userId: user?.id, email, expires: Date.now() + 1000 * 60 * 10 });
+      } catch (e) {
+        console.warn('[DevRequestRegistration] failed to set registration token', e);
+      }
+
+      const link = `http://localhost:${process.env.PORT || 3001}/__verify_registration?token=${token}`;
+      console.log(`[DevRequestRegistration] registration link for ${email}: ${link}`);
+      return res.json({ success: true, link });
+    } catch (err) {
+      console.error('[DevRequestRegistration] Error:', err);
+      return res.status(500).json({ error: String(err) });
+    }
+  });
+
+  // Dev helper: verify registration via GET (consumes token and creates session cookie)
+  app.get('/__verify_registration', async (req, res) => {
+    try {
+      const token = String(req.query.token || '');
+      if (!token) return res.status(400).send('token required');
+      const { registrationTokens } = await import('../routers');
+      const entry = registrationTokens.get(token);
+      if (!entry || entry.expires < Date.now()) return res.status(400).send('invalid or expired token');
+
+      const { sdk } = await import('./sdk');
+      const openId = `local:${entry.email}`;
+      const sessionToken = await sdk.createSessionToken(openId, { name: entry.email.split('@')[0] });
+      const cookieOptions = getSessionCookieOptions(req as any);
+      res.cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: 1000 * 60 * 60 * 24 * 365 });
+      registrationTokens.delete(token);
+      console.log(`[DevVerifyRegistration] token consumed for ${entry.email}`);
+      return res.redirect('/dashboard');
+    } catch (err) {
+      console.error('[DevVerifyRegistration] Error:', err);
+      return res.status(500).send('verification failed');
+    }
+  });
+
+  // Dev helper: return current authenticated user (if any)
+  app.get('/__whoami', async (req, res) => {
+    try {
+      const { sdk } = await import('./sdk');
+      try {
+        const user = await sdk.authenticateRequest(req as any);
+        return res.json({ authenticated: true, user });
+      } catch (authErr: any) {
+        return res.json({ authenticated: false, error: String(authErr?.message || authErr) });
+      }
+    } catch (err) {
+      console.error('[DevWhoAmI] Error:', err);
+      return res.status(500).json({ error: String(err) });
+    }
+  });
   // development mode uses Vite, production mode uses static files
   if (process.env.NODE_ENV === "development") {
     // Serve static files from client/public BEFORE Vite middleware
@@ -374,13 +453,67 @@ async function startServer() {
 
   // Register tRPC AFTER Vite setup but BEFORE any catch-all handlers
   // This ensures /api/trpc takes precedence over SPA routing
-  app.use(
-    "/api/trpc",
-    createExpressMiddleware({
-      router: appRouter,
-      createContext,
-    })
-  );
+  // Normalize bodies that were parsed into objects with numeric keys
+  // (some clients / form-encodings turn arrays into objects like {"0": {...}})
+  const normalizeTrpcBody = (req: any, _res: any, next: any) => {
+    try {
+      const body = req.body;
+      console.log('[TRPC NORMALIZE] before:', typeof body === 'object' ? JSON.stringify(Object.keys(body).slice(0, 10)) : String(body));
+
+      if (Array.isArray(body)) {
+        req.body = body.map((entry: any, index: number) => {
+          if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return entry;
+          if ('input' in entry) return entry;
+          if ('json' in entry && entry.json && typeof entry.json === 'object' && 'input' in entry.json) {
+            const { json, ...rest } = entry;
+            return { ...rest, input: json.input };
+          }
+          return { ...entry, id: entry.id ?? index + 1, method: entry.method ?? 'mutation', input: entry.input ?? entry };
+        });
+      } else if (body && typeof body === 'object') {
+        const keys = Object.keys(body);
+        const numericKeys = keys.filter(k => /^\d+$/.test(k));
+        if (numericKeys.length === 0 && !('input' in body) && !('method' in body) && !('path' in body)) {
+          const rawUrl = String(req.url || '');
+          const pathMatch = rawUrl.replace(/^(\/api\/trpc\/?)/, '').replace(/^\//, '');
+          req.body = { id: 1, method: 'mutation', path: pathMatch || undefined, input: body };
+        }
+      }
+    } catch (e) {
+      console.warn('[TRPC] body normalization failed', e);
+    }
+    next();
+  };
+
+  // Attach tRPC route. Normalization middleware is available but disabled by default.
+  // To enable the previous normalization behavior set env `TRPC_NORMALIZE=true`.
+  const enableNormalize = String(process.env.TRPC_NORMALIZE || '').toLowerCase() === 'true';
+  if (enableNormalize) {
+    // Debug wrapper: log final body and query before tRPC middleware
+    app.use('/api/trpc', normalizeTrpcBody, (req: any, res: any, next: any) => {
+      try {
+        console.log('[TRPC HANDOFF] url:', req.originalUrl || req.url);
+        console.log('[TRPC HANDOFF] headers:', JSON.stringify(req.headers || {}));
+        try {
+          console.log('[TRPC HANDOFF] full body:', JSON.stringify(req.body));
+        } catch (e) {
+          try { console.log('[TRPC HANDOFF] body (string):', JSON.stringify(req.body)); } catch (ee) { console.log('[TRPC HANDOFF] body (raw):', req.body); }
+        }
+      } catch (e) {
+        console.warn('[TRPC HANDOFF] logging failed', e);
+      }
+      next();
+    },
+      createExpressMiddleware({
+        router: appRouter,
+        createContext,
+      })
+    );
+  } else {
+    // Normalization suspended: mount tRPC middleware directly
+    app.use('/api/trpc', createExpressMiddleware({ router: appRouter, createContext }));
+  }
+
 
   // NOW serve static files in production (as the last catch-all handler)
   if (process.env.NODE_ENV !== "development") {

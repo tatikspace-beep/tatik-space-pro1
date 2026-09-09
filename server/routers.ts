@@ -2,8 +2,10 @@ import { COOKIE_NAME } from "../shared/const";
 
 console.log("[Server] Routers loaded - using relative imports (cache bust - no errors)...");
 
-// simple in-memory store for password reset tokens; production should persist
+// simple in-memory store for password reset tokens and registration tokens; production should persist
 const passwordResetTokens: Map<string, { userId: number; expires: number }> = new Map();
+export const registrationTokens: Map<string, { userId?: number; email: string; expires: number }> = new Map();
+import crypto from 'crypto';
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { pricingRouter } from "./_core/pricingRouter";
@@ -73,7 +75,17 @@ export const appRouter = router({
               role: loginRole,
               lastSignedIn: new Date(),
             };
-            user = await db.upsertUser(newUser);
+            try {
+              user = await db.upsertUser(newUser);
+            } catch (dbError: any) {
+              console.warn('[Auth Login] Database unavailable, using fallback:', dbError?.message);
+              user = {
+                ...newUser,
+                id: Math.floor(Math.random() * 100000),
+                createdAt: new Date(),
+                updatedAt: new Date(),
+              };
+            }
           }
 
           if (user.password && !verifyPassword(input.password, user.password)) {
@@ -142,7 +154,8 @@ export const appRouter = router({
         }
         const token = Math.random().toString(36).substring(2) + Date.now();
         // store token in memory map with expiration
-        passwordResetTokens.set(token, { userId: user.id, expires: Date.now() + 1000 * 60 * 60 });
+        // token valid for 10 minutes
+        passwordResetTokens.set(token, { userId: user.id, expires: Date.now() + 1000 * 60 * 10 });
         const link = `https://your-app.com/profile?reset=${token}`;
         // In real app send email with link containing token
         console.log(`[Auth] password reset link: ${link}`);
@@ -218,6 +231,69 @@ export const appRouter = router({
             code: 'INTERNAL_SERVER_ERROR',
             message: err.message || 'Errore durante la registrazione',
           });
+        }
+      }),
+    // New flow: request registration token by email. Server creates or upserts a user record
+    // and sends a time-limited token (logged here) valid for 10 minutes.
+    requestRegistration: publicProcedure
+      .input(z.object({ email: z.string().email(), name: z.string().optional() }))
+      .mutation(async ({ input }) => {
+        try {
+          const normalizedEmail = normalizeEmail(input.email);
+
+          // Create or ensure user exists (no password yet)
+          let user: any;
+          try {
+            user = await db.upsertUser({
+              openId: `local:${normalizedEmail}`,
+              email: normalizedEmail,
+              name: input.name ?? normalizedEmail.split('@')[0],
+              loginMethod: 'local',
+              lastSignedIn: new Date(),
+            });
+          } catch (dbErr: any) {
+            console.warn('[Auth requestRegistration] DB unavailable, creating temporary entry', dbErr?.message);
+            user = { id: Math.floor(Math.random() * 100000), email: normalizedEmail };
+          }
+
+          // Generate secure token and save (10 minutes)
+          const token = crypto.randomBytes(32).toString('hex');
+          registrationTokens.set(token, { userId: user?.id, email: normalizedEmail, expires: Date.now() + 1000 * 60 * 10 });
+
+          const link = `https://your-app.com/complete-registration?token=${token}`;
+          // In production send email; for now log link
+          console.log(`[Auth] registration link for ${normalizedEmail}: ${link}`);
+
+          return { success: true, message: 'Registration token generated', link };
+        } catch (err: any) {
+          console.error('[Auth requestRegistration] Error:', err);
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to generate registration token' });
+        }
+      }),
+
+    verifyRegistration: publicProcedure
+      .input(z.object({ token: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        try {
+          const entry = registrationTokens.get(input.token);
+          if (!entry || entry.expires < Date.now()) {
+            throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid or expired registration token' });
+          }
+
+          // Optionally create session for user
+          const { sdk } = await import('./_core/sdk');
+          const openId = `local:${entry.email}`;
+          const sessionToken = await sdk.createSessionToken(openId, { name: entry.email.split('@')[0] });
+          const cookieOptions = getSessionCookieOptions(ctx.req);
+          (ctx.res as any).cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: 1000 * 60 * 60 * 24 * 365 });
+
+          // mark token used
+          registrationTokens.delete(input.token);
+
+          return { success: true };
+        } catch (err: any) {
+          console.error('[Auth verifyRegistration] Error:', err);
+          throw new TRPCError({ code: err instanceof TRPCError ? err.code : 'INTERNAL_SERVER_ERROR', message: err?.message || 'Verification failed' });
         }
       }),
   }),

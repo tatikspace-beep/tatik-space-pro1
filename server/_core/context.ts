@@ -1,10 +1,20 @@
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
+import type { Response } from "express";
 import type { User } from "../../drizzle/schema";
 import { sdk } from "./sdk";
 
+export type ServerRequest = {
+  headers: Record<string, string | string[] | undefined>;
+  protocol: string;
+  ip?: string;
+  socket: {
+    remoteAddress?: string;
+  };
+};
+
 export type TrpcContext = {
-  req: CreateExpressContextOptions["req"];
-  res: CreateExpressContextOptions["res"];
+  req: ServerRequest;
+  res: Response;
   user: User | null;
 };
 
@@ -32,8 +42,8 @@ export async function createContext(
   }
 
   return {
-    req: opts.req,
-    res: opts.res,
+    req: opts.req as ServerRequest,
+    res: opts.res as Response,
     user,
   };
 }
