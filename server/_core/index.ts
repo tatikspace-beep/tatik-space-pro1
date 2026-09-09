@@ -245,7 +245,7 @@ async function startServer() {
       // store in registrationTokens exported from routers
       try {
         const { registrationTokens } = await import('../routers');
-        registrationTokens.set(token, { userId: user?.id, email, expires: Date.now() + 1000 * 60 * 10 });
+        registrationTokens.set(token, { userId: user?.id, email, purpose: 'registration', expires: Date.now() + 1000 * 60 * 10 });
       } catch (e) {
         console.warn('[DevRequestRegistration] failed to set registration token', e);
       }

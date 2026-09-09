@@ -6,52 +6,20 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
-import { Eye, EyeOff } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 export default function Login() {
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [forgotMode, setForgotMode] = useState(false);
   const { t } = useLanguage();
 
-  const loginMutation = trpc.auth.login.useMutation({
-    onSuccess: async (data) => {
-      if (data.requires2fa) {
-        // Handle 2FA flow
-        toast.info(t.twoFactorAuth);
-      } else {
-        // Login successful - redirect to editor
-        window.location.href = '/editor';
-      }
-    },
-    onError: (error) => {
-      toast.error(error.message || t.error);
-    }
-  });
-
-  const requestResetMutation = trpc.auth.requestPasswordReset.useMutation({
-    onSuccess: (data) => {
-      if (data.link) {
-        toast.success('Link generato (sviluppo): ' + data.link);
-      } else {
-        toast.success('Se hai un account ti abbiamo inviato il link via email');
-      }
-      setForgotMode(false);
-    }
+  const accessCodeMutation = trpc.auth.requestAccessCode.useMutation({
+    onSuccess: () => toast.success('Se l’e-mail è registrata, riceverai un link valido per 10 minuti.'),
+    onError: (error) => toast.error(error.message || t.error),
   });
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (forgotMode) {
-      requestResetMutation.mutate({ email });
-    } else {
-      loginMutation.mutate({
-        email: email,
-        password: password
-      });
-    }
+    accessCodeMutation.mutate({ email });
   };
 
   return (
@@ -60,7 +28,7 @@ export default function Login() {
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold">{t.login}</CardTitle>
           <CardDescription>
-            {forgotMode ? t.resetEmailPrompt : t.enterCredentials}
+            Inserisci la tua e-mail per ricevere un link di accesso.
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleLogin}>
@@ -77,49 +45,15 @@ export default function Login() {
               />
             </div>
 
-            {!forgotMode && (
-              <div className="space-y-2">
-                <Label htmlFor="password">{t.password}</Label>
-                <div className="relative">
-                  <Input
-                    id="password"
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                  />
-                  <button
-                    type="button"
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div className="text-right text-sm">
-              {!forgotMode ? (
-                <button type="button" className="text-primary hover:underline" onClick={() => setForgotMode(true)}>
-                  {t.forgotPassword}
-                </button>
-              ) : (
-                <button type="button" className="text-primary hover:underline" onClick={() => setForgotMode(false)}>
-                  ← {t.back}
-                </button>
-              )}
-            </div>
+            <p className="text-sm text-muted-foreground">Il link scade automaticamente dopo 10 minuti.</p>
           </CardContent>
           <CardFooter className="flex flex-col">
             <Button
               type="submit"
               className="w-full"
-              disabled={loginMutation.isPending || requestResetMutation.isPending}
+              disabled={accessCodeMutation.isPending}
             >
-              {forgotMode
-                ? requestResetMutation.isPending ? t.loading : t.send
-                : loginMutation.isPending ? t.loading : t.login}
+              {accessCodeMutation.isPending ? t.loading : 'Invia link di accesso'}
             </Button>
 
             <div className="mt-4 text-center text-sm">

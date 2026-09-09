@@ -6,26 +6,16 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
-import { Eye, EyeOff } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 
 export default function Register() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const { t } = useLanguage();
 
-  const registerMutation = trpc.auth.register.useMutation({
-    onSuccess: async (data) => {
-      toast.success(`${t.register} ${t.completed}! ${t.please} ${t.login} ${t.toAccess}.`);
-
-      // After successful registration, redirect to login
-      setTimeout(() => {
-        window.location.href = '/login';
-      }, 1000);
+  const requestRegistrationMutation = trpc.auth.requestRegistration.useMutation({
+    onSuccess: () => {
+      toast.success('Controlla la tua e-mail: il link è valido per 10 minuti.');
     },
     onError: (error) => {
       toast.error(error.message || t.registrationError);
@@ -35,21 +25,7 @@ export default function Register() {
   const handleRegister = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (password !== confirmPassword) {
-      toast.error(t.passwordsDontMatch || 'Le password non coincidono');
-      return;
-    }
-
-    if (password.length < 8) {
-      toast.error(t.passwordMinLength || 'La password deve essere lunga almeno 8 caratteri');
-      return;
-    }
-
-    registerMutation.mutate({
-      email: email,
-      password: password,
-      name: name
-    });
+    requestRegistrationMutation.mutate({ email, name });
   };
 
   return (
@@ -87,54 +63,15 @@ export default function Register() {
               />
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="password">{t.password}</Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-                <button
-                  type="button"
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                  onClick={() => setShowPassword(!showPassword)}
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-              <p className="text-xs text-muted-foreground">{t.passwordMinLength || "Minimo 8 caratteri"}</p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="confirm-password">{t.confirmPassword}</Label>
-              <div className="relative">
-                <Input
-                  id="confirm-password"
-                  type={showConfirmPassword ? "text" : "password"}
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
-                />
-                <button
-                  type="button"
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                >
-                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
-              </div>
-            </div>
+            <p className="text-sm text-muted-foreground">Riceverai un link sicuro per impostare la password.</p>
           </CardContent>
           <CardFooter className="flex flex-col">
             <Button
               type="submit"
               className="w-full"
-              disabled={registerMutation.isPending}
+              disabled={requestRegistrationMutation.isPending}
             >
-              {registerMutation.isPending ? t.loading : t.register}
+              {requestRegistrationMutation.isPending ? t.loading : t.register}
             </Button>
 
             <div className="mt-4 text-center text-sm">

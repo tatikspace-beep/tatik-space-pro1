@@ -18,6 +18,8 @@ import Collaboration from "./pages/Collaboration";
 import Deployment from "./pages/Deployment";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import CompleteRegistration from "./pages/CompleteRegistration";
+import AccessLink from "./pages/AccessLink";
 import { PrivacyPolicy, TermsOfService, CookiePolicy, ContactPage } from "./pages/LegalPages";
 import ProfilePage from "./pages/ProfilePage";
 import TemplateMarketplace from "./pages/TemplateMarketplace";
@@ -45,6 +47,8 @@ function Router() {
       <Route path={"/dashboard"} component={EditorApp} />
       <Route path={"/login"} component={Login} />
       <Route path={"/register"} component={Register} />
+      <Route path={"/complete-registration"} component={CompleteRegistration} />
+      <Route path={"/access"} component={AccessLink} />
       <Route path={"/profile"} component={ProfilePage} />
       <Route path={"/marketplace"} component={TemplateMarketplace} />
       <Route path={"/files"} component={Files} />
@@ -161,17 +165,17 @@ function App() {
       });
     };
 
+    const batchOptions: any = {
+      url: primaryUrl,
+      transformer: superjson,
+      fetch: customFetch,
+      // Ensure queries use GET so the server treats them as read-only queries
+      // and doesn't reject POST requests for query procedures.
+      useGETForQueries: true,
+    };
+
     return trpc.createClient({
-      links: [
-        httpBatchLink({
-          url: primaryUrl,
-          transformer: superjson,
-          fetch: customFetch,
-          // Ensure queries use GET so the server treats them as read-only queries
-          // and doesn't reject POST requests for query procedures.
-          useGETForQueries: true,
-        }),
-      ],
+      links: [httpBatchLink(batchOptions as any)],
     });
   });
 

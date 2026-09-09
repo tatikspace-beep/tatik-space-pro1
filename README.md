@@ -102,6 +102,10 @@ pnpm run dev:server
 
 Il progetto usa PostgreSQL. Assicurati di avere una connessione valida nel `DATABASE_URL`.
 
+### Registrazione e accesso via e-mail
+
+Il percorso pubblico usa link temporanei validi 10 minuti. Configura `RESEND_API_KEY` e `EMAIL_FROM` nell'ambiente server/Vercel per inviare le e-mail. `ENABLE_LEGACY_PASSWORD_AUTH` deve rimanere `false` (o assente) per mantenere nascosto il vecchio percorso password.
+
 ### OAuth
 
 Configura OAuth per GitHub e Google nelle variabili d'ambiente.

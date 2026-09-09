@@ -4,7 +4,7 @@ console.log("[Server] Routers loaded - using relative imports (cache bust - no e
 
 // simple in-memory store for password reset tokens and registration tokens; production should persist
 const passwordResetTokens: Map<string, { userId: number; expires: number }> = new Map();
-export const registrationTokens: Map<string, { userId?: number; email: string; expires: number }> = new Map();
+export const registrationTokens: Map<string, { userId?: number; email: string; name?: string; purpose: 'registration' | 'access'; expires: number }> = new Map();
 import crypto from 'crypto';
 import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
@@ -18,6 +18,29 @@ import { eq, gt, and, desc } from "drizzle-orm";
 import { hashPassword, isAdminEmail, normalizeEmail, verifyPassword } from "./auth-utils";
 import speakeasy from "speakeasy";
 import QRCode from "qrcode";
+
+async function sendAuthEmail(to: string, subject: string, text: string) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.EMAIL_FROM;
+  if (!apiKey || !from) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('Email delivery is not configured');
+    }
+    console.log(`[Auth email development fallback] to=${to} subject=${subject}\n${text}`);
+    return;
+  }
+
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ from, to: [to], subject, text }),
+  });
+  if (!response.ok) throw new Error(`Email delivery failed (${response.status})`);
+}
+
+function authBaseUrl() {
+  return process.env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
+}
 
 export const appRouter = router({
   // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
@@ -44,6 +67,9 @@ export const appRouter = router({
         const { sdk } = await import("./_core/sdk");
 
         try {
+          if (process.env.ENABLE_LEGACY_PASSWORD_AUTH !== 'true') {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Use the email access code' });
+          }
           const normalizedEmail = normalizeEmail(input.email);
           console.log(`[Auth Login] Attempting login - email: ${normalizedEmail}`);
 
@@ -184,6 +210,9 @@ export const appRouter = router({
       }))
       .mutation(async ({ input }) => {
         try {
+          if (process.env.ENABLE_LEGACY_PASSWORD_AUTH !== 'true') {
+            throw new TRPCError({ code: 'FORBIDDEN', message: 'Use the email access code' });
+          }
           const normalizedEmail = normalizeEmail(input.email);
           const hashedPassword = hashPassword(input.password);
           const role = isAdminEmail(normalizedEmail) ? 'admin' : 'user';
@@ -258,11 +287,14 @@ export const appRouter = router({
 
           // Generate secure token and save (10 minutes)
           const token = crypto.randomBytes(32).toString('hex');
-          registrationTokens.set(token, { userId: user?.id, email: normalizedEmail, expires: Date.now() + 1000 * 60 * 10 });
+          registrationTokens.set(token, { userId: user?.id, email: normalizedEmail, name: input.name, purpose: 'registration', expires: Date.now() + 1000 * 60 * 10 });
 
-          const link = `https://your-app.com/complete-registration?token=${token}`;
-          // In production send email; for now log link
-          console.log(`[Auth] registration link for ${normalizedEmail}: ${link}`);
+          const link = `${authBaseUrl()}/complete-registration?token=${token}`;
+          await sendAuthEmail(
+            normalizedEmail,
+            'Complete your Tatik Space registration',
+            `Open this link within 10 minutes to complete your registration:\n${link}`,
+          );
 
           return { success: true, message: 'Registration token generated', link };
         } catch (err: any) {
@@ -271,12 +303,61 @@ export const appRouter = router({
         }
       }),
 
+    completeRegistration: publicProcedure
+      .input(z.object({ token: z.string(), password: z.string().min(8) }))
+      .mutation(async ({ input, ctx }) => {
+        const entry = registrationTokens.get(input.token);
+        if (!entry || entry.purpose !== 'registration' || entry.expires < Date.now()) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid or expired registration token' });
+        }
+
+        const user = await db.getUserByEmail(entry.email);
+        if (!user?.id) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Registration record not found' });
+        await db.updatePassword(user.id, hashPassword(input.password));
+
+        const { sdk } = await import('./_core/sdk');
+        const sessionToken = await sdk.createSessionToken(`local:${entry.email}`, { name: entry.name || entry.email.split('@')[0] });
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        (ctx.res as any).cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: 1000 * 60 * 60 * 24 * 365 });
+        registrationTokens.delete(input.token);
+        return { success: true };
+      }),
+
+    requestAccessCode: publicProcedure
+      .input(z.object({ email: z.string().email() }))
+      .mutation(async ({ input }) => {
+        const normalizedEmail = normalizeEmail(input.email);
+        const user = await db.getUserByEmail(normalizedEmail);
+        if (user) {
+          const token = crypto.randomBytes(32).toString('hex');
+          registrationTokens.set(token, { userId: user.id, email: normalizedEmail, purpose: 'access', expires: Date.now() + 1000 * 60 * 10 });
+          const link = `${authBaseUrl()}/access?token=${token}`;
+          await sendAuthEmail(normalizedEmail, 'Your Tatik Space access link', `Open this link within 10 minutes to access your account:\n${link}`);
+        }
+        return { success: true };
+      }),
+
+    verifyAccessCode: publicProcedure
+      .input(z.object({ token: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        const entry = registrationTokens.get(input.token);
+        if (!entry || entry.purpose !== 'access' || entry.expires < Date.now()) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid or expired access token' });
+        }
+        const { sdk } = await import('./_core/sdk');
+        const sessionToken = await sdk.createSessionToken(`local:${entry.email}`, { name: entry.email.split('@')[0] });
+        const cookieOptions = getSessionCookieOptions(ctx.req);
+        (ctx.res as any).cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: 1000 * 60 * 60 * 24 * 365 });
+        registrationTokens.delete(input.token);
+        return { success: true };
+      }),
+
     verifyRegistration: publicProcedure
       .input(z.object({ token: z.string() }))
       .mutation(async ({ input, ctx }) => {
         try {
           const entry = registrationTokens.get(input.token);
-          if (!entry || entry.expires < Date.now()) {
+          if (!entry || entry.purpose !== 'registration' || entry.expires < Date.now()) {
             throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid or expired registration token' });
           }
 

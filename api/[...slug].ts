@@ -54,6 +54,7 @@ export default async (req: IncomingMessage, res: ServerResponse) => {
 
             const handler = createHTTPHandler({
                 router: appRouter,
+                basePath: "/api/trpc/",
                 createContext: async (opts: any) => {
                     try {
                         const patchedRes = enhanceVercelResponse(opts.res as ServerResponse);
