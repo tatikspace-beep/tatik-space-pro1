@@ -2,7 +2,8 @@
   "include": [
     "client/src/**/*",
     "shared/**/*",
-    "server/**/*"
+    "server/**/*",
+    "api/**/*"
   ],
   "exclude": [
     "node_modules",
@@ -17,7 +18,7 @@
     "noEmit": true,
     "module": "ESNext",
     "strict": true,
-    "downlevelIteration": true,
+    
     "types": [
       "vite/client"
     ],
@@ -33,9 +34,15 @@
     "moduleResolution": "bundler",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["client/src/*"],
-      "@shared/*": ["shared/*"],
-      "@/_core/*": ["client/src/_core/*"]
+      "@/*": [
+        "client/src/*"
+      ],
+      "@shared/*": [
+        "shared/*"
+      ],
+      "@/_core/*": [
+        "client/src/_core/*"
+      ]
     }
   }
 }
