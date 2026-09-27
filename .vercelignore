@@ -4,6 +4,7 @@ node_modules
 
 # Development files
 .env.local
+.env.local.old
 .env.development
 .env.test
 
