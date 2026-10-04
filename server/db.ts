@@ -1,4 +1,4 @@
-import { desc, eq, and, sql } from "drizzle-orm";
+import { desc, eq, and, gte, lte, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { InsertUser, users, backups, InsertBackup, projects, files, InsertProject, InsertFile, twoFactorSettings, InsertTwoFactorSettings, contactMessages, InsertContactMessage, cookieConsents, InsertCookieConsent, bannerAdditions, InsertBannerAddition, subscriptions, InsertSubscription, subscriptionDiscounts, InsertSubscriptionDiscount, monetizationEarnings, InsertMonetizationEarning } from "../drizzle/schema";
@@ -302,12 +302,10 @@ export async function getBannerAdditions(userId: number, start: Date, end: Date)
     return arr.filter(r => r.createdAt >= start && r.createdAt <= end);
   }
 
-  // Use the ops-based where builder to avoid depending on column instance helpers
-  // Use any casts to call date comparison helpers that may not be present in typings
-  // @ts-ignore
   return await db.select().from(bannerAdditions).where(and(
     eq(bannerAdditions.userId, userId),
-    and((bannerAdditions.createdAt as any).gte(start), (bannerAdditions.createdAt as any).lte(end))
+    gte(bannerAdditions.createdAt, start),
+    lte(bannerAdditions.createdAt, end)
   ));
 }
 
