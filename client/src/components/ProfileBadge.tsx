@@ -5,11 +5,11 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { Link } from 'wouter';
 import {
     User,
-    Lock,
     FolderOpen,
     Bell,
     LogOut,
     ChevronDown,
+    School,
 } from 'lucide-react';
 
 export default function ProfileBadge() {
@@ -88,12 +88,12 @@ export default function ProfileBadge() {
                     </Link>
 
                     <Link
-                        to="/profile?tab=password"
+                        to="/schools"
                         className="profile-dropdown-item"
                         onClick={() => setOpen(false)}
                     >
-                        <Lock size={15} />
-                        {t.changePassword ?? 'Change Password'}
+                        <School size={15} />
+                        Programma scuole
                     </Link>
 
                     <Link
