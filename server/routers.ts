@@ -13,12 +13,22 @@ import { publicProcedure, router, protectedProcedure } from "./_core/trpc";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import * as db from "./db";
-import { templatePurchases } from "../drizzle/schema";
-import { eq, gt, and, desc } from "drizzle-orm";
+import {
+  marketplaceBalanceEntries,
+  marketplaceDisputes,
+  marketplaceListingFiles,
+  marketplaceListings,
+  marketplaceOrders,
+  marketplaceReviews,
+  marketplaceSellers,
+  templatePurchases,
+} from "../drizzle/schema";
+import { eq, gt, and, or, desc, gte, lte, isNull, sql } from "drizzle-orm";
 import { hashPassword, isAdminEmail, normalizeEmail, verifyPassword } from "./auth-utils";
 import speakeasy from "speakeasy";
 import QRCode from "qrcode";
 import { createSignedEmailAccessToken, verifySignedEmailAccessToken } from "./email-access-token";
+import { scanMarketplaceTemplate } from "./marketplace-scan";
 
 async function sendAuthEmail(to: string, subject: string, text: string) {
   const apiKey = process.env.RESEND_API_KEY;
@@ -42,6 +52,10 @@ async function sendAuthEmail(to: string, subject: string, text: string) {
 function authBaseUrl() {
   return process.env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
 }
+const MARKETPLACE_COMMISSION_RATE = 0.15;
+const MAX_MARKETPLACE_UPLOAD_BYTES = 2 * 1024 * 1024;
+const MARKETPLACE_SELLER_TERMS_VERSION = "2026-09-30-screening-v1";
+
 
 export const appRouter = router({
   // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
@@ -1238,6 +1252,708 @@ Analizza e suggerisci ottimizzazioni.`,
           console.error('[setThemePreference] Error:', error);
           return { success: false, theme: 'system' };
         }
+      }),
+  }),
+
+  marketplace: router({
+    sellerTerms: publicProcedure.query(() => ({
+      version: MARKETPLACE_SELLER_TERMS_VERSION,
+      commissionPercent: 15,
+      terms: [
+        "Il venditore ? l'unico responsabile del template, dei file e dei contenuti offerti, della loro qualit?, correttezza, sicurezza, licenza e conformit? alle leggi applicabili.",
+        "Il venditore dichiara di possedere o disporre di tutti i diritti necessari e manleva Tatik nei limiti consentiti dalla legge da contestazioni derivanti dal prodotto o dai diritti di terzi.",
+        "Il venditore fornisce descrizione veritiera, istruzioni e supporto sul prodotto e gestisce gli obblighi verso i propri acquirenti previsti dalla legge.",
+        "? vietato caricare malware, credenziali, dati personali, contenuti illeciti o materiale che violi diritti di terzi.",
+        "Ogni file viene sottoposto a controlli automatici statici. I controlli non certificano la sicurezza o la conformit? legale; i contenuti sospetti possono essere trattenuti per revisione e i listing pubblicati possono essere sospesi o rimossi.",
+        "Tatik trattiene una commissione del 15% su ogni vendita.",
+        "Il saldo netto resta in sospeso fino alla scadenza del periodo anti-frode e alla verifica dei rimborsi.",
+        "Rimborsi e contestazioni possono stornare il saldo del venditore.",
+        "I payout richiedono verifica KYC e un provider di pagamento configurato.",
+        "L'accettazione dei termini non sostituisce la revisione legale e non esclude responsabilit? inderogabili previste dalla legge.",
+      ],
+    })),
+
+    acceptSellerTerms: protectedProcedure
+      .input(z.object({
+        displayName: z.string().trim().min(2).max(120),
+        bio: z.string().trim().max(2000).optional(),
+        websiteUrl: z.string().url().max(500).optional(),
+        accepted: z.literal(true),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+        const now = new Date();
+        const values = {
+          userId: ctx.user.id,
+          displayName: input.displayName,
+          bio: input.bio || null,
+          websiteUrl: input.websiteUrl || null,
+          termsAcceptedAt: now,
+          termsVersion: MARKETPLACE_SELLER_TERMS_VERSION,
+          updatedAt: now,
+        };
+        const existing = await database.select().from(marketplaceSellers)
+          .where(eq(marketplaceSellers.userId, ctx.user.id)).limit(1);
+        if (existing[0]) {
+          return (await database.update(marketplaceSellers).set({
+            ...values,
+            status: existing[0].status,
+          })
+            .where(eq(marketplaceSellers.id, existing[0].id)).returning())[0];
+        }
+        return (await database.insert(marketplaceSellers).values({
+          ...values,
+          status: "pending",
+          createdAt: now,
+        }).returning())[0];
+      }),
+
+    getSellerProfile: protectedProcedure.query(async ({ ctx }) => {
+      const database = await db.getDb();
+      if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+      return (await database.select().from(marketplaceSellers)
+        .where(eq(marketplaceSellers.userId, ctx.user.id)).limit(1))[0] || null;
+    }),
+
+    createSellerOnboardingLink: protectedProcedure.mutation(async ({ ctx }) => {
+      const database = await db.getDb();
+      if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+      const seller = (await database.select().from(marketplaceSellers)
+        .where(eq(marketplaceSellers.userId, ctx.user.id)).limit(1))[0];
+      if (!seller || !seller.termsAcceptedAt) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Accetta prima i termini venditore." });
+      }
+      const { createConnectAccountLink, createExpressConnectAccount } = await import("./_core/stripe");
+      let accountId = seller.payoutAccountId;
+      if (!accountId) {
+        const account = await createExpressConnectAccount({ email: ctx.user.email || undefined });
+        accountId = account.id;
+        await database.update(marketplaceSellers).set({
+          payoutProvider: "stripe_connect",
+          payoutAccountId: accountId,
+          status: "onboarding",
+          updatedAt: new Date(),
+        }).where(eq(marketplaceSellers.id, seller.id));
+      }
+      const baseUrl = process.env.APP_URL || "http://localhost:3000";
+      const link = await createConnectAccountLink({
+        accountId,
+        refreshUrl: `${baseUrl}/marketplace/developer?connect=refresh`,
+        returnUrl: `${baseUrl}/marketplace/developer?connect=success`,
+      });
+      return { url: link.url };
+    }),
+
+    refreshSellerPayoutStatus: protectedProcedure.mutation(async ({ ctx }) => {
+      const database = await db.getDb();
+      if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+      const seller = (await database.select().from(marketplaceSellers)
+        .where(eq(marketplaceSellers.userId, ctx.user.id)).limit(1))[0];
+      if (!seller?.payoutAccountId) return { status: seller?.status || "pending", ready: false };
+      const { getConnectAccount } = await import("./_core/stripe");
+      const account = await getConnectAccount(seller.payoutAccountId);
+      const ready = Boolean(account.details_submitted && account.charges_enabled && account.payouts_enabled);
+      const status = ready ? "active" : "restricted";
+      await database.update(marketplaceSellers).set({ status, updatedAt: new Date() })
+        .where(eq(marketplaceSellers.id, seller.id));
+      return { status, ready };
+    }),
+
+    listSellerListings: protectedProcedure.query(async ({ ctx }) => {
+      const database = await db.getDb();
+      if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+      const seller = (await database.select().from(marketplaceSellers)
+        .where(eq(marketplaceSellers.userId, ctx.user.id)).limit(1))[0];
+      if (!seller) return [];
+      return database.select().from(marketplaceListings)
+        .where(eq(marketplaceListings.sellerId, seller.id))
+        .orderBy(desc(marketplaceListings.updatedAt));
+    }),
+
+    createListing: protectedProcedure
+      .input(z.object({
+        title: z.string().trim().min(3).max(160),
+        description: z.string().trim().min(20).max(10000),
+        category: z.string().trim().min(2).max(80),
+        priceCents: z.number().int().min(100).max(100000),
+        slug: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/).max(160),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+        const seller = (await database.select().from(marketplaceSellers)
+          .where(eq(marketplaceSellers.userId, ctx.user.id)).limit(1))[0];
+        if (!seller || !seller.termsAcceptedAt) throw new TRPCError({ code: "FORBIDDEN", message: "Accetta i termini venditore prima di pubblicare." });
+        return (await database.insert(marketplaceListings).values({
+          ...input,
+          sellerId: seller.id,
+          currency: "eur",
+          status: "draft",
+        }).returning())[0];
+      }),
+
+    uploadListingFile: protectedProcedure
+      .input(z.object({
+        listingId: z.number().int().positive(),
+        fileName: z.string().regex(/^[^\\/]+$/).max(180),
+        contentType: z.string().min(1).max(120),
+        contentBase64: z.string().min(1).max(6 * 1024 * 1024).optional(),
+        content: z.string().min(1).max(MAX_MARKETPLACE_UPLOAD_BYTES).optional(),
+      }).refine((input) => Boolean(input.content) !== Boolean(input.contentBase64), {
+        message: "Fornisci il contenuto del codice oppure il file, non entrambi.",
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+        const seller = (await database.select().from(marketplaceSellers)
+          .where(eq(marketplaceSellers.userId, ctx.user.id)).limit(1))[0];
+        const listing = seller ? (await database.select().from(marketplaceListings).where(
+          and(eq(marketplaceListings.id, input.listingId), eq(marketplaceListings.sellerId, seller.id)),
+        ).limit(1))[0] : null;
+        if (!listing || !seller) throw new TRPCError({ code: "NOT_FOUND", message: "Listing non trovato" });
+        if (listing.status !== "draft" && listing.status !== "rejected") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "I file si possono caricare solo in bozza." });
+        }
+        if (!/\.(html?|css|[cm]?js|jsx|tsx?|json|md|txt|xml|svg|py|sql)$/i.test(input.fileName)) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Carica un file di codice testuale supportato." });
+        }
+        const buffer = input.content
+          ? Buffer.from(input.content, "utf8")
+          : Buffer.from(input.contentBase64!, "base64");
+        if (!buffer.length || buffer.length > MAX_MARKETPLACE_UPLOAD_BYTES) {
+          throw new TRPCError({ code: "PAYLOAD_TOO_LARGE", message: "Il contenuto supera il limite di 2 MB." });
+        }
+        if (buffer.includes(0)) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "I file binari non sono supportati: carica un file di codice testuale." });
+        }
+        const checksum = crypto.createHash("sha256").update(buffer).digest("hex");
+        const { storagePut } = await import("./storage");
+        const stored = await storagePut(
+          `marketplace/private/${seller.id}/${listing.id}/${crypto.randomUUID()}-${input.fileName}`,
+          buffer,
+          input.contentType,
+        );
+        await database.delete(marketplaceListingFiles)
+          .where(eq(marketplaceListingFiles.listingId, listing.id));
+        return (await database.insert(marketplaceListingFiles).values({
+          listingId: listing.id,
+          filePath: stored.key,
+          contentType: input.contentType,
+          sizeBytes: buffer.length,
+          checksum,
+        }).returning())[0];
+      }),
+
+    submitForReview: protectedProcedure
+      .input(z.object({ listingId: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+        const seller = (await database.select().from(marketplaceSellers).where(eq(marketplaceSellers.userId, ctx.user.id)).limit(1))[0];
+        const listing = seller ? (await database.select().from(marketplaceListings).where(
+          and(eq(marketplaceListings.id, input.listingId), eq(marketplaceListings.sellerId, seller.id)),
+        ).limit(1))[0] : null;
+        if (!listing) throw new TRPCError({ code: "NOT_FOUND", message: "Listing non trovato" });
+        if (listing.status !== "draft" && listing.status !== "rejected") {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Solo una bozza o un listing rifiutato pu? essere inviato in revisione." });
+        }
+        if (!seller?.termsAcceptedAt || seller.termsVersion !== MARKETPLACE_SELLER_TERMS_VERSION) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Accetta la versione corrente dei termini venditore." });
+        }
+        if (seller.status !== "active" || !seller.payoutAccountId) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Completa prima la verifica Stripe Connect/KYC per poter mettere in vendita il template." });
+        }
+        const file = (await database.select().from(marketplaceListingFiles)
+          .where(eq(marketplaceListingFiles.listingId, listing.id)).limit(1))[0];
+        if (!file) throw new TRPCError({ code: "BAD_REQUEST", message: "Carica almeno un file prima della revisione." });
+        const { storageReadText } = await import("./storage");
+        const storedName = file.filePath.split("/").pop() || "template.txt";
+        const fileName = storedName.replace(/^[0-9a-f-]{36}-/i, "");
+        let scan;
+        try {
+          scan = scanMarketplaceTemplate(fileName, await storageReadText(file.filePath));
+        } catch (error) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: error instanceof Error ? error.message : "Impossibile controllare il contenuto caricato.",
+          });
+        }
+        const now = new Date();
+        const report = JSON.stringify(scan.findings);
+        const status = scan.status === "passed" ? "published" : scan.status === "review" ? "in_review" : "rejected";
+        const rejectionReason = scan.status === "blocked"
+          ? scan.findings.map((finding) => finding.message).join(" ")
+          : scan.status === "review"
+            ? "Il controllo automatico ha rilevato elementi da verificare."
+            : null;
+        return (await database.update(marketplaceListings).set({
+          status,
+          scanStatus: scan.status,
+          scanReport: report,
+          scannedAt: now,
+          rejectionReason,
+          publishedAt: status === "published" ? now : null,
+          updatedAt: now,
+        })
+          .where(eq(marketplaceListings.id, listing.id)).returning())[0];
+      }),
+
+    listPublished: publicProcedure.query(async () => {
+      const database = await db.getDb();
+      if (!database) return [];
+      return database.select({
+        listing: marketplaceListings,
+        sellerName: marketplaceSellers.displayName,
+        averageRating: sql<number>`coalesce(avg(${marketplaceReviews.rating}), 0)`,
+        reviewCount: sql<number>`count(${marketplaceReviews.id})`,
+      }).from(marketplaceListings)
+        .innerJoin(marketplaceSellers, eq(marketplaceListings.sellerId, marketplaceSellers.id))
+        .leftJoin(marketplaceReviews, eq(marketplaceReviews.listingId, marketplaceListings.id))
+        .where(eq(marketplaceListings.status, "published"))
+        .groupBy(marketplaceListings.id, marketplaceSellers.displayName)
+        .orderBy(desc(marketplaceListings.publishedAt));
+    }),
+
+    listMyOrders: protectedProcedure.query(async ({ ctx }) => {
+      const database = await db.getDb();
+      if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+      return database.select({
+        order: marketplaceOrders,
+        listing: marketplaceListings,
+        review: marketplaceReviews,
+      }).from(marketplaceOrders)
+        .innerJoin(marketplaceListings, eq(marketplaceOrders.listingId, marketplaceListings.id))
+        .leftJoin(marketplaceReviews, eq(marketplaceReviews.orderId, marketplaceOrders.id))
+        .where(eq(marketplaceOrders.buyerId, ctx.user.id))
+        .orderBy(desc(marketplaceOrders.createdAt));
+    }),
+
+    reviewQueue: protectedProcedure.query(async ({ ctx }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Solo gli amministratori possono vedere la coda di revisione." });
+      const database = await db.getDb();
+      if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+      return database.select().from(marketplaceListings)
+        .where(eq(marketplaceListings.status, "in_review"))
+        .orderBy(desc(marketplaceListings.createdAt));
+    }),
+
+    moderationListings: protectedProcedure.query(async ({ ctx }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Solo gli amministratori possono moderare i listing." });
+      const database = await db.getDb();
+      if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+      return database.select({
+        listing: marketplaceListings,
+        sellerName: marketplaceSellers.displayName,
+      }).from(marketplaceListings)
+        .innerJoin(marketplaceSellers, eq(marketplaceListings.sellerId, marketplaceSellers.id))
+        .where(or(
+          eq(marketplaceListings.status, "published"),
+          eq(marketplaceListings.status, "suspended"),
+        ))
+        .orderBy(desc(marketplaceListings.updatedAt));
+    }),
+
+    getReviewContent: protectedProcedure
+      .input(z.object({ listingId: z.number().int().positive() }))
+      .query(async ({ ctx, input }) => {
+        if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Solo gli amministratori possono esaminare il codice segnalato." });
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+        const listing = (await database.select().from(marketplaceListings)
+          .where(and(eq(marketplaceListings.id, input.listingId), eq(marketplaceListings.status, "in_review"))).limit(1))[0];
+        if (!listing) throw new TRPCError({ code: "NOT_FOUND", message: "Il listing non ? pi? in revisione." });
+        const file = (await database.select().from(marketplaceListingFiles)
+          .where(eq(marketplaceListingFiles.listingId, listing.id))
+          .orderBy(desc(marketplaceListingFiles.createdAt)).limit(1))[0];
+        if (!file) throw new TRPCError({ code: "NOT_FOUND", message: "File del listing non disponibile." });
+        const { storageReadText } = await import("./storage");
+        const storedName = file.filePath.split("/").pop() || "template.txt";
+        return {
+          listingId: listing.id,
+          title: listing.title,
+          fileName: storedName.replace(/^[0-9a-f-]{36}-/i, ""),
+          content: await storageReadText(file.filePath),
+        };
+      }),
+
+    moderateListing: protectedProcedure
+      .input(z.object({
+        listingId: z.number().int().positive(),
+        action: z.enum(["suspend", "restore"]),
+        reason: z.string().trim().min(5).max(2000).optional(),
+      }).refine((input) => input.action !== "suspend" || Boolean(input.reason), {
+        message: "Indica il motivo della sospensione.",
+        path: ["reason"],
+      }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Solo gli amministratori possono moderare i listing." });
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+        const listing = (await database.select().from(marketplaceListings)
+          .where(eq(marketplaceListings.id, input.listingId)).limit(1))[0];
+        if (!listing || (input.action === "suspend" && listing.status !== "published") ||
+          (input.action === "restore" && listing.status !== "suspended")) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Il listing non ? nello stato richiesto per questa azione." });
+        }
+        if (input.action === "restore" && listing.scanStatus !== "passed") {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Scansiona e approva nuovamente il contenuto prima di ripristinare il listing." });
+        }
+        const now = new Date();
+        const updated = (await database.update(marketplaceListings).set(input.action === "suspend" ? {
+          status: "suspended",
+          moderationReason: input.reason!,
+          moderatedAt: now,
+          moderatedBy: ctx.user.id,
+          updatedAt: now,
+        } : {
+          status: "published",
+          moderationReason: null,
+          moderatedAt: now,
+          moderatedBy: ctx.user.id,
+          publishedAt: now,
+          updatedAt: now,
+        }).where(eq(marketplaceListings.id, listing.id)).returning())[0];
+        return updated;
+      }),
+
+    rescanLegacyListing: protectedProcedure
+      .input(z.object({ listingId: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Solo gli amministratori possono scansionare i listing legacy." });
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+        const listing = (await database.select().from(marketplaceListings)
+          .where(eq(marketplaceListings.id, input.listingId)).limit(1))[0];
+        if (!listing || (listing.status !== "published" && listing.status !== "suspended") ||
+          (listing.scanStatus !== "legacy_unscanned" && listing.scanStatus !== "not_scanned")) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Il listing non richiede una scansione legacy." });
+        }
+        const file = (await database.select().from(marketplaceListingFiles)
+          .where(eq(marketplaceListingFiles.listingId, listing.id))
+          .orderBy(desc(marketplaceListingFiles.createdAt)).limit(1))[0];
+        if (!file) throw new TRPCError({ code: "NOT_FOUND", message: "File del listing non disponibile." });
+        const { storageReadText } = await import("./storage");
+        const storedName = file.filePath.split("/").pop() || "template.txt";
+        const fileName = storedName.replace(/^[0-9a-f-]{36}-/i, "");
+        let scan;
+        try {
+          scan = scanMarketplaceTemplate(fileName, await storageReadText(file.filePath));
+        } catch (error) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: error instanceof Error ? error.message : "Impossibile controllare il contenuto caricato.",
+          });
+        }
+        const now = new Date();
+        const status = listing.status === "suspended" && scan.status === "passed"
+          ? "suspended"
+          : scan.status === "passed" ? "published" : scan.status === "review" ? "in_review" : "rejected";
+        return (await database.update(marketplaceListings).set({
+          status,
+          scanStatus: scan.status,
+          scanReport: JSON.stringify(scan.findings),
+          scannedAt: now,
+          rejectionReason: scan.status === "blocked"
+            ? scan.findings.map((finding) => finding.message).join(" ")
+            : scan.status === "review"
+              ? "Il controllo automatico ha rilevato elementi da verificare."
+              : null,
+          publishedAt: status === "published" ? now : listing.publishedAt,
+          updatedAt: now,
+        }).where(eq(marketplaceListings.id, listing.id)).returning())[0];
+      }),
+
+    reviewListing: protectedProcedure
+      .input(z.object({ listingId: z.number().int().positive(), approved: z.boolean(), reason: z.string().max(2000).optional() }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Solo gli amministratori possono revisionare i listing." });
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+        const target = (await database.select({
+          listing: marketplaceListings,
+          seller: marketplaceSellers,
+        }).from(marketplaceListings)
+          .innerJoin(marketplaceSellers, eq(marketplaceListings.sellerId, marketplaceSellers.id))
+          .where(eq(marketplaceListings.id, input.listingId)).limit(1))[0];
+        if (!target) throw new TRPCError({ code: "NOT_FOUND", message: "Listing non trovato." });
+        if (input.approved && (
+          target.listing.status !== "in_review" ||
+          !target.seller.termsAcceptedAt ||
+          target.seller.termsVersion !== MARKETPLACE_SELLER_TERMS_VERSION ||
+          target.seller.status !== "active"
+        )) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Il listing deve essere in revisione e il venditore deve avere termini aggiornati e Stripe Connect/KYC attivo." });
+        }
+        return (await database.update(marketplaceListings).set({
+          status: input.approved ? "published" : "rejected",
+          rejectionReason: input.approved ? null : (input.reason || "Listing non approvato"),
+          publishedAt: input.approved ? new Date() : null,
+          updatedAt: new Date(),
+        }).where(eq(marketplaceListings.id, input.listingId)).returning())[0] || null;
+      }),
+
+    createPurchase: protectedProcedure
+      .input(z.object({ listingId: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+        const listing = (await database.select().from(marketplaceListings).where(
+          and(eq(marketplaceListings.id, input.listingId), eq(marketplaceListings.status, "published")),
+        ).limit(1))[0];
+        if (!listing) throw new TRPCError({ code: "NOT_FOUND", message: "Listing non trovato" });
+        const seller = (await database.select().from(marketplaceSellers).where(eq(marketplaceSellers.id, listing.sellerId)).limit(1))[0];
+        if (!seller || seller.userId === ctx.user.id) throw new TRPCError({ code: "BAD_REQUEST", message: "Acquisto non disponibile." });
+        if (seller.status !== "active" || !seller.payoutAccountId) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Il venditore non ha completato la verifica dei pagamenti." });
+        }
+        const alreadyPurchased = (await database.select().from(marketplaceOrders).where(and(
+          eq(marketplaceOrders.listingId, listing.id),
+          eq(marketplaceOrders.buyerId, ctx.user.id),
+          eq(marketplaceOrders.status, "paid"),
+        )).limit(1))[0];
+        if (alreadyPurchased) {
+          throw new TRPCError({ code: "CONFLICT", message: "Hai gi? acquistato questo template." });
+        }
+        const commissionCents = Math.round(listing.priceCents * MARKETPLACE_COMMISSION_RATE);
+        const baseUrl = process.env.APP_URL || "http://localhost:3000";
+        const { createCheckoutSession, createCustomer } = await import("./_core/stripe");
+        let customerId = ctx.user.stripeCustomerId;
+        if (!customerId) {
+          customerId = (await createCustomer({ email: ctx.user.email || `user${ctx.user.id}@example.com`, name: ctx.user.name || `User ${ctx.user.id}` })).id;
+          await db.upsertUser({ openId: ctx.user.openId, stripeCustomerId: customerId });
+        }
+        const order = (await database.insert(marketplaceOrders).values({
+          listingId: listing.id,
+          buyerId: ctx.user.id,
+          sellerId: seller.id,
+          grossAmountCents: listing.priceCents,
+          commissionCents,
+          sellerAmountCents: listing.priceCents - commissionCents,
+          status: "pending",
+        }).returning())[0];
+        const session = await createCheckoutSession({
+          customerId,
+          mode: "payment",
+          lineItems: [{ name: listing.title, description: "Marketplace developer listing", amount: listing.priceCents, currency: "eur" }],
+          successUrl: `${baseUrl}/marketplace?purchase=success&orderId=${order.id}`,
+          cancelUrl: `${baseUrl}/marketplace?purchase=cancelled`,
+          metadata: { userId: String(ctx.user.id), kind: "marketplace", listingId: String(listing.id), orderId: String(order.id) },
+        });
+        const payment = await db.createPaymentRecord({
+          userId: ctx.user.id, provider: "stripe", kind: "marketplace", status: "pending",
+          providerPaymentId: session.id, amount: listing.priceCents, currency: "eur",
+          metadata: JSON.stringify({ listingId: listing.id, orderId: order.id }),
+        });
+        if (!payment) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Impossibile registrare il pagamento. Contatta l'assistenza prima di riprovare." });
+        await database.update(marketplaceOrders).set({ paymentRecordId: payment.id }).where(eq(marketplaceOrders.id, order.id));
+        return { checkoutUrl: session.url };
+      }),
+
+    getSellerBalance: protectedProcedure.query(async ({ ctx }) => {
+      const database = await db.getDb();
+      if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+      const seller = (await database.select().from(marketplaceSellers).where(eq(marketplaceSellers.userId, ctx.user.id)).limit(1))[0];
+      if (!seller) return { seller: null, balanceCents: 0, entries: [] };
+      const entries = await database.select().from(marketplaceBalanceEntries).where(eq(marketplaceBalanceEntries.sellerId, seller.id)).orderBy(desc(marketplaceBalanceEntries.createdAt));
+      return { seller, balanceCents: entries.reduce((sum, entry) => sum + entry.amountCents, 0), entries };
+    }),
+
+    listPayoutCandidates: protectedProcedure.query(async ({ ctx }) => {
+      if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Solo gli amministratori possono gestire i payout." });
+      const database = await db.getDb();
+      if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+      const now = new Date();
+      return database.select({
+        entry: marketplaceBalanceEntries,
+        seller: marketplaceSellers,
+      }).from(marketplaceBalanceEntries)
+        .innerJoin(marketplaceSellers, eq(marketplaceBalanceEntries.sellerId, marketplaceSellers.id))
+        .where(and(
+          eq(marketplaceBalanceEntries.type, "sale"),
+          or(
+            eq(marketplaceBalanceEntries.transferStatus, "pending"),
+            and(
+              eq(marketplaceBalanceEntries.transferStatus, "transfer_pending"),
+              isNull(marketplaceBalanceEntries.transferId),
+            ),
+          ),
+          // @ts-ignore Drizzle's timestamp expression typings are incomplete here.
+          marketplaceBalanceEntries.availableAt.lte(now),
+        )).orderBy(desc(marketplaceBalanceEntries.availableAt));
+    }),
+
+    executeSellerPayout: protectedProcedure
+      .input(z.object({ balanceEntryId: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        if (ctx.user.role !== "admin") throw new TRPCError({ code: "FORBIDDEN", message: "Solo gli amministratori possono eseguire payout." });
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+        const result = await database.select({
+          entry: marketplaceBalanceEntries,
+          seller: marketplaceSellers,
+          order: marketplaceOrders,
+        }).from(marketplaceBalanceEntries)
+          .innerJoin(marketplaceSellers, eq(marketplaceBalanceEntries.sellerId, marketplaceSellers.id))
+          .leftJoin(marketplaceOrders, eq(marketplaceBalanceEntries.orderId, marketplaceOrders.id))
+          .where(eq(marketplaceBalanceEntries.id, input.balanceEntryId)).limit(1);
+        const row = result[0];
+        if (!row) throw new TRPCError({ code: "NOT_FOUND", message: "Saldo non trovato" });
+        if (row.entry.type !== "sale" || row.entry.transferStatus !== "pending" || row.entry.transferId) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Questo saldo non ? trasferibile." });
+        }
+        if (!row.entry.availableAt || row.entry.availableAt > new Date()) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Il periodo anti-frode non ? terminato." });
+        }
+        if (row.order?.status !== "paid") throw new TRPCError({ code: "BAD_REQUEST", message: "Ordine non pagato o stornato." });
+        if (!row.seller.payoutAccountId || row.seller.status !== "active") {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Il venditore non ha completato KYC e payout." });
+        }
+        const { createConnectTransfer, getConnectAccount } = await import("./_core/stripe");
+        const account = await getConnectAccount(row.seller.payoutAccountId);
+        if (!account.payouts_enabled || !account.charges_enabled) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Stripe Connect non ? abilitato per questo venditore." });
+        }
+        const claimed = await database.update(marketplaceBalanceEntries).set({
+          transferStatus: "transfer_pending",
+        }).where(and(
+          eq(marketplaceBalanceEntries.id, row.entry.id),
+          or(
+            eq(marketplaceBalanceEntries.transferStatus, "pending"),
+            and(
+              eq(marketplaceBalanceEntries.transferStatus, "transfer_pending"),
+              isNull(marketplaceBalanceEntries.transferId),
+            ),
+          ),
+          isNull(marketplaceBalanceEntries.transferId),
+        )).returning();
+        if (!claimed.length) {
+          throw new TRPCError({ code: "CONFLICT", message: "Questo payout ? gi? in elaborazione o ? stato trasferito." });
+        }
+        let transfer: Awaited<ReturnType<typeof createConnectTransfer>>;
+        try {
+          transfer = await createConnectTransfer({
+            amountCents: row.entry.amountCents,
+            currency: row.entry.currency,
+            destination: row.seller.payoutAccountId,
+            metadata: { balanceEntryId: String(row.entry.id), sellerId: String(row.seller.id), orderId: String(row.entry.orderId || "") },
+          }, `marketplace-payout-${row.entry.id}`);
+        } catch (error) {
+          await database.update(marketplaceBalanceEntries).set({ transferStatus: "pending" })
+            .where(and(
+              eq(marketplaceBalanceEntries.id, row.entry.id),
+              eq(marketplaceBalanceEntries.transferStatus, "transfer_pending"),
+              isNull(marketplaceBalanceEntries.transferId),
+            ));
+          throw error;
+        }
+        const updated = await database.update(marketplaceBalanceEntries).set({
+          transferId: transfer.id,
+          transferStatus: "transfer_pending",
+        }).where(and(
+          eq(marketplaceBalanceEntries.id, row.entry.id),
+          eq(marketplaceBalanceEntries.transferStatus, "transfer_pending"),
+          isNull(marketplaceBalanceEntries.transferId),
+        )).returning();
+        if (!updated.length) {
+          const current = (await database.select().from(marketplaceBalanceEntries)
+            .where(eq(marketplaceBalanceEntries.id, row.entry.id)).limit(1))[0];
+          if (current?.transferId !== transfer.id) {
+            throw new TRPCError({ code: "CONFLICT", message: "Il transfer Stripe ? stato creato, ma il ledger non ? stato aggiornato automaticamente. Contatta l'assistenza prima di ritentare." });
+          }
+        }
+        return { success: true, transferId: transfer.id };
+      }),
+
+    getPurchasedFiles: protectedProcedure
+      .input(z.object({ orderId: z.number().int().positive() }))
+      .query(async ({ ctx, input }) => {
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+        const order = (await database.select().from(marketplaceOrders)
+          .where(and(eq(marketplaceOrders.id, input.orderId), eq(marketplaceOrders.buyerId, ctx.user.id))).limit(1))[0];
+        if (!order || order.status !== "paid") throw new TRPCError({ code: "FORBIDDEN", message: "Acquisto non disponibile." });
+        const listing = (await database.select().from(marketplaceListings)
+          .where(eq(marketplaceListings.id, order.listingId)).limit(1))[0];
+        if (!listing || listing.status !== "published") {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Template non disponibile: la vendita o l'accesso sono stati sospesi." });
+        }
+        const files = await database.select().from(marketplaceListingFiles)
+          .where(eq(marketplaceListingFiles.listingId, order.listingId));
+        const { storageGet } = await import("./storage");
+        return Promise.all(files.map(async (file) => ({
+          ...file,
+          downloadUrl: (await storageGet(file.filePath)).url,
+        })));
+      }),
+
+    getPurchasedContent: protectedProcedure
+      .input(z.object({ orderId: z.number().int().positive() }))
+      .query(async ({ ctx, input }) => {
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+        const order = (await database.select().from(marketplaceOrders)
+          .where(and(
+            eq(marketplaceOrders.id, input.orderId),
+            eq(marketplaceOrders.buyerId, ctx.user.id),
+            eq(marketplaceOrders.status, "paid"),
+          )).limit(1))[0];
+        if (!order) throw new TRPCError({ code: "FORBIDDEN", message: "Il pagamento non ? stato verificato o l'ordine non ? pi? disponibile." });
+        const listing = (await database.select().from(marketplaceListings)
+          .where(eq(marketplaceListings.id, order.listingId)).limit(1))[0];
+        const file = (await database.select().from(marketplaceListingFiles)
+          .where(eq(marketplaceListingFiles.listingId, order.listingId))
+          .orderBy(desc(marketplaceListingFiles.createdAt)).limit(1))[0];
+        if (!listing || listing.status !== "published" || !file) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Template non disponibile: la vendita o l'accesso sono stati sospesi." });
+        }
+        const { storageReadText } = await import("./storage");
+        return {
+          orderId: order.id,
+          title: listing.title,
+          fileName: file.filePath.split("/").pop() || "template.txt",
+          content: await storageReadText(file.filePath),
+        };
+      }),
+
+    submitReview: protectedProcedure
+      .input(z.object({
+        orderId: z.number().int().positive(),
+        rating: z.number().int().min(1).max(5),
+        comment: z.string().trim().max(2000).optional(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+        const order = (await database.select().from(marketplaceOrders).where(and(
+          eq(marketplaceOrders.id, input.orderId),
+          eq(marketplaceOrders.buyerId, ctx.user.id),
+          eq(marketplaceOrders.status, "paid"),
+        )).limit(1))[0];
+        if (!order) throw new TRPCError({ code: "FORBIDDEN", message: "Pu? recensire solo chi ha completato l'acquisto." });
+        const now = new Date();
+        return (await database.insert(marketplaceReviews).values({
+          listingId: order.listingId,
+          orderId: order.id,
+          buyerId: ctx.user.id,
+          rating: input.rating,
+          comment: input.comment || null,
+          createdAt: now,
+          updatedAt: now,
+        }).onConflictDoUpdate({
+          target: marketplaceReviews.orderId,
+          set: { rating: input.rating, comment: input.comment || null, updatedAt: now },
+        }).returning())[0];
+      }),
+
+    openDispute: protectedProcedure
+      .input(z.object({ orderId: z.number().int().positive(), reason: z.string().min(3).max(120), details: z.string().min(10).max(3000) }))
+      .mutation(async ({ ctx, input }) => {
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+        const order = (await database.select().from(marketplaceOrders).where(eq(marketplaceOrders.id, input.orderId)).limit(1))[0];
+        if (!order || order.buyerId !== ctx.user.id) throw new TRPCError({ code: "NOT_FOUND", message: "Ordine non trovato" });
+        return (await database.insert(marketplaceDisputes).values({ ...input, openedByUserId: ctx.user.id }).returning())[0];
       }),
   }),
 

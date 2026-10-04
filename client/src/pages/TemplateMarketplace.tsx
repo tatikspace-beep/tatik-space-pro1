@@ -11,6 +11,7 @@ import { useAuth } from '@/_core/hooks/useAuth';
 import { FREE_TEMPLATES, PREMIUM_TEMPLATES, Template } from '@/data/templates';
 import { trpc } from '@/lib/trpc';
 import { useLocation } from 'wouter';
+import { DeveloperTemplateListings } from '@/components/DeveloperTemplateListings';
 
 // Combine all templates
 const ALL_TEMPLATES: Template[] = [...FREE_TEMPLATES, ...PREMIUM_TEMPLATES];
@@ -205,11 +206,16 @@ export default function TemplateMarketplace() {
                         <p className="text-sm text-muted-foreground mt-1">Scopri template professionali, pronti per la produzione. Filtra, prova e copia il codice con un click.</p>
                     </div>
                     <div className="hidden sm:flex gap-3">
-                        <Button size="sm" className="bg-primary text-primary-foreground">Crea nuovo template</Button>
+                        <div className="flex flex-wrap gap-2">
+                            <Button size="sm" className="bg-primary text-primary-foreground" onClick={() => window.location.assign(user ? "/marketplace/developer" : "/login")}>Vendi il tuo template</Button>
+                            {import.meta.env.DEV && <Button size="sm" variant="outline" onClick={() => window.location.assign("/marketplace/demo")}>Anteprima funzionalità</Button>}
+                        </div>
                         <Button size="sm" variant="outline">Guida</Button>
                     </div>
                 </div>
             </div>
+
+            <DeveloperTemplateListings />
 
             <div className="max-w-7xl mx-auto px-4 py-6 flex gap-6">
                 {/* ── SIDEBAR ── */}

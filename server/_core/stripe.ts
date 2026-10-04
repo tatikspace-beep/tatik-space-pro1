@@ -1,294 +1,213 @@
-// Stripe API wrapper for Tatik.space Pro
-// This file provides integration with Stripe for payment processing
-
-interface Customer {
-  id: string;
-  email: string;
-  name: string;
-}
-
-interface Subscription {
-  id: string;
-  status: 'active' | 'canceled' | 'past_due';
-  currentPeriodEnd: Date;
-}
-
-// Mock Stripe implementation for development
-class MockStripe {
-  private customers: Map<string, Customer> = new Map();
-  private subscriptions: Map<string, Subscription> = new Map();
-
-  constructor() {
-    // Initialize with sample data for development
-    this.setupSampleData();
-  }
-
-  private setupSampleData() {
-    // Sample customer
-    this.customers.set('cus_mock_customer_1', {
-      id: 'cus_mock_customer_1',
-      email: 'user@example.com',
-      name: 'Test User'
-    });
-
-    // Sample subscription
-    this.subscriptions.set('sub_mock_subscription_1', {
-      id: 'sub_mock_subscription_1',
-      status: 'active',
-      currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000) // 30 days from now
-    });
-  }
-
-  async createCustomer({ email, name }: { email: string; name: string }): Promise<Customer> {
-    const id = `cus_mock_${Date.now()}`;
-    const customer: Customer = { id, email, name };
-    this.customers.set(id, customer);
-    return customer;
-  }
-
-  async createCheckoutSession({
-    customerId,
-    priceId,
-    successUrl,
-    cancelUrl,
-  }: {
-    customerId: string;
-    priceId: string;
-    successUrl: string;
-    cancelUrl: string;
-  }) {
-    // Return mock checkout session
-    return {
-      id: `cs_mock_${Date.now()}`,
-      url: successUrl, // In a real implementation, this would be the Stripe checkout URL
-      status: 'open',
-    };
-  }
-
-  async getActiveSubscriptions(customerId: string): Promise<Subscription[]> {
-    const subs: Subscription[] = [];
-    for (const [_, sub] of this.subscriptions) {
-      if (sub.status === 'active') {
-        subs.push(sub);
-      }
-    }
-    return subs;
-  }
-
-  async cancelSubscription(subscriptionId: string): Promise<Subscription> {
-    const sub = this.subscriptions.get(subscriptionId);
-    if (!sub) {
-      throw new Error('Subscription not found');
-    }
-    sub.status = 'canceled';
-    return sub;
-  }
-
-  async createProduct({
-    name,
-    description,
-  }: {
-    name: string;
-    description: string;
-  }) {
-    return {
-      id: `prod_mock_${Date.now()}`,
-      name,
-      description,
-    };
-  }
-
-  async createPrice({
-    productId,
-    unitAmount,
-    currency = 'eur',
-    recurringInterval = 'month',
-  }: {
-    productId: string;
-    unitAmount: number;
-    currency?: string;
-    recurringInterval?: 'day' | 'week' | 'month' | 'year';
-  }) {
-    return {
-      id: `price_mock_${Date.now()}`,
-      product: productId,
-      unit_amount: unitAmount,
-      currency,
-      recurring: {
-        interval: recurringInterval,
-      },
-    };
-  }
-}
-
-// Initialize Stripe based on environment
-let stripe: MockStripe | null = null;
-
-if (process.env.NODE_ENV === 'development' || !process.env.STRIPE_SECRET_KEY) {
-  console.warn('[Stripe] Running in development mode with mock implementation');
-  stripe = new MockStripe();
-} else if (process.env.STRIPE_SECRET_KEY) {
-  // In production, we would initialize the real Stripe client
-  // import Stripe from 'stripe';
-  // stripe = new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: '2024-11-20.acacia' });
-  console.log('[Stripe] Production mode - real Stripe client would be initialized here');
-  stripe = new MockStripe(); // Using mock for now until Stripe is properly installed
-} else {
-  console.warn('[Stripe] Missing STRIPE_SECRET_KEY. Payment functionality will be disabled.');
-}
-
-export { stripe };
+import Stripe from "stripe";
 
 /**
- * Create a checkout session for a customer
+ * Stripe is intentionally not mocked. Payment code must fail closed when the
+ * server has not been configured, rather than granting access locally.
  */
-export async function createCheckoutSession({
-  customerId,
-  priceId,
-  successUrl,
-  cancelUrl,
-}: {
-  customerId: string;
-  priceId: string;
+export const stripe: Stripe | null = process.env.STRIPE_SECRET_KEY
+  ? new Stripe(process.env.STRIPE_SECRET_KEY)
+  : null;
+
+export function requireStripe(): Stripe {
+  if (!stripe) {
+    throw new Error("Stripe is not configured. Set STRIPE_SECRET_KEY.");
+  }
+  return stripe;
+}
+
+export async function createCustomer(input: { email: string; name: string }) {
+  return requireStripe().customers.create({
+    email: input.email,
+    name: input.name,
+  });
+}
+
+export async function createExpressConnectAccount(input: { email?: string; country?: string }) {
+  return requireStripe().accounts.create({
+    type: "express",
+    ...(input.email ? { email: input.email } : {}),
+    country: input.country || "IT",
+    capabilities: {
+      card_payments: { requested: true },
+      transfers: { requested: true },
+    },
+  });
+}
+
+export async function createConnectAccountLink(input: {
+  accountId: string;
+  refreshUrl: string;
+  returnUrl: string;
+}) {
+  return requireStripe().accountLinks.create({
+    account: input.accountId,
+    type: "account_onboarding",
+    refresh_url: input.refreshUrl,
+    return_url: input.returnUrl,
+  });
+}
+
+export async function getConnectAccount(accountId: string) {
+  return requireStripe().accounts.retrieve(accountId);
+}
+
+export async function createConnectTransfer(input: {
+  amountCents: number;
+  currency: string;
+  destination: string;
+  metadata: Record<string, string>;
+}, idempotencyKey: string) {
+  if (!Number.isInteger(input.amountCents) || input.amountCents <= 0) {
+    throw new Error("Transfer amount must be a positive integer");
+  }
+  return requireStripe().transfers.create(
+    {
+      amount: input.amountCents,
+      currency: input.currency,
+      destination: input.destination,
+      metadata: input.metadata,
+    },
+    { idempotencyKey },
+  );
+}
+
+export type CheckoutLineItem = {
+  price?: string;
+  name?: string;
+  description?: string;
+  amount?: number;
+  currency?: string;
+  quantity?: number;
+};
+
+export async function createCheckoutSession(input: {
+  customerId?: string;
+  customerEmail?: string;
+  priceId?: string;
+  lineItems?: CheckoutLineItem[];
+  mode?: "payment" | "subscription";
   successUrl: string;
   cancelUrl: string;
+  metadata?: Record<string, string>;
 }) {
-  if (!stripe) {
-    throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
+  const client = requireStripe();
+  const mode = input.mode || (input.priceId ? "subscription" : "payment");
+  const lineItems = input.priceId
+    ? [{ price: input.priceId, quantity: 1 }]
+    : (input.lineItems || []).map(item => ({
+      quantity: item.quantity || 1,
+      ...(item.price
+        ? { price: item.price }
+        : {
+          price_data: {
+            currency: item.currency || "eur",
+            unit_amount: Math.max(0, Math.round(item.amount || 0)),
+            product_data: {
+              name: item.name || "Tatik.space payment",
+              ...(item.description ? { description: item.description } : {}),
+            },
+          },
+        }),
+    }));
+
+  if (!lineItems.length) {
+    throw new Error("At least one Stripe checkout line item is required");
   }
 
-  try {
-    const session = await stripe.createCheckoutSession({
-      customerId,
-      priceId,
-      successUrl,
-      cancelUrl,
-    });
-
-    return session;
-  } catch (error) {
-    console.error('[Stripe] Error creating checkout session:', error);
-    throw error;
-  }
+  return client.checkout.sessions.create({
+    mode,
+    line_items: lineItems as Stripe.Checkout.SessionCreateParams.LineItem[],
+    ...(input.customerId ? { customer: input.customerId } : {}),
+    ...(!input.customerId && input.customerEmail ? { customer_email: input.customerEmail } : {}),
+    success_url: input.successUrl,
+    cancel_url: input.cancelUrl,
+    ...(input.metadata ? {
+      metadata: input.metadata,
+      ...(mode === "subscription" ? { subscription_data: { metadata: input.metadata } } : {}),
+    } : {}),
+    ...(mode === "payment" ? { payment_method_collection: "if_required" } : {}),
+  });
 }
 
-/**
- * Create a customer in Stripe
- */
-export async function createCustomer({
-  email,
-  name,
-}: {
-  email: string;
-  name: string;
-}) {
-  if (!stripe) {
-    throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
-  }
-
-  try {
-    const customer = await stripe.createCustomer({
-      email,
-      name,
-    });
-
-    return customer;
-  } catch (error) {
-    console.error('[Stripe] Error creating customer:', error);
-    throw error;
-  }
-}
-
-/**
- * Get a customer's active subscriptions
- */
 export async function getActiveSubscriptions(customerId: string) {
-  if (!stripe) {
-    throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
-  }
-
-  try {
-    const subscriptions = await stripe.getActiveSubscriptions(customerId);
-    return subscriptions;
-  } catch (error) {
-    console.error('[Stripe] Error fetching subscriptions:', error);
-    throw error;
-  }
+  const result = await requireStripe().subscriptions.list({
+    customer: customerId,
+    status: "active",
+    limit: 100,
+  });
+  return result.data;
 }
 
-/**
- * Cancel a subscription
- */
-export async function cancelSubscription(subscriptionId: string) {
-  if (!stripe) {
-    throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
-  }
-
-  try {
-    const subscription = await stripe.cancelSubscription(subscriptionId);
-    return subscription;
-  } catch (error) {
-    console.error('[Stripe] Error cancelling subscription:', error);
-    throw error;
-  }
+export async function cancelSubscription(subscriptionId: string, immediately = false) {
+  const client = requireStripe();
+  if (immediately) return client.subscriptions.cancel(subscriptionId);
+  return client.subscriptions.update(subscriptionId, { cancel_at_period_end: true });
 }
 
-/**
- * Create a product in Stripe (for testing purposes)
- */
-export async function createProduct({
-  name,
-  description,
-}: {
-  name: string;
-  description: string;
-}) {
-  if (!stripe) {
-    throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
-  }
+export async function moveSubscriptionToPrice(subscriptionId: string, priceId: string) {
+  const client = requireStripe();
+  const subscription = await client.subscriptions.retrieve(subscriptionId);
+  const item = subscription.items.data[0];
+  if (!item || item.price.id === priceId) return subscription;
 
-  try {
-    const product = await stripe.createProduct({
-      name,
-      description,
-    });
-
-    return product;
-  } catch (error) {
-    console.error('[Stripe] Error creating product:', error);
-    throw error;
-  }
+  return client.subscriptionItems.update(item.id, {
+    price: priceId,
+    proration_behavior: "none",
+  });
 }
 
-/**
- * Create a price for a product (for testing purposes)
- */
-export async function createPrice({
-  productId,
-  unitAmount,
-  currency = 'eur',
-  recurringInterval = 'month',
-}: {
+export async function addCustomerCredit(customerId: string, amountInCents: number, description: string) {
+  if (amountInCents <= 0) throw new Error("Customer credit must be greater than zero");
+  return requireStripe().customers.createBalanceTransaction(customerId, {
+    amount: -amountInCents,
+    currency: "eur",
+    description,
+  });
+}
+
+export async function addSubscriptionInvoiceCredit(
+  customerId: string,
+  subscriptionId: string,
+  amountInCents: number,
+  description: string,
+) {
+  if (amountInCents <= 0) throw new Error("Subscription credit must be greater than zero");
+  return requireStripe().invoiceItems.create({
+    customer: customerId,
+    subscription: subscriptionId,
+    amount: -amountInCents,
+    currency: "eur",
+    description,
+  });
+}
+
+export async function refundPayment(paymentIntentId: string, amount?: number, idempotencyKey?: string) {
+  return requireStripe().refunds.create({
+    payment_intent: paymentIntentId,
+    ...(amount ? { amount } : {}),
+  }, idempotencyKey ? { idempotencyKey } : undefined);
+}
+
+export async function createProduct(input: { name: string; description: string }) {
+  return requireStripe().products.create(input);
+}
+
+export async function createPrice(input: {
   productId: string;
-  unitAmount: number; // Amount in cents
+  unitAmount: number;
   currency?: string;
-  recurringInterval?: 'day' | 'week' | 'month' | 'year';
+  recurringInterval?: "day" | "week" | "month" | "year";
 }) {
-  if (!stripe) {
-    throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY environment variable.');
-  }
+  return requireStripe().prices.create({
+    product: input.productId,
+    unit_amount: input.unitAmount,
+    currency: input.currency || "eur",
+    recurring: { interval: input.recurringInterval || "month" },
+  });
+}
 
-  try {
-    const price = await stripe.createPrice({
-      productId,
-      unitAmount,
-      currency,
-      recurringInterval,
-    });
-
-    return price;
-  } catch (error) {
-    console.error('[Stripe] Error creating price:', error);
-    throw error;
-  }
+export function constructWebhookEvent(payload: string | Buffer, signature: string) {
+  const secret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!secret) throw new Error("Stripe webhook is not configured");
+  return requireStripe().webhooks.constructEvent(payload, signature, secret);
 }

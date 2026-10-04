@@ -1,7 +1,7 @@
 import { desc, eq, and, gte, lte, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
-import { InsertUser, users, backups, InsertBackup, projects, files, InsertProject, InsertFile, twoFactorSettings, InsertTwoFactorSettings, contactMessages, InsertContactMessage, cookieConsents, InsertCookieConsent, bannerAdditions, InsertBannerAddition, subscriptions, InsertSubscription, subscriptionDiscounts, InsertSubscriptionDiscount, monetizationEarnings, InsertMonetizationEarning } from "../drizzle/schema";
+import { InsertUser, users, backups, InsertBackup, projects, files, InsertProject, InsertFile, twoFactorSettings, InsertTwoFactorSettings, contactMessages, InsertContactMessage, cookieConsents, InsertCookieConsent, bannerAdditions, InsertBannerAddition, subscriptions, InsertSubscription, subscriptionDiscounts, InsertSubscriptionDiscount, monetizationEarnings, InsertMonetizationEarning, paymentRecords, InsertPaymentRecord, templatePurchases } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { normalizeEmail } from "./auth-utils";
 
@@ -541,6 +541,92 @@ export async function createSubscriptionDiscount(data: InsertSubscriptionDiscoun
 
   const result = await db.insert(subscriptionDiscounts).values(data).returning();
   return result.length > 0 ? result[0] : null;
+}
+
+// ============ PAYMENT HELPERS ============
+
+export async function createPaymentRecord(data: InsertPaymentRecord) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.insert(paymentRecords).values(data).returning();
+  return result[0] || null;
+}
+
+export async function getPaymentRecordByProviderEvent(provider: string, providerEventId: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(paymentRecords).where(and(
+    eq(paymentRecords.provider, provider),
+    eq(paymentRecords.providerEventId, providerEventId),
+  )).limit(1);
+  return result[0] || null;
+}
+
+export async function getPaymentRecordByProviderOrder(provider: string, providerOrderId: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(paymentRecords).where(and(
+    eq(paymentRecords.provider, provider),
+    eq(paymentRecords.providerOrderId, providerOrderId),
+  )).limit(1);
+  return result[0] || null;
+}
+
+export async function getPaymentRecordByProviderPayment(provider: string, providerPaymentId: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(paymentRecords).where(and(
+    eq(paymentRecords.provider, provider),
+    eq(paymentRecords.providerPaymentId, providerPaymentId),
+  )).limit(1);
+  return result[0] || null;
+}
+
+export async function updatePaymentRecord(paymentId: number, data: Partial<InsertPaymentRecord>) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.update(paymentRecords)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(paymentRecords.id, paymentId))
+    .returning();
+  return result[0] || null;
+}
+
+export async function getSubscriptionByStripeId(stripeSubscriptionId: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(subscriptions)
+    .where(eq(subscriptions.stripeSubscriptionId, stripeSubscriptionId))
+    .limit(1);
+  return result[0] || null;
+}
+
+export async function grantTemplateAccess(input: {
+  userId: number;
+  templateId: string;
+  price: string;
+  paymentRecordId: number;
+  providerPaymentId?: string | null;
+}) {
+  const db = await getDb();
+  if (!db) return null;
+  const existing = await db.select().from(templatePurchases)
+    .where(eq(templatePurchases.paymentRecordId, input.paymentRecordId))
+    .limit(1);
+  if (existing[0]) return existing[0];
+
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+  const result = await db.insert(templatePurchases).values({
+    userId: input.userId,
+    templateId: input.templateId,
+    purchasedAt: now,
+    expiresAt,
+    price: input.price,
+    stripePaymentIntentId: input.providerPaymentId || null,
+    paymentRecordId: input.paymentRecordId,
+  }).returning();
+  return result[0] || null;
 }
 
 export async function getThemePreference(userId: number) {

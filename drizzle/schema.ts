@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp, varchar, integer, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, varchar, integer, pgEnum, uniqueIndex, index } from "drizzle-orm/pg-core";
 
 /**
  * Core user table backing auth flow.
@@ -226,9 +226,163 @@ export const templatePurchases = pgTable("template_purchases", {
   expiresAt: timestamp("expiresAt").notNull(), // 30 days from purchase
   price: text("price").notNull(), // €amount
   stripePaymentIntentId: varchar("stripePaymentIntentId", { length: 255 }),
+  paymentRecordId: integer("paymentRecordId"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
 });
 
 export type TemplatePurchase = typeof templatePurchases.$inferSelect;
 export type InsertTemplatePurchase = typeof templatePurchases.$inferInsert;
+
+/**
+ * Payment ledger. A record is created before redirecting to a provider and is
+ * marked paid only by a verified provider callback/capture response.
+ */
+export const paymentRecords = pgTable("payment_records", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  provider: varchar("provider", { length: 32 }).notNull(), // stripe|paypal
+  kind: varchar("kind", { length: 32 }).notNull(), // subscription|template
+  status: varchar("status", { length: 32 }).notNull().default("pending"), // pending|paid|failed|refunded|cancelled
+  providerPaymentId: varchar("providerPaymentId", { length: 255 }),
+  providerOrderId: varchar("providerOrderId", { length: 255 }),
+  providerEventId: varchar("providerEventId", { length: 255 }),
+  templateId: varchar("templateId", { length: 255 }),
+  amount: integer("amount"), // minor units
+  currency: varchar("currency", { length: 3 }).default("eur"),
+  metadata: text("metadata"), // JSON
+  verifiedAt: timestamp("verifiedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, (table) => ({
+  providerEventIdx: uniqueIndex("payment_records_provider_event_idx").on(table.provider, table.providerEventId),
+  providerPaymentIdx: index("payment_records_provider_payment_idx").on(table.provider, table.providerPaymentId),
+  providerOrderIdx: uniqueIndex("payment_records_provider_order_idx").on(table.provider, table.providerOrderId),
+  userStatusIdx: index("payment_records_user_status_idx").on(table.userId, table.status),
+}));
+
+export type PaymentRecord = typeof paymentRecords.$inferSelect;
+export type InsertPaymentRecord = typeof paymentRecords.$inferInsert;
+
+/**
+ * Developer marketplace. Listing source files are kept in private storage and
+ * are only released after a verified order.
+ */
+export const marketplaceSellers = pgTable("marketplace_sellers", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),
+  displayName: varchar("displayName", { length: 120 }).notNull(),
+  bio: text("bio"),
+  websiteUrl: varchar("websiteUrl", { length: 500 }),
+  payoutProvider: varchar("payoutProvider", { length: 32 }),
+  payoutAccountId: varchar("payoutAccountId", { length: 255 }),
+  termsAcceptedAt: timestamp("termsAcceptedAt"),
+  termsVersion: varchar("termsVersion", { length: 32 }),
+  status: varchar("status", { length: 32 }).notNull().default("pending"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+export type MarketplaceSeller = typeof marketplaceSellers.$inferSelect;
+export type InsertMarketplaceSeller = typeof marketplaceSellers.$inferInsert;
+
+export const marketplaceListings = pgTable("marketplace_listings", {
+  id: serial("id").primaryKey(),
+  sellerId: integer("sellerId").notNull().references(() => marketplaceSellers.id, { onDelete: "cascade" }),
+  slug: varchar("slug", { length: 160 }).notNull().unique(),
+  title: varchar("title", { length: 160 }).notNull(),
+  description: text("description").notNull(),
+  category: varchar("category", { length: 80 }).notNull(),
+  priceCents: integer("priceCents").notNull(),
+  currency: varchar("currency", { length: 3 }).notNull().default("eur"),
+  status: varchar("status", { length: 32 }).notNull().default("draft"),
+  rejectionReason: text("rejectionReason"),
+  scanStatus: varchar("scanStatus", { length: 32 }).notNull().default("not_scanned"),
+  scanReport: text("scanReport"),
+  scannedAt: timestamp("scannedAt"),
+  moderationReason: text("moderationReason"),
+  moderatedAt: timestamp("moderatedAt"),
+  moderatedBy: integer("moderatedBy").references(() => users.id, { onDelete: "set null" }),
+  publishedAt: timestamp("publishedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+export type MarketplaceListing = typeof marketplaceListings.$inferSelect;
+export type InsertMarketplaceListing = typeof marketplaceListings.$inferInsert;
+
+export const marketplaceListingFiles = pgTable("marketplace_listing_files", {
+  id: serial("id").primaryKey(),
+  listingId: integer("listingId").notNull().references(() => marketplaceListings.id, { onDelete: "cascade" }),
+  filePath: varchar("filePath", { length: 500 }).notNull(),
+  contentType: varchar("contentType", { length: 120 }).notNull(),
+  sizeBytes: integer("sizeBytes").notNull(),
+  checksum: varchar("checksum", { length: 128 }).notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type MarketplaceListingFile = typeof marketplaceListingFiles.$inferSelect;
+export type InsertMarketplaceListingFile = typeof marketplaceListingFiles.$inferInsert;
+
+export const marketplaceOrders = pgTable("marketplace_orders", {
+  id: serial("id").primaryKey(),
+  listingId: integer("listingId").notNull().references(() => marketplaceListings.id),
+  buyerId: integer("buyerId").notNull().references(() => users.id),
+  sellerId: integer("sellerId").notNull().references(() => marketplaceSellers.id),
+  paymentRecordId: integer("paymentRecordId").references(() => paymentRecords.id, { onDelete: "set null" }),
+  grossAmountCents: integer("grossAmountCents").notNull(),
+  commissionCents: integer("commissionCents").notNull(),
+  sellerAmountCents: integer("sellerAmountCents").notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("pending"),
+  refundedAt: timestamp("refundedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+});
+export type MarketplaceOrder = typeof marketplaceOrders.$inferSelect;
+export type InsertMarketplaceOrder = typeof marketplaceOrders.$inferInsert;
+
+export const marketplaceReviews = pgTable("marketplace_reviews", {
+  id: serial("id").primaryKey(),
+  listingId: integer("listingId").notNull().references(() => marketplaceListings.id, { onDelete: "cascade" }),
+  orderId: integer("orderId").notNull().references(() => marketplaceOrders.id, { onDelete: "cascade" }).unique(),
+  buyerId: integer("buyerId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  rating: integer("rating").notNull(),
+  comment: text("comment"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, (table) => ({
+  listingIdx: index("marketplace_reviews_listing_idx").on(table.listingId),
+}));
+export type MarketplaceReview = typeof marketplaceReviews.$inferSelect;
+export type InsertMarketplaceReview = typeof marketplaceReviews.$inferInsert;
+
+export const marketplaceBalanceEntries = pgTable("marketplace_balance_entries", {
+  id: serial("id").primaryKey(),
+  sellerId: integer("sellerId").notNull().references(() => marketplaceSellers.id, { onDelete: "cascade" }),
+  orderId: integer("orderId").references(() => marketplaceOrders.id, { onDelete: "set null" }),
+  type: varchar("type", { length: 32 }).notNull(),
+  amountCents: integer("amountCents").notNull(),
+  currency: varchar("currency", { length: 3 }).notNull().default("eur"),
+  availableAt: timestamp("availableAt"),
+  transferId: varchar("transferId", { length: 255 }),
+  transferStatus: varchar("transferStatus", { length: 32 }).notNull().default("pending"),
+  transferredAt: timestamp("transferredAt"),
+  transferEventId: varchar("transferEventId", { length: 255 }),
+  note: text("note"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  orderTypeUnique: uniqueIndex("marketplace_balance_order_type_idx").on(table.orderId, table.type),
+}));
+export type MarketplaceBalanceEntry = typeof marketplaceBalanceEntries.$inferSelect;
+export type InsertMarketplaceBalanceEntry = typeof marketplaceBalanceEntries.$inferInsert;
+
+export const marketplaceDisputes = pgTable("marketplace_disputes", {
+  id: serial("id").primaryKey(),
+  orderId: integer("orderId").notNull().references(() => marketplaceOrders.id, { onDelete: "cascade" }),
+  openedByUserId: integer("openedByUserId").notNull().references(() => users.id),
+  reason: varchar("reason", { length: 120 }).notNull(),
+  details: text("details").notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("open"),
+  resolution: text("resolution"),
+  resolvedAt: timestamp("resolvedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+export type MarketplaceDispute = typeof marketplaceDisputes.$inferSelect;
+export type InsertMarketplaceDispute = typeof marketplaceDisputes.$inferInsert;

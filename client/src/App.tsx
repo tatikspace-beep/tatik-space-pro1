@@ -23,6 +23,7 @@ import AccessLink from "./pages/AccessLink";
 import { PrivacyPolicy, TermsOfService, CookiePolicy, ContactPage } from "./pages/LegalPages";
 import ProfilePage from "./pages/ProfilePage";
 import TemplateMarketplace from "./pages/TemplateMarketplace";
+import DeveloperMarketplace from "./pages/DeveloperMarketplace";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink } from "@trpc/client";
 import { trpc } from "./lib/trpc";
@@ -51,6 +52,7 @@ function Router() {
       <Route path={"/access"} component={AccessLink} />
       <Route path={"/profile"} component={ProfilePage} />
       <Route path={"/marketplace"} component={TemplateMarketplace} />
+      <Route path={"/marketplace/developer"} component={DeveloperMarketplace} />
       <Route path={"/files"} component={Files} />
       <Route path={"/templates"} component={Templates} />
       <Route path={"/collaboration"} component={Collaboration} />
