@@ -4,6 +4,7 @@ on:
   push:
     branches: [ main ]
     paths:
+      - 'client/**'
       - 'server/**'
       - 'api/**'
       - 'package.json'

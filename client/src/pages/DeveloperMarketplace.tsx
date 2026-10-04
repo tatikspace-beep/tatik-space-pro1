@@ -267,6 +267,7 @@ export default function DeveloperMarketplace() {
             <Input placeholder="Nome pubblico" value={profile.displayName} onChange={(e) => setProfile({ ...profile, displayName: e.target.value })} />
             <Textarea placeholder="Descrizione del profilo" value={profile.bio} onChange={(e) => setProfile({ ...profile, bio: e.target.value })} />
             <Input placeholder="Sito web (facoltativo, es. esempio.it)" value={profile.websiteUrl} onChange={(e) => setProfile({ ...profile, websiteUrl: e.target.value })} />
+            <p className="text-xs text-muted-foreground">Se inserisci un dominio senza protocollo, verrà usato HTTPS.</p>
             <div className="rounded border p-3 space-y-2">
               <p className="text-xs text-muted-foreground">{termsQuery.data?.terms.join(" ")}</p>
               <label className="flex items-start gap-2 text-sm">
