@@ -5,9 +5,13 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
+import { getLoginUrl } from "@/const";
 
 export default function SchoolProgram() {
-  const { user, loading } = useAuth({ redirectOnUnauthenticated: true });
+  const { user, loading } = useAuth({
+    redirectOnUnauthenticated: true,
+    redirectPath: `${getLoginUrl()}?next=${encodeURIComponent("/schools")}`,
+  });
   const [school, setSchool] = useState({ institutionName: "", institutionEmail: "" });
   const [studentEmail, setStudentEmail] = useState("");
   const [termsAccepted, setTermsAccepted] = useState(false);

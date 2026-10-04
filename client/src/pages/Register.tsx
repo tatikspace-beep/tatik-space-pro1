@@ -7,11 +7,13 @@ import { Label } from '@/components/ui/label';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { safeReturnPath } from '@shared/authRedirect';
 
 export default function Register() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const { t } = useLanguage();
+  const returnTo = safeReturnPath(new URLSearchParams(window.location.search).get('next'));
 
   const requestRegistrationMutation = trpc.auth.requestRegistration.useMutation({
     onSuccess: () => {
@@ -25,7 +27,7 @@ export default function Register() {
   const handleRegister = (e: React.FormEvent) => {
     e.preventDefault();
 
-    requestRegistrationMutation.mutate({ email, name });
+    requestRegistrationMutation.mutate({ email, name, redirectTo: returnTo });
   };
 
   return (
@@ -76,7 +78,7 @@ export default function Register() {
 
             <div className="mt-4 text-center text-sm">
               {t.alreadyHaveAccount}{' '}
-              <Link to="/login" className="text-primary hover:underline">
+              <Link to={`/login?next=${encodeURIComponent(returnTo)}`} className="text-primary hover:underline">
                 {t.login}
               </Link>
             </div>

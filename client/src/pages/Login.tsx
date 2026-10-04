@@ -7,10 +7,12 @@ import { Label } from '@/components/ui/label';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { safeReturnPath } from '@shared/authRedirect';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const { t } = useLanguage();
+  const returnTo = safeReturnPath(new URLSearchParams(window.location.search).get('next'));
 
   const accessCodeMutation = trpc.auth.requestAccessCode.useMutation({
     onSuccess: () => toast.success('Se l’e-mail è registrata, riceverai un link valido per 10 minuti.'),
@@ -19,7 +21,7 @@ export default function Login() {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    accessCodeMutation.mutate({ email });
+    accessCodeMutation.mutate({ email, redirectTo: returnTo });
   };
 
   return (
@@ -58,7 +60,7 @@ export default function Login() {
 
             <div className="mt-4 text-center text-sm">
               {t.dontHaveAccount}{' '}
-              <Link to="/register" className="text-primary hover:underline">
+              <Link to={`/register?next=${encodeURIComponent(returnTo)}`} className="text-primary hover:underline">
                 {t.register}
               </Link>
             </div>

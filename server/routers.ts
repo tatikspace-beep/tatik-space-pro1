@@ -1,3 +1,4 @@
+import { safeReturnPath } from "../shared/authRedirect";
 import { COOKIE_NAME } from "../shared/const";
 
 console.log("[Server] Routers loaded - using relative imports (cache bust - no errors)...");
@@ -295,7 +296,7 @@ export const appRouter = router({
     // New flow: request registration token by email. Server creates or upserts a user record
     // and sends a time-limited token (logged here) valid for 10 minutes.
     requestRegistration: publicProcedure
-      .input(z.object({ email: z.string().email(), name: z.string().optional() }))
+      .input(z.object({ email: z.string().email(), name: z.string().optional(), redirectTo: z.string().max(2048).optional() }))
       .mutation(async ({ input }) => {
         try {
           const normalizedEmail = normalizeEmail(input.email);
@@ -319,7 +320,8 @@ export const appRouter = router({
           const token = crypto.randomBytes(32).toString('hex');
           registrationTokens.set(token, { userId: user?.id, email: normalizedEmail, name: input.name, purpose: 'registration', expires: Date.now() + 1000 * 60 * 10 });
 
-          const link = `${authBaseUrl()}/complete-registration?token=${token}`;
+          const returnTo = safeReturnPath(input.redirectTo);
+          const link = `${authBaseUrl()}/complete-registration?token=${encodeURIComponent(token)}&next=${encodeURIComponent(returnTo)}`;
           await sendAuthEmail(
             normalizedEmail,
             'Complete your Tatik Space registration',
@@ -354,13 +356,14 @@ export const appRouter = router({
       }),
 
     requestAccessCode: publicProcedure
-      .input(z.object({ email: z.string().trim().email() }))
+      .input(z.object({ email: z.string().trim().email(), redirectTo: z.string().max(2048).optional() }))
       .mutation(async ({ input }) => {
         const normalizedEmail = normalizeEmail(input.email);
         const user = await db.getUserByEmail(normalizedEmail);
         if (user) {
           const token = await createSignedEmailAccessToken(normalizedEmail);
-          const link = `${authBaseUrl()}/access?token=${encodeURIComponent(token)}`;
+          const returnTo = safeReturnPath(input.redirectTo);
+          const link = `${authBaseUrl()}/access?token=${encodeURIComponent(token)}&next=${encodeURIComponent(returnTo)}`;
           await sendAuthEmail(normalizedEmail, 'Your Tatik Space access link', `Open this link within 10 minutes to access your account:\n${link}`);
         }
         return { success: true };

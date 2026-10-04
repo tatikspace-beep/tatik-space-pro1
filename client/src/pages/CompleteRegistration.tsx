@@ -4,16 +4,19 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { safeReturnPath } from '@shared/authRedirect';
 import { toast } from 'sonner';
 import { trpc } from '@/lib/trpc';
 
 export default function CompleteRegistration() {
     const [, navigate] = useLocation();
-    const token = new URLSearchParams(window.location.search).get('token') || '';
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('token') || '';
+    const returnTo = safeReturnPath(params.get('next'));
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const mutation = trpc.auth.completeRegistration.useMutation({
-        onSuccess: () => { toast.success('Registrazione completata'); navigate('/editor'); },
+        onSuccess: () => { toast.success('Registrazione completata'); navigate(returnTo); },
         onError: (error) => toast.error(error.message),
     });
 
