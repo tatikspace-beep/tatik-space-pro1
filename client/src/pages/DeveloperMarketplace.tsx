@@ -19,6 +19,8 @@ function slugify(value: string) {
     .slice(0, 160);
 }
 
+const MAX_LISTING_DESCRIPTION_LENGTH = 10_000;
+
 function normalizeWebsiteUrl(value: string): string | undefined | null {
   const trimmed = value.trim();
   if (!trimmed) return undefined;
@@ -218,13 +220,20 @@ export default function DeveloperMarketplace() {
       accepted: true,
     });
   };
-  const create = () => createListing.mutate({
-    title: listing.title,
-    description: listing.description,
-    category: listing.category,
-    slug: listing.slug,
-    priceCents: Math.round(Number(listing.price) * 100),
-  });
+  const create = () => {
+    const descriptionLength = listing.description.trim().length;
+    if (descriptionLength < 20 || descriptionLength > MAX_LISTING_DESCRIPTION_LENGTH) {
+      toast.error("La descrizione deve contenere da 20 a 10.000 caratteri.");
+      return;
+    }
+    createListing.mutate({
+      title: listing.title,
+      description: listing.description,
+      category: listing.category,
+      slug: listing.slug,
+      priceCents: Math.round(Number(listing.price) * 100),
+    });
+  };
   const upload = async () => {
     if (!createdListingId) return;
     if (!file && !sourceContent.trim()) {
@@ -294,7 +303,15 @@ export default function DeveloperMarketplace() {
           <CardHeader><CardTitle>Nuovo listing</CardTitle><CardDescription>Incolla il codice oppure trasferisci il file aperto nell'editor. Ogni invio viene controllato automaticamente: i file senza segnali sospetti sono pubblicati subito, quelli dubbi sono trattenuti e quelli pericolosi bloccati. I controlli non certificano la conformità legale.</CardDescription></CardHeader>
           <CardContent className="space-y-3">
             <Input placeholder="Titolo" value={listing.title} onChange={(e) => setListing({ ...listing, title: e.target.value, slug: slugify(e.target.value) })} />
-            <Textarea placeholder="Descrizione (minimo 20 caratteri)" onChange={(e) => setListing({ ...listing, description: e.target.value })} />
+            <Textarea
+              placeholder="Descrizione (20–10.000 caratteri)"
+              value={listing.description}
+              maxLength={MAX_LISTING_DESCRIPTION_LENGTH}
+              onChange={(e) => setListing({ ...listing, description: e.target.value })}
+            />
+            <p className="text-xs text-muted-foreground text-right">
+              {listing.description.length.toLocaleString("it-IT")}/{MAX_LISTING_DESCRIPTION_LENGTH.toLocaleString("it-IT")} caratteri (minimo 20)
+            </p>
             <div className="grid md:grid-cols-3 gap-3">
               <Input placeholder="Categoria" value={listing.category} onChange={(e) => setListing({ ...listing, category: e.target.value })} />
               <Input placeholder="Slug URL" value={listing.slug} onChange={(e) => setListing({ ...listing, slug: slugify(e.target.value) })} />
