@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "http";
 
-import { enhanceVercelResponse, resolveResponse } from "./_server-bundle.cjs";
+import { enhanceVercelResponse, ensureRequestBody, resolveResponse } from "./_server-bundle.cjs";
 
 function sendJson(res: ServerResponse, status: number, data: any) {
     if ((res as any).json) {
@@ -24,18 +24,6 @@ function applyCorsHeaders(res: ServerResponse, req: IncomingMessage) {
         "Content-Type,Authorization,X-Requested-With,X-TRPC-BATCH,X-TRPC-TRAILER"
     );
     res.setHeader("Access-Control-Allow-Credentials", "true");
-}
-
-async function ensureRequestBody(req: IncomingMessage) {
-    const request = req as IncomingMessage & { body?: unknown };
-    if (request.body !== undefined || req.method === "GET" || req.method === "HEAD") return;
-    if (req.readableEnded) return;
-
-    const chunks: Buffer[] = [];
-    for await (const chunk of req) {
-        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    }
-    request.body = Buffer.concat(chunks).toString("utf8");
 }
 
 export default async (req: IncomingMessage, res: ServerResponse) => {
