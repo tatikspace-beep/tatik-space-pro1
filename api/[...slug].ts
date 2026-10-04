@@ -1,7 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "http";
-import { resolveResponse } from "@trpc/server/unstable-core-do-not-import";
 
-import { enhanceVercelResponse } from "./_vercel-response";
+import { enhanceVercelResponse, resolveResponse } from "./_server-bundle.cjs";
 
 function sendJson(res: ServerResponse, status: number, data: any) {
     if ((res as any).json) {
@@ -61,8 +60,7 @@ export default async (req: IncomingMessage, res: ServerResponse) => {
 
         // Import and run tRPC handler
         try {
-            const { appRouter } = await import("../server/routers");
-            const { createContext } = await import("../server/_core/context");
+            const { appRouter, createContext } = await import("./_server-bundle.cjs");
             await ensureRequestBody(req);
             const parsedBody = (req as any).body;
             const requestUrl = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
@@ -70,7 +68,11 @@ export default async (req: IncomingMessage, res: ServerResponse) => {
             for (const [name, value] of Object.entries(req.headers)) {
                 if (value !== undefined) requestHeaders.set(name, Array.isArray(value) ? value.join(', ') : value);
             }
-            const requestBody = parsedBody === undefined ? undefined : JSON.stringify(parsedBody);
+            const requestBody = parsedBody === undefined
+                ? undefined
+                : typeof parsedBody === "string"
+                    ? parsedBody
+                    : JSON.stringify(parsedBody);
             const webRequest = new Request(requestUrl, {
                 method: req.method,
                 headers: requestHeaders,

@@ -1,6 +1,5 @@
-import { enhanceVercelResponse } from "./_vercel-response";
-
-export default async function handler(_req: any, res: any) {
-  const enhancedRes = enhanceVercelResponse(res);
-  enhancedRes.status(200).json({ ok: true, cookie: "app_session_id" });
+export default function handler(_req: any, res: any) {
+  res.statusCode = 200;
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.end(JSON.stringify({ ok: true, cookie: "app_session_id" }));
 }

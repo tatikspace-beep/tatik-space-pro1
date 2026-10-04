@@ -18,6 +18,7 @@ import { eq, gt, and, desc } from "drizzle-orm";
 import { hashPassword, isAdminEmail, normalizeEmail, verifyPassword } from "./auth-utils";
 import speakeasy from "speakeasy";
 import QRCode from "qrcode";
+import { createSignedEmailAccessToken, verifySignedEmailAccessToken } from "./email-access-token";
 
 async function sendAuthEmail(to: string, subject: string, text: string) {
   const apiKey = process.env.RESEND_API_KEY;
@@ -324,14 +325,13 @@ export const appRouter = router({
       }),
 
     requestAccessCode: publicProcedure
-      .input(z.object({ email: z.string().email() }))
+      .input(z.object({ email: z.string().trim().email() }))
       .mutation(async ({ input }) => {
         const normalizedEmail = normalizeEmail(input.email);
         const user = await db.getUserByEmail(normalizedEmail);
         if (user) {
-          const token = crypto.randomBytes(32).toString('hex');
-          registrationTokens.set(token, { userId: user.id, email: normalizedEmail, purpose: 'access', expires: Date.now() + 1000 * 60 * 10 });
-          const link = `${authBaseUrl()}/access?token=${token}`;
+          const token = await createSignedEmailAccessToken(normalizedEmail);
+          const link = `${authBaseUrl()}/access?token=${encodeURIComponent(token)}`;
           await sendAuthEmail(normalizedEmail, 'Your Tatik Space access link', `Open this link within 10 minutes to access your account:\n${link}`);
         }
         return { success: true };
@@ -340,15 +340,20 @@ export const appRouter = router({
     verifyAccessCode: publicProcedure
       .input(z.object({ token: z.string() }))
       .mutation(async ({ input, ctx }) => {
-        const entry = registrationTokens.get(input.token);
-        if (!entry || entry.purpose !== 'access' || entry.expires < Date.now()) {
-          throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid or expired access token' });
+        let entry;
+        try {
+          entry = await verifySignedEmailAccessToken(input.token);
+        } catch {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid or expired access token" });
+        }
+        const user = await db.getUserByEmail(entry.email);
+        if (!user) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Invalid or expired access token" });
         }
         const { sdk } = await import('./_core/sdk');
-        const sessionToken = await sdk.createSessionToken(`local:${entry.email}`, { name: entry.email.split('@')[0] });
+        const sessionToken = await sdk.createSessionToken(user.openId || `local:${entry.email}`, { name: user.name || entry.email.split('@')[0] });
         const cookieOptions = getSessionCookieOptions(ctx.req);
         (ctx.res as any).cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: 1000 * 60 * 60 * 24 * 365 });
-        registrationTokens.delete(input.token);
         return { success: true };
       }),
 

@@ -186,17 +186,6 @@ export function GlobalNavbar() {
             </SelectContent>
           </Select>
 
-          {/* Admin-only: Direct admin login button */}
-          <Button
-            onClick={() => {
-              window.location.href = '/__admin_login';
-            }}
-            className="h-8 px-3 bg-red-500 text-white hover:bg-red-600 font-bold"
-            title="Direct admin login - Click to access admin"
-          >
-            🔴 ADMIN
-          </Button>
-
           {/* User Menu */}
           {isAuthenticated ? (
             <div className="flex items-center gap-2">
