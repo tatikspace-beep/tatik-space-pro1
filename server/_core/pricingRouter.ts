@@ -2,6 +2,8 @@
 // Router per la gestione del nuovo pricing model (60gg free, €5.99→€7.99, rewards)
 
 import { protectedProcedure, router } from "./trpc";
+import { isStaffUser } from "../auth-utils";
+import { hasActiveSchoolAccess } from "../school-access";
 import { z } from "zod";
 import {
     getSubscriptionByUserIdAndStatus,
@@ -32,6 +34,17 @@ export const pricingRouter = router({
     getPricingStatus: protectedProcedure.query(async ({ ctx }) => {
         try {
             const user = ctx.user;
+            const hasSchoolAccess = await hasActiveSchoolAccess(user.id);
+            if (isStaffUser(user) || hasSchoolAccess) {
+                return {
+                    inTrial: false,
+                    trialDaysRemaining: null,
+                    subscriptionTier: "pro",
+                    currentMonthlyPrice: 0,
+                    discountsApplied: 0,
+                    status: hasSchoolAccess && !isStaffUser(user) ? "school_access" : "staff_pro",
+                };
+            }
             const userId = user.id;
 
             // Leggi le info di subscription dal DB (se esistono)

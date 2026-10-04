@@ -214,6 +214,64 @@ export type MonetizationEarning = typeof monetizationEarnings.$inferSelect;
 export type InsertMonetizationEarning = typeof monetizationEarnings.$inferInsert;
 export type InsertBannerAddition = typeof bannerAdditions.$inferInsert;
 
+export const schoolPrograms = pgTable("school_programs", {
+  id: serial("id").primaryKey(),
+  ownerUserId: integer("ownerUserId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  institutionName: varchar("institutionName", { length: 255 }).notNull(),
+  institutionEmail: varchar("institutionEmail", { length: 320 }).notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("pending"),
+  termsVersion: varchar("termsVersion", { length: 32 }).notNull(),
+  termsAcceptedAt: timestamp("termsAcceptedAt").notNull(),
+  accessStartsAt: timestamp("accessStartsAt"),
+  accessEndsAt: timestamp("accessEndsAt"),
+  maxStudents: integer("maxStudents").notNull().default(30),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, (table) => ({
+  ownerUnique: uniqueIndex("school_program_owner_idx").on(table.ownerUserId),
+}));
+
+export const schoolInvites = pgTable("school_invites", {
+  id: serial("id").primaryKey(),
+  schoolId: integer("schoolId").notNull().references(() => schoolPrograms.id, { onDelete: "cascade" }),
+  studentEmail: varchar("studentEmail", { length: 320 }).notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("pending"),
+  tokenHash: varchar("tokenHash", { length: 128 }),
+  expiresAt: timestamp("expiresAt").notNull(),
+  approvedAt: timestamp("approvedAt"),
+  redeemedAt: timestamp("redeemedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  schoolEmailIdx: index("school_invite_email_idx").on(table.schoolId, table.studentEmail),
+}));
+
+export const schoolMembers = pgTable("school_members", {
+  id: serial("id").primaryKey(),
+  schoolId: integer("schoolId").notNull().references(() => schoolPrograms.id, { onDelete: "cascade" }),
+  userId: integer("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  inviteId: integer("inviteId").notNull().references(() => schoolInvites.id, { onDelete: "cascade" }),
+  accessStartsAt: timestamp("accessStartsAt").notNull(),
+  accessEndsAt: timestamp("accessEndsAt").notNull(),
+  revokedAt: timestamp("revokedAt"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  schoolUserIdx: uniqueIndex("school_member_user_idx").on(table.schoolId, table.userId),
+}));
+
+export const schoolAuditEvents = pgTable("school_audit_events", {
+  id: serial("id").primaryKey(),
+  schoolId: integer("schoolId").notNull().references(() => schoolPrograms.id, { onDelete: "cascade" }),
+  actorUserId: integer("actorUserId").references(() => users.id, { onDelete: "set null" }),
+  action: varchar("action", { length: 64 }).notNull(),
+  targetType: varchar("targetType", { length: 32 }).notNull(),
+  targetId: integer("targetId"),
+  details: text("details"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type SchoolProgram = typeof schoolPrograms.$inferSelect;
+export type SchoolInvite = typeof schoolInvites.$inferSelect;
+
 /**
  * Template purchases table - tracks user purchases of premium templates
  * Each purchase grants 30-day access to a template

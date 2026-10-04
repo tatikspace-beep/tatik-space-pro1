@@ -215,7 +215,7 @@ async function callGemini(
 
 export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
   const { user } = useAuth();
-  const isPro = user?.role === 'admin' || (user as any)?.subscriptionType === 'pro';
+  const isPro = Boolean(user?.hasProAccess || user?.role === 'admin' || user?.subscriptionType === 'pro');
   const hfApiKey = (typeof import.meta !== 'undefined' ? (import.meta as any).env?.VITE_HF_API_KEY : '') ?? '';
   const geminiApiKey = (typeof import.meta !== 'undefined' ? (import.meta as any).env?.VITE_GEMINI_API_KEY : '') ?? '';
 

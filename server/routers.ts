@@ -21,14 +21,20 @@ import {
   marketplaceOrders,
   marketplaceReviews,
   marketplaceSellers,
+  schoolPrograms,
+  schoolInvites,
+  schoolMembers,
+  schoolAuditEvents,
   templatePurchases,
+  users,
 } from "../drizzle/schema";
 import { eq, gt, and, or, desc, gte, lte, isNull, sql } from "drizzle-orm";
-import { hashPassword, isAdminEmail, normalizeEmail, verifyPassword } from "./auth-utils";
+import { hashPassword, isAdminEmail, isStaffUser, normalizeEmail, verifyPassword } from "./auth-utils";
 import speakeasy from "speakeasy";
 import QRCode from "qrcode";
 import { createSignedEmailAccessToken, verifySignedEmailAccessToken } from "./email-access-token";
 import { scanMarketplaceTemplate } from "./marketplace-scan";
+import { hasActiveSchoolAccess } from "./school-access";
 
 async function sendAuthEmail(to: string, subject: string, text: string) {
   const apiKey = process.env.RESEND_API_KEY;
@@ -56,15 +62,24 @@ const MARKETPLACE_COMMISSION_RATE = 0.15;
 const MAX_MARKETPLACE_UPLOAD_BYTES = 2 * 1024 * 1024;
 const MARKETPLACE_SELLER_TERMS_VERSION = "2026-09-30-screening-v1";
 
+const SCHOOL_TERMS_VERSION = "2026-09-15";
+const SCHOOL_INVITE_DAYS = 7;
+
+function hashSchoolInviteToken(token: string) {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
 
 export const appRouter = router({
   // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
   pricing: pricingRouter,
   auth: router({
-    me: publicProcedure.query(opts => {
+    me: publicProcedure.query(async opts => {
       console.log(`[Auth.me] Query called, user: ${opts.ctx.user?.email || 'not authenticated'}`);
-      return opts.ctx.user;
+      if (!opts.ctx.user) return null;
+      const schoolAccess = await hasActiveSchoolAccess(opts.ctx.user.id);
+      return { ...opts.ctx.user, isStaff: isStaffUser(opts.ctx.user), hasProAccess: isStaffUser(opts.ctx.user) || schoolAccess };
     }),
     logout: publicProcedure.mutation(({ ctx }) => {
       const cookieOptions = getSessionCookieOptions(ctx.req);
@@ -944,6 +959,297 @@ Analizza e suggerisci ottimizzazioni.`,
       }),
   }),
 
+  schools: router({
+    terms: publicProcedure.query(() => ({
+      version: SCHOOL_TERMS_VERSION,
+      terms: [
+        "Il programma scuola concede accesso una tantum per un mese dalla data di approvazione.",
+        "Ogni istituto può attivare al massimo 30 studenti.",
+        "La scuola è responsabile della verifica degli studenti invitati e dei relativi consensi.",
+        "Gli inviti sono temporanei, personali e non trasferibili.",
+        "Tatik può revocare l'accesso in caso di abuso, violazione o dati non verificabili.",
+      ],
+    })),
+
+    isStaff: protectedProcedure.query(({ ctx }) => isStaffUser(ctx.user)),
+
+    register: protectedProcedure
+      .input(z.object({
+        institutionName: z.string().trim().min(2).max(255),
+        institutionEmail: z.string().email(),
+        acceptedTerms: z.literal(true),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+        const existing = (await database.select().from(schoolPrograms).where(eq(schoolPrograms.ownerUserId, ctx.user.id)).limit(1))[0];
+        if (existing) throw new TRPCError({ code: "CONFLICT", message: "Hai già registrato un istituto." });
+        const now = new Date();
+        const school = (await database.insert(schoolPrograms).values({
+          ownerUserId: ctx.user.id,
+          institutionName: input.institutionName,
+          institutionEmail: normalizeEmail(input.institutionEmail),
+          status: "pending",
+          termsVersion: SCHOOL_TERMS_VERSION,
+          termsAcceptedAt: now,
+          maxStudents: 30,
+        }).returning())[0];
+        await database.insert(schoolAuditEvents).values({
+          schoolId: school.id, actorUserId: ctx.user.id, action: "school_registered",
+          targetType: "school", targetId: school.id, details: JSON.stringify({ termsVersion: SCHOOL_TERMS_VERSION }),
+        });
+        return school;
+      }),
+
+    mySchool: protectedProcedure.query(async ({ ctx }) => {
+      const database = await db.getDb();
+      if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+      const school = (await database.select().from(schoolPrograms).where(eq(schoolPrograms.ownerUserId, ctx.user.id)).limit(1))[0];
+      if (!school) return null;
+      const invites = await database.select({
+        id: schoolInvites.id,
+        studentEmail: schoolInvites.studentEmail,
+        status: schoolInvites.status,
+        expiresAt: schoolInvites.expiresAt,
+        createdAt: schoolInvites.createdAt,
+      }).from(schoolInvites).where(eq(schoolInvites.schoolId, school.id)).orderBy(desc(schoolInvites.createdAt));
+      const members = await database.select({ member: schoolMembers, email: users.email, name: users.name })
+        .from(schoolMembers).innerJoin(users, eq(schoolMembers.userId, users.id))
+        .where(eq(schoolMembers.schoolId, school.id)).orderBy(desc(schoolMembers.createdAt));
+      return { school, invites, members };
+    }),
+
+    myMembership: protectedProcedure.query(async ({ ctx }) => {
+      const database = await db.getDb();
+      if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+      const now = new Date();
+      return (await database.select({ member: schoolMembers, school: schoolPrograms })
+        .from(schoolMembers)
+        .innerJoin(schoolPrograms, eq(schoolMembers.schoolId, schoolPrograms.id))
+        .where(and(
+          eq(schoolMembers.userId, ctx.user.id),
+          isNull(schoolMembers.revokedAt),
+          eq(schoolPrograms.status, "approved"),
+          lte(schoolMembers.accessStartsAt, now),
+          gte(schoolMembers.accessEndsAt, now),
+        ))
+        .orderBy(desc(schoolMembers.accessEndsAt))
+        .limit(1))[0] || null;
+    }),
+
+    adminPending: protectedProcedure.query(async ({ ctx }) => {
+      if (!isStaffUser(ctx.user)) throw new TRPCError({ code: "FORBIDDEN", message: "Solo lo staff può approvare gli istituti." });
+      const database = await db.getDb();
+      if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+      return database.select().from(schoolPrograms).where(eq(schoolPrograms.status, "pending")).orderBy(desc(schoolPrograms.createdAt));
+    }),
+
+    adminSetStatus: protectedProcedure
+      .input(z.object({ schoolId: z.number().int().positive(), status: z.enum(["approved", "rejected", "revoked"]) }))
+      .mutation(async ({ ctx, input }) => {
+        if (!isStaffUser(ctx.user)) throw new TRPCError({ code: "FORBIDDEN", message: "Solo lo staff può approvare gli istituti." });
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+        const school = (await database.select().from(schoolPrograms).where(eq(schoolPrograms.id, input.schoolId)).limit(1))[0];
+        if (!school) throw new TRPCError({ code: "NOT_FOUND", message: "Istituto non trovato." });
+        const allowedTransition = school.status === "pending"
+          ? input.status === "approved" || input.status === "rejected"
+          : school.status === "approved" && input.status === "revoked";
+        if (!allowedTransition) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Transizione di stato non consentita per questo istituto." });
+        }
+        const now = new Date();
+        const values = input.status === "approved"
+          ? { status: "approved", accessStartsAt: now, accessEndsAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000), updatedAt: now }
+          : { status: input.status, updatedAt: now };
+        const updated = (await database.update(schoolPrograms).set(values).where(eq(schoolPrograms.id, school.id)).returning())[0];
+        await database.insert(schoolAuditEvents).values({
+          schoolId: school.id, actorUserId: ctx.user.id, action: `school_${input.status}`,
+          targetType: "school", targetId: school.id,
+        });
+        return updated;
+      }),
+
+    createInvite: protectedProcedure
+      .input(z.object({ studentEmail: z.string().email() }))
+      .mutation(async ({ ctx, input }) => {
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+        const email = normalizeEmail(input.studentEmail);
+        return database.transaction(async (tx) => {
+          const school = (await tx.select().from(schoolPrograms)
+            .where(eq(schoolPrograms.ownerUserId, ctx.user.id))
+            .for("update").limit(1))[0];
+          const now = new Date();
+          if (!school || school.status !== "approved" || !school.accessEndsAt || school.accessEndsAt <= now) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "L'istituto non è approvato o l'accesso è scaduto." });
+          }
+          const existingInvite = (await tx.select({ id: schoolInvites.id }).from(schoolInvites)
+            .where(and(
+              eq(schoolInvites.schoolId, school.id),
+              eq(schoolInvites.studentEmail, email),
+              or(eq(schoolInvites.status, "pending"), eq(schoolInvites.status, "approved")),
+              gt(schoolInvites.expiresAt, now),
+            )).limit(1))[0];
+          if (existingInvite) {
+            throw new TRPCError({ code: "CONFLICT", message: "Esiste già un invito valido per questo indirizzo." });
+          }
+          const existingMember = (await tx.select({ id: schoolMembers.id }).from(schoolMembers)
+            .innerJoin(users, eq(schoolMembers.userId, users.id))
+            .where(and(
+              eq(schoolMembers.schoolId, school.id),
+              sql`lower(${users.email}) = ${email}`,
+              isNull(schoolMembers.revokedAt),
+              lte(schoolMembers.accessStartsAt, now),
+              gte(schoolMembers.accessEndsAt, now),
+            )).limit(1))[0];
+          if (existingMember) {
+            throw new TRPCError({ code: "CONFLICT", message: "Questo studente ha già accesso all'istituto." });
+          }
+          const activeMembers = await tx.select({ count: sql<number>`count(*)` }).from(schoolMembers)
+            .where(and(
+              eq(schoolMembers.schoolId, school.id),
+              isNull(schoolMembers.revokedAt),
+              lte(schoolMembers.accessStartsAt, now),
+              gte(schoolMembers.accessEndsAt, now),
+            ));
+          const outstandingInvites = await tx.select({ count: sql<number>`count(*)` }).from(schoolInvites)
+            .where(and(
+              eq(schoolInvites.schoolId, school.id),
+              or(eq(schoolInvites.status, "pending"), eq(schoolInvites.status, "approved")),
+              gt(schoolInvites.expiresAt, now),
+            ));
+          if (Number(activeMembers[0]?.count || 0) + Number(outstandingInvites[0]?.count || 0) >= school.maxStudents) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: `Limite di ${school.maxStudents} studenti raggiunto.` });
+          }
+          const invite = (await tx.insert(schoolInvites).values({
+            schoolId: school.id,
+            studentEmail: email,
+            status: "pending",
+            expiresAt: new Date(now.getTime() + SCHOOL_INVITE_DAYS * 24 * 60 * 60 * 1000),
+          }).returning())[0];
+          await tx.insert(schoolAuditEvents).values({
+            schoolId: school.id, actorUserId: ctx.user.id, action: "invite_created", targetType: "invite", targetId: invite.id,
+          });
+          return invite;
+        });
+      }),
+
+    approveInvite: protectedProcedure
+      .input(z.object({ inviteId: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+        return database.transaction(async (tx) => {
+          const school = (await tx.select().from(schoolPrograms)
+            .where(eq(schoolPrograms.ownerUserId, ctx.user.id))
+            .for("update").limit(1))[0];
+          const invite = school ? (await tx.select().from(schoolInvites).where(and(
+            eq(schoolInvites.id, input.inviteId),
+            eq(schoolInvites.schoolId, school.id),
+          )).for("update").limit(1))[0] : null;
+          const now = new Date();
+          if (!school || !invite) throw new TRPCError({ code: "NOT_FOUND", message: "Invito non trovato." });
+          if (school.status !== "approved" || !school.accessEndsAt || school.accessEndsAt <= now ||
+            invite.status !== "pending" || invite.expiresAt <= now) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Invito o accesso scuola non più valido." });
+          }
+          const token = crypto.randomBytes(32).toString("hex");
+          const updated = (await tx.update(schoolInvites).set({
+            status: "approved",
+            approvedAt: now,
+            tokenHash: hashSchoolInviteToken(token),
+            expiresAt: new Date(now.getTime() + SCHOOL_INVITE_DAYS * 24 * 60 * 60 * 1000),
+          }).where(eq(schoolInvites.id, invite.id)).returning())[0];
+          await tx.insert(schoolAuditEvents).values({ schoolId: school.id, actorUserId: ctx.user.id, action: "invite_approved", targetType: "invite", targetId: invite.id });
+          return {
+            invite: {
+              id: updated.id,
+              studentEmail: updated.studentEmail,
+              status: updated.status,
+              expiresAt: updated.expiresAt,
+            },
+            token,
+          };
+        });
+      }),
+
+    redeemInvite: protectedProcedure
+      .input(z.object({ token: z.string().length(64) }))
+      .mutation(async ({ ctx, input }) => {
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+        return database.transaction(async (tx) => {
+          const matchingInvite = (await tx.select({
+            id: schoolInvites.id,
+            schoolId: schoolInvites.schoolId,
+          }).from(schoolInvites)
+            .where(eq(schoolInvites.tokenHash, hashSchoolInviteToken(input.token)))
+            .limit(1))[0];
+          if (!matchingInvite) throw new TRPCError({ code: "FORBIDDEN", message: "Invito non valido per questo account." });
+          const school = (await tx.select().from(schoolPrograms)
+            .where(eq(schoolPrograms.id, matchingInvite.schoolId))
+            .for("update").limit(1))[0];
+          const invite = (await tx.select().from(schoolInvites).where(and(
+            eq(schoolInvites.id, matchingInvite.id),
+            eq(schoolInvites.tokenHash, hashSchoolInviteToken(input.token)),
+          )).for("update").limit(1))[0];
+          const now = new Date();
+          if (!invite || invite.status !== "approved" || invite.expiresAt <= now ||
+            normalizeEmail(ctx.user.email) !== normalizeEmail(invite.studentEmail)) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Invito non valido per questo account." });
+          }
+          if (!school || school.status !== "approved" || !school.accessEndsAt || school.accessEndsAt <= now) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Accesso scuola scaduto." });
+          }
+          const activeMembers = await tx.select({ count: sql<number>`count(*)` }).from(schoolMembers)
+            .where(and(
+              eq(schoolMembers.schoolId, school.id),
+              isNull(schoolMembers.revokedAt),
+              lte(schoolMembers.accessStartsAt, now),
+              gte(schoolMembers.accessEndsAt, now),
+            ));
+          if (Number(activeMembers[0]?.count || 0) >= school.maxStudents) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: `Limite di ${school.maxStudents} studenti raggiunto.` });
+          }
+          const existingMember = (await tx.select().from(schoolMembers).where(and(
+            eq(schoolMembers.schoolId, school.id),
+            eq(schoolMembers.userId, ctx.user.id),
+          )).limit(1))[0];
+          if (existingMember && !existingMember.revokedAt &&
+            existingMember.accessStartsAt <= now && existingMember.accessEndsAt >= now) {
+            throw new TRPCError({ code: "CONFLICT", message: "Questo account è già iscritto all'istituto." });
+          }
+          const member = existingMember
+            ? (await tx.update(schoolMembers).set({
+              inviteId: invite.id,
+              accessStartsAt: now,
+              accessEndsAt: school.accessEndsAt,
+              revokedAt: null,
+            }).where(eq(schoolMembers.id, existingMember.id)).returning())[0]
+            : (await tx.insert(schoolMembers).values({
+              schoolId: school.id, userId: ctx.user.id, inviteId: invite.id,
+              accessStartsAt: now, accessEndsAt: school.accessEndsAt,
+            }).returning())[0];
+          await tx.update(schoolInvites).set({ status: "redeemed", redeemedAt: now }).where(eq(schoolInvites.id, invite.id));
+          await tx.insert(schoolAuditEvents).values({ schoolId: school.id, actorUserId: ctx.user.id, action: "invite_redeemed", targetType: "member", targetId: member.id });
+          return member;
+        });
+      }),
+
+    revokeMember: protectedProcedure
+      .input(z.object({ memberId: z.number().int().positive() }))
+      .mutation(async ({ ctx, input }) => {
+        const database = await db.getDb();
+        if (!database) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+        const school = (await database.select().from(schoolPrograms).where(eq(schoolPrograms.ownerUserId, ctx.user.id)).limit(1))[0];
+        if (!school) throw new TRPCError({ code: "FORBIDDEN", message: "Scuola non trovata." });
+        const member = (await database.update(schoolMembers).set({ revokedAt: new Date() }).where(and(eq(schoolMembers.id, input.memberId), eq(schoolMembers.schoolId, school.id))).returning())[0];
+        if (!member) throw new TRPCError({ code: "NOT_FOUND", message: "Studente non trovato." });
+        await database.insert(schoolAuditEvents).values({ schoolId: school.id, actorUserId: ctx.user.id, action: "member_revoked", targetType: "member", targetId: member.id });
+        return member;
+      }),
+  }),
   cookieConsent: router({
     save: publicProcedure
       .input(z.object({
@@ -1973,6 +2279,9 @@ Analizza e suggerisci ottimizzazioni.`,
           }
 
           if (!userId) return { hasAccess: false, expiresAt: null };
+          if (isStaffUser(ctx.user) || await hasActiveSchoolAccess(userId)) {
+            return { hasAccess: true, expiresAt: null };
+          }
 
           // Check if user has active purchase for this template
           const database = await db.getDb();

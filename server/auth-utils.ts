@@ -10,6 +10,21 @@ export function isAdminEmail(email?: string | null): boolean {
   return normalizeEmail(email) === ADMIN_EMAIL;
 }
 
+export function isCollaboratorEmail(email?: string | null): boolean {
+  const configured = (process.env.COLLABORATOR_EMAILS || "")
+    .split(",")
+    .map(normalizeEmail)
+    .filter(Boolean);
+  return configured.includes(normalizeEmail(email));
+}
+
+export function isStaffEmail(email?: string | null): boolean {
+  return isAdminEmail(email) || isCollaboratorEmail(email);
+}
+
+export function isStaffUser(user?: { email?: string | null; role?: string | null } | null): boolean {
+  return Boolean(user && (user.role === "admin" || isStaffEmail(user.email)));
+}
 export function isAdminOpenId(openId?: string | null): boolean {
   if (!openId) return false;
   const value = String(openId).trim();

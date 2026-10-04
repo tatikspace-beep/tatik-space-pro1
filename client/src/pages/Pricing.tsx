@@ -113,7 +113,12 @@ export default function Pricing() {
                                 </div>
                             </div>
 
-                            {!isLoading && pricingStatus?.subscriptionTier === 'pro' && (
+                            {!isLoading && pricingStatus?.status === 'school_access' && (
+                                <div className="mb-4 p-2 bg-primary/10 border border-primary/30 rounded text-sm text-primary">
+                                    Accesso Pro incluso nel programma scuole
+                                </div>
+                            )}
+                            {!isLoading && pricingStatus?.subscriptionTier === 'pro' && pricingStatus?.status !== 'school_access' && (
                                 <div className="mb-4 p-2 bg-primary/10 border border-primary/30 rounded text-sm text-primary">
                                     ✓ Abbonamento attivo
                                 </div>
@@ -151,6 +156,10 @@ export default function Pricing() {
                                         >
                                             {startSubMutation.isPending ? 'Attivazione...' : 'Passa a Pro (€5.99/mese)'}
                                         </Button>
+                                    ) : pricingStatus?.status === 'school_access' ? (
+                                        <Link href="/schools">
+                                            <Button className="w-full" variant="outline">Programma scuole - accesso attivo</Button>
+                                        </Link>
                                     ) : pricingStatus?.subscriptionTier === 'pro' ? (
                                         <Button className="w-full" variant="outline" disabled>
                                             Già abbonato

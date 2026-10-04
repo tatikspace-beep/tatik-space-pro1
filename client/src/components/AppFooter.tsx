@@ -27,6 +27,9 @@ export function AppFooter({ variant = 'light' }: { variant?: 'light' | 'dark' })
             <Link href="/contact" className={`hover:${isDark ? 'text-blue-400' : 'text-foreground'} ${isDark ? 'text-slate-400' : 'text-muted-foreground'}`}>
               {t('contact')}
             </Link>
+            <Link href="/schools" className={`hover:${isDark ? 'text-blue-400' : 'text-foreground'} ${isDark ? 'text-slate-400' : 'text-muted-foreground'}`}>
+              Programma scuole
+            </Link>
           </div>
 
           <div className="flex flex-col items-center md:items-end gap-1">
