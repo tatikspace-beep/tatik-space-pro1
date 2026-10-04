@@ -19,6 +19,20 @@ function slugify(value: string) {
     .slice(0, 160);
 }
 
+function normalizeWebsiteUrl(value: string): string | undefined | null {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (/^[a-z][a-z\d+.-]*:/i.test(trimmed) && !/^https?:\/\//i.test(trimmed)) return null;
+
+  const normalized = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  try {
+    const url = new URL(normalized);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : null;
+  } catch {
+    return null;
+  }
+}
+
 function scanMessages(scanReport: string | null) {
   if (!scanReport) return [];
   try {
@@ -193,9 +207,14 @@ export default function DeveloperMarketplace() {
       toast.error("Devi confermare di aver letto e accettato i termini venditore.");
       return;
     }
+    const websiteUrl = normalizeWebsiteUrl(profile.websiteUrl);
+    if (websiteUrl === null) {
+      toast.error("Inserisci un indirizzo valido, ad esempio esempio.it o https://esempio.it.");
+      return;
+    }
     acceptTerms.mutate({
       ...profile,
-      websiteUrl: profile.websiteUrl.trim() || undefined,
+      websiteUrl,
       accepted: true,
     });
   };
@@ -247,7 +266,7 @@ export default function DeveloperMarketplace() {
           <CardContent className="space-y-3">
             <Input placeholder="Nome pubblico" value={profile.displayName} onChange={(e) => setProfile({ ...profile, displayName: e.target.value })} />
             <Textarea placeholder="Descrizione del profilo" value={profile.bio} onChange={(e) => setProfile({ ...profile, bio: e.target.value })} />
-            <Input placeholder="Sito web (facoltativo)" value={profile.websiteUrl} onChange={(e) => setProfile({ ...profile, websiteUrl: e.target.value })} />
+            <Input placeholder="Sito web (facoltativo, es. esempio.it)" value={profile.websiteUrl} onChange={(e) => setProfile({ ...profile, websiteUrl: e.target.value })} />
             <div className="rounded border p-3 space-y-2">
               <p className="text-xs text-muted-foreground">{termsQuery.data?.terms.join(" ")}</p>
               <label className="flex items-start gap-2 text-sm">
