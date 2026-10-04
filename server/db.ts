@@ -13,7 +13,10 @@ const _inMemoryBannerStore: Map<number, Array<{ bannerId: string; projectId?: st
 
 // Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
-  const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL_NON_POOLING;
+  const connectionString = process.env.POSTGRES_URL
+    || process.env.POSTGRES_PRISMA_URL
+    || process.env.POSTGRES_URL_NON_POOLING
+    || process.env.DATABASE_URL;
   if (!_db && connectionString) {
     try {
       // Supabase pooler URLs may include sslmode=verify-ca, while the
