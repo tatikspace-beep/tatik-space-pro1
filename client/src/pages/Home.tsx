@@ -150,15 +150,6 @@ export default function Home() {
                 </SelectContent>
               </Select>
             )}
-            <Button
-              onClick={() => {
-                window.location.href = '/__admin_login';
-              }}
-              className="h-8 px-3 bg-red-500 text-white hover:bg-red-600 font-bold text-sm"
-              title="Admin direct access"
-            >
-              🔴 ADMIN
-            </Button>
             <Link href="/contact">
               <Button variant="ghost" className="text-sm font-medium">{t.contactUs}</Button>
             </Link>
