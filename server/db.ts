@@ -13,10 +13,24 @@ const _inMemoryBannerStore: Map<number, Array<{ bannerId: string; projectId?: st
 
 // Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
-  if (!_db && process.env.DATABASE_URL) {
+  const connectionString = process.env.DATABASE_URL || process.env.POSTGRES_URL_NON_POOLING;
+  if (!_db && connectionString) {
     try {
+      // Supabase pooler URLs may include sslmode=verify-ca, while the
+      // serverless runtime does not have the provider CA bundle installed.
+      // Keep TLS enabled but let pg use its explicit TLS configuration.
+      let pgConnectionString = connectionString;
+      try {
+        const parsedUrl = new URL(connectionString);
+        parsedUrl.searchParams.delete("sslmode");
+        pgConnectionString = parsedUrl.toString();
+      } catch {
+        console.warn("[Database] Could not normalize PostgreSQL connection URL");
+      }
       const pool = new pg.Pool({
-        connectionString: process.env.DATABASE_URL,
+        connectionString: pgConnectionString,
+        ssl: { rejectUnauthorized: false },
+        options: "-c search_path=public",
       });
       _db = drizzle(pool);
     } catch (error) {
