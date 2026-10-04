@@ -183,9 +183,14 @@ export async function getUserByEmail(email: string) {
     return _inMemoryUsers.get(`email:${normalizedEmail}`);
   }
 
-  const result = await db.select().from(users).where(eq(users.email, normalizedEmail)).limit(1);
-
-  return result.length > 0 ? result[0] : undefined;
+  try {
+    const result = await db.select().from(users).where(eq(users.email, normalizedEmail)).limit(1);
+    return result.length > 0 ? result[0] : undefined;
+  } catch (error) {
+    const reason = error instanceof Error ? error.cause ?? error.name : "Unknown database error";
+    console.error("[Database] User email lookup failed:", reason);
+    throw error;
+  }
 }
 
 // ============ PROJECT HELPERS ============
