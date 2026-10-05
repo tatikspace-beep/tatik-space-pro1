@@ -1,5 +1,4 @@
 import React, { useEffect, useRef, useMemo, useState } from 'react';
-import { useTranslation } from 'react-i18next';
 import { EditorView, basicSetup } from 'codemirror';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { Decoration } from '@codemirror/view';
@@ -18,6 +17,8 @@ import { go } from '@codemirror/lang-go';
 import { cpp } from '@codemirror/lang-cpp';
 import { yaml } from '@codemirror/lang-yaml';
 import { autocompletion } from '@codemirror/autocomplete';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { getEditorOutsideCopy } from '@/lib/editorOutsideCopy';
 
 // Auto-detect programming language from code content
 function detectLanguage(code: string): 'javascript' | 'typescript' | 'html' | 'css' | 'python' | 'xml' | 'json' | 'plaintext' | 'markdown' | 'sql' | 'java' | 'rust' | 'go' | 'ruby' | 'php' | 'swift' | 'kotlin' | 'csharp' | 'cpp' | 'shell' | 'yaml' | 'dockerfile' {
@@ -200,7 +201,7 @@ export function CodeEditor({
   jumpToLine = null,
   autoDetectLanguage = false,
 }: CodeEditorProps) {
-  const { t } = useTranslation();
+  const { language: appLanguage } = useLanguage();
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const [isDarkTheme, setIsDarkTheme] = useState(() => {
@@ -346,8 +347,8 @@ export function CodeEditor({
       />
 
       <div className="absolute bottom-2 right-2 flex items-center gap-2 text-xs">
-        <div className={`px-2 py-1 rounded border ${isDarkTheme ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-100 border-slate-300 text-slate-600'}`}>{t('selectNextOccurrence')}</div>
-        <a href="https://example.com/dev-courses" target="_blank" rel="noreferrer noopener" className="px-2 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700">{t('devCourses')}</a>
+        <div className={`px-2 py-1 rounded border ${isDarkTheme ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-100 border-slate-300 text-slate-600'}`}>{getEditorOutsideCopy(appLanguage, 'selectNextOccurrence')}</div>
+        <a href="https://example.com/dev-courses" target="_blank" rel="noreferrer noopener" className="px-2 py-1 rounded bg-indigo-600 text-white hover:bg-indigo-700">{getEditorOutsideCopy(appLanguage, 'developerCourses')}</a>
       </div>
     </div>
   );

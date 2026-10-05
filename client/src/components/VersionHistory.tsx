@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { getEditorAppCopy, type EditorAppCopyKey } from '@/lib/editorAppCopy';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -19,13 +20,15 @@ interface VersionHistoryProps {
 }
 
 export function VersionHistory({ versions, onRestore }: VersionHistoryProps) {
-  const { t } = useTranslation();
+  const { language } = useLanguage();
+  const copy = (key: EditorAppCopyKey, values: Record<string, string | number> = {}) =>
+    getEditorAppCopy(language, key, values);
   const [isOpen, setIsOpen] = useState(false);
   const [selectedVersion, setSelectedVersion] = useState<Version | null>(null);
 
   const handleRestore = (version: Version) => {
     onRestore(version);
-    toast.success(`${t('versionRestored')}: ${version.label || version.timestamp.toLocaleString('it-IT')}`);
+    toast.success(`${copy('versionRestored')}: ${version.label || version.timestamp.toLocaleString(language)}`);
     setIsOpen(false);
   };
 
@@ -38,7 +41,7 @@ export function VersionHistory({ versions, onRestore }: VersionHistoryProps) {
         className="gap-1 px-2 py-1"
       >
         <Clock className="h-4 w-4" />
-        {t('versionHistory')}
+        {copy('versionHistoryTitle')}
       </Button>
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -46,23 +49,23 @@ export function VersionHistory({ versions, onRestore }: VersionHistoryProps) {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Clock className="h-5 w-5" />
-              {t('versionHistory')}
+              {copy('versionHistoryTitle')}
             </DialogTitle>
             <DialogDescription>
-              {t('viewRestorePreviousVersions')}
+              {copy('viewRestorePreviousVersions')}
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid grid-cols-2 gap-4 h-[400px]">
             <div className="border rounded-lg overflow-hidden flex flex-col">
               <div className="bg-slate-100 dark:bg-slate-800 p-3 font-semibold text-sm">
-                {t('versions')} ({versions.length})
+                {copy('versions')} ({versions.length})
               </div>
               <ScrollArea className="flex-1">
                 <div className="space-y-2 p-3">
                   {versions.length === 0 ? (
                     <p className="text-sm text-muted-foreground text-center py-8">
-                      Nessuna versione salvata
+                      {copy('noSavedVersions')}
                     </p>
                   ) : (
                     versions.map((version, index) => (
@@ -75,10 +78,10 @@ export function VersionHistory({ versions, onRestore }: VersionHistoryProps) {
                           }`}
                       >
                         <div className="font-medium">
-                          {version.label || `Versione ${versions.length - index}`}
+                          {version.label || copy('versionNumber', { number: versions.length - index })}
                         </div>
                         <div className="text-xs opacity-70">
-                          {version.timestamp.toLocaleString('it-IT')}
+                          {version.timestamp.toLocaleString(language)}
                         </div>
                       </button>
                     ))
@@ -89,7 +92,7 @@ export function VersionHistory({ versions, onRestore }: VersionHistoryProps) {
 
             <div className="border rounded-lg overflow-hidden flex flex-col">
               <div className="bg-slate-100 dark:bg-slate-800 p-3 font-semibold text-sm">
-                Anteprima
+                {copy('versionPreview')}
               </div>
               <ScrollArea className="flex-1">
                 {selectedVersion ? (
@@ -101,7 +104,7 @@ export function VersionHistory({ versions, onRestore }: VersionHistoryProps) {
                   </div>
                 ) : (
                   <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-                    Seleziona una versione per visualizzare l'anteprima
+                    {copy('selectVersionPreview')}
                   </div>
                 )}
               </ScrollArea>
@@ -111,10 +114,10 @@ export function VersionHistory({ versions, onRestore }: VersionHistoryProps) {
           <div className="flex justify-end gap-2 pt-4 border-t">
             <div className="flex items-center gap-3 mr-auto text-xs text-slate-500">
               <span className="font-semibold">🔄</span>
-              <a href="https://example.com/infinite-history" target="_blank" rel="noreferrer noopener" className="underline">Get Infinite History</a>
+              <a href="https://example.com/infinite-history" target="_blank" rel="noreferrer noopener" className="underline">{copy('getInfiniteHistory')}</a>
             </div>
             <Button variant="outline" onClick={() => setIsOpen(false)}>
-              Chiudi
+              {copy('closeFolder')}
             </Button>
             <Button
               onClick={() => selectedVersion && handleRestore(selectedVersion)}
@@ -122,7 +125,7 @@ export function VersionHistory({ versions, onRestore }: VersionHistoryProps) {
               className="gap-2"
             >
               <RotateCcw className="h-4 w-4" />
-              Ripristina Versione
+              {copy('restoreVersion')}
             </Button>
           </div>
         </DialogContent>

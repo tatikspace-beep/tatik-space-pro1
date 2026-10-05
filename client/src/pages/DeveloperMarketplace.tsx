@@ -8,6 +8,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
+import { useLanguage } from "@/contexts/LanguageContext";
+import { developerMarketplaceCopy } from "@/lib/developerMarketplaceCopy";
 
 function slugify(value: string) {
   return value
@@ -20,6 +22,24 @@ function slugify(value: string) {
 }
 
 const MAX_LISTING_DESCRIPTION_LENGTH = 10_000;
+
+function getLocalizedListingStatus(status: string, copy: typeof developerMarketplaceCopy.en) {
+  const statusLabels: Record<string, string> = {
+    pending: copy.statusPending,
+    active: copy.statusActive,
+    draft: copy.statusDraft,
+    published: copy.statusPublished,
+    in_review: copy.statusReview,
+    rejected: copy.statusRejected,
+    suspended: copy.statusSuspended,
+    passed: copy.scanPassed,
+    review: copy.scanReviewStatus,
+    blocked: copy.scanBlockedStatus,
+    legacy_unscanned: copy.scanLegacyStatus,
+    not_scanned: copy.scanNotRun,
+  };
+  return statusLabels[status] ?? status;
+}
 
 function normalizeWebsiteUrl(value: string): string | undefined | null {
   const trimmed = value.trim();
@@ -51,6 +71,8 @@ function scanMessages(scanReport: string | null) {
 }
 
 export default function DeveloperMarketplace() {
+  const { language } = useLanguage();
+  const copy = developerMarketplaceCopy[language] ?? developerMarketplaceCopy.en;
   const { user, loading } = useAuth({ redirectOnUnauthenticated: true });
   const [profile, setProfile] = useState({ displayName: "", bio: "", websiteUrl: "" });
   const [listing, setListing] = useState({ title: "", description: "", category: "web", price: "9.99", slug: "" });
@@ -89,7 +111,7 @@ export default function DeveloperMarketplace() {
   }, [seller, profileInitialized, termsQuery.data?.version]);
   const acceptTerms = trpc.marketplace.acceptSellerTerms.useMutation({
     onSuccess: () => {
-      toast.success("Profilo venditore salvato");
+      toast.success(copy.profileSaved);
       profileQuery.refetch();
     },
     onError: (error) => toast.error(error.message),
@@ -100,7 +122,7 @@ export default function DeveloperMarketplace() {
   });
   const refreshPayout = trpc.marketplace.refreshSellerPayoutStatus.useMutation({
     onSuccess: (value) => {
-      toast.success(value.ready ? "Payout Stripe Connect attivo" : "Onboarding ancora da completare");
+      toast.success(value.ready ? copy.payoutActive : copy.onboardingIncomplete);
       profileQuery.refetch();
     },
     onError: (error) => toast.error(error.message),
@@ -109,13 +131,13 @@ export default function DeveloperMarketplace() {
     onSuccess: (value) => {
       setCreatedListingId(value.id);
       utils.marketplace.listSellerListings.invalidate();
-      toast.success("Listing creato in bozza");
+      toast.success(copy.draftCreated);
     },
     onError: (error) => toast.error(error.message),
   });
   const uploadFile = trpc.marketplace.uploadListingFile.useMutation({
     onSuccess: () => {
-      toast.success("Codice salvato nello storage privato");
+      toast.success(copy.privateSaved);
       utils.marketplace.listSellerListings.invalidate();
     },
     onError: (error) => toast.error(error.message),
@@ -129,11 +151,11 @@ export default function DeveloperMarketplace() {
         utils.marketplace.moderationListings.invalidate(),
       ]);
       if (value.status === "published") {
-        toast.success("Controlli automatici superati: template pubblicato.");
+        toast.success(copy.scanPublished);
       } else if (value.status === "rejected") {
-        toast.error("Il controllo ha bloccato il template. Correggi gli elementi segnalati prima di riprovare.");
+        toast.error(copy.scanBlocked);
       } else {
-        toast.warning("Template trattenuto per un controllo aggiuntivo; non è ancora in vendita.");
+        toast.warning(copy.scanReview);
       }
     },
     onError: (error) => toast.error(error.message),
@@ -147,7 +169,7 @@ export default function DeveloperMarketplace() {
         utils.marketplace.moderationListings.invalidate(),
       ]);
       setSelectedReviewListingId(null);
-      toast.success("Revisione aggiornata");
+      toast.success(copy.reviewUpdated);
     },
     onError: (error) => toast.error(error.message),
   });
@@ -158,7 +180,7 @@ export default function DeveloperMarketplace() {
         utils.marketplace.listPublished.invalidate(),
         utils.marketplace.listMyOrders.invalidate(),
       ]);
-      toast.success(value.status === "suspended" ? "Template rimosso dal marketplace." : "Template ripubblicato.");
+      toast.success(value.status === "suspended" ? copy.listingSuspended : copy.listingRestored);
     },
     onError: (error) => toast.error(error.message),
   });
@@ -170,14 +192,14 @@ export default function DeveloperMarketplace() {
         utils.marketplace.listPublished.invalidate(),
       ]);
       toast.success(value.status === "published"
-        ? "Controllo superato: listing pubblicato."
-        : `Scansione completata: stato ${value.status}.`);
+        ? copy.rescanPassed
+        : `${copy.rescanComplete} ${getLocalizedListingStatus(value.status, copy)}`);
     },
     onError: (error) => toast.error(error.message),
   });
   const executePayout = trpc.marketplace.executeSellerPayout.useMutation({
     onSuccess: () => {
-      toast.success("Transfer creato; in attesa della conferma Stripe");
+      toast.success(copy.transferCreated);
       payoutCandidatesQuery.refetch();
     },
     onError: (error) => toast.error(error.message),
@@ -194,24 +216,23 @@ export default function DeveloperMarketplace() {
       if (Array.isArray(imported.files)) setSourceFileName("project.json");
       else if (imported.fileName) setSourceFileName(imported.fileName);
       if (content) setSourceContent(content);
-      toast.success("Contenuto importato dall'editor: completa i dettagli e crea la bozza.");
+      toast.success(copy.importedDraft);
     } catch (error) {
       console.error("Impossibile importare il progetto dall'editor", error);
-      toast.error("Il progetto preparato dall'editor non è leggibile.");
+      toast.error(copy.importedUnreadable);
     } finally {
       sessionStorage.removeItem("tatik_marketplace_seller_draft");
     }
   }, []);
-  if (loading || !user) return <div className="min-h-screen p-8">Caricamento...</div>;
-  if (loading || !user) return <div className="min-h-screen p-8">Caricamento...</div>;
+  if (loading || !user) return <div className="min-h-screen p-8">{copy.loading}</div>;
   const saveProfile = () => {
     if (!termsAccepted) {
-      toast.error("Devi confermare di aver letto e accettato i termini venditore.");
+      toast.error(copy.acceptTermsRequired);
       return;
     }
     const websiteUrl = normalizeWebsiteUrl(profile.websiteUrl);
     if (websiteUrl === null) {
-      toast.error("Inserisci un indirizzo valido, ad esempio esempio.it o https://esempio.it.");
+      toast.error(copy.invalidWebsite);
       return;
     }
     acceptTerms.mutate({
@@ -223,7 +244,7 @@ export default function DeveloperMarketplace() {
   const create = () => {
     const descriptionLength = listing.description.trim().length;
     if (descriptionLength < 20 || descriptionLength > MAX_LISTING_DESCRIPTION_LENGTH) {
-      toast.error("La descrizione deve contenere da 20 a 10.000 caratteri.");
+      toast.error(copy.descriptionLengthError);
       return;
     }
     createListing.mutate({
@@ -237,11 +258,11 @@ export default function DeveloperMarketplace() {
   const upload = async () => {
     if (!createdListingId) return;
     if (!file && !sourceContent.trim()) {
-      toast.error("Incolla il codice o seleziona un file di codice.");
+      toast.error(copy.codeRequired);
       return;
     }
     if (file && file.size > 2 * 1024 * 1024) {
-      toast.error("Il file supera il limite di 2 MB");
+      toast.error(copy.fileTooLarge);
       return;
     }
     try {
@@ -256,79 +277,83 @@ export default function DeveloperMarketplace() {
       uploadFile.mutate({ listingId: createdListingId, fileName, contentType, content });
     } catch (error) {
       console.error("Impossibile leggere il codice selezionato", error);
-      toast.error(error instanceof Error ? error.message : "Impossibile leggere il file selezionato.");
+      toast.error(error instanceof Error ? error.message : copy.fileReadFailed);
     }
   };
 
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b p-4 flex items-center justify-between">
-        <h1 className="text-xl font-bold">Marketplace sviluppatori</h1>
-        <Link href="/marketplace"><Button variant="outline">Marketplace template</Button></Link>
+        <h1 className="text-xl font-bold">{copy.marketplaceName}</h1>
+        <Link href="/marketplace"><Button variant="outline">{copy.backToMarketplace}</Button></Link>
       </header>
       <main className="max-w-6xl mx-auto p-4 md:p-8 space-y-8">
         <Card>
           <CardHeader>
-            <CardTitle>Diventa venditore</CardTitle>
-            <CardDescription>Commissione Tatik: {termsQuery.data?.commissionPercent ?? 15}%. I payout richiedono verifica KYC.</CardDescription>
+            <CardTitle>{copy.becomeSeller}</CardTitle>
+            <CardDescription>{copy.commissionNote} {termsQuery.data?.commissionPercent ?? 15}%. {copy.payoutKyc}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Input placeholder="Nome pubblico" value={profile.displayName} onChange={(e) => setProfile({ ...profile, displayName: e.target.value })} />
-            <Textarea placeholder="Descrizione del profilo" value={profile.bio} onChange={(e) => setProfile({ ...profile, bio: e.target.value })} />
-            <Input placeholder="Sito web (facoltativo, es. esempio.it)" value={profile.websiteUrl} onChange={(e) => setProfile({ ...profile, websiteUrl: e.target.value })} />
-            <p className="text-xs text-muted-foreground">Se inserisci un dominio senza protocollo, verrà usato HTTPS.</p>
+            <Input placeholder={copy.publicName} value={profile.displayName} onChange={(e) => setProfile({ ...profile, displayName: e.target.value })} />
+            <Textarea placeholder={copy.bio} value={profile.bio} onChange={(e) => setProfile({ ...profile, bio: e.target.value })} />
+            <Input placeholder={copy.website} value={profile.websiteUrl} onChange={(e) => setProfile({ ...profile, websiteUrl: e.target.value })} />
+            <p className="text-xs text-muted-foreground">{copy.websiteProtocol}</p>
             <div className="rounded border p-3 space-y-2">
+              <p className="text-xs text-muted-foreground">{copy.termsAreItalian}</p>
+              {termsQuery.isLoading && <p className="text-xs text-muted-foreground">{copy.loading}</p>}
+              {termsQuery.isError && <p className="text-xs text-destructive">{termsQuery.error.message}</p>}
               <p className="text-xs text-muted-foreground">{termsQuery.data?.terms.join(" ")}</p>
               <label className="flex items-start gap-2 text-sm">
                 <input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} />
-                <span>Ho letto e accetto i termini venditore {termsQuery.data?.version ? `(versione ${termsQuery.data.version})` : ""}. Confermo di essere responsabile del prodotto, dei diritti e degli obblighi verso gli acquirenti.</span>
+                <span>{copy.termsAccept} {termsQuery.data?.version ? `(v${termsQuery.data.version})` : ""}. {copy.termsResponsibility}</span>
               </label>
             </div>
-            <Button onClick={saveProfile} disabled={acceptTerms.isPending || !termsAccepted}>Accetta termini e salva profilo</Button>
+            <Button onClick={saveProfile} disabled={acceptTerms.isPending || !termsAccepted}>{copy.acceptSave}</Button>
+            {profileQuery.isError && <p className="text-sm text-destructive">{profileQuery.error.message}</p>}
             {seller?.termsAcceptedAt && (
               <div className="flex flex-wrap gap-2">
                 <Button variant="outline" onClick={() => onboarding.mutate()} disabled={onboarding.isPending}>
-                  {onboarding.isPending ? "Apertura onboarding..." : "Configura pagamenti e KYC"}
+                  {onboarding.isPending ? copy.onboardingOpening : copy.setupPayments}
                 </Button>
                 <Button variant="outline" onClick={() => refreshPayout.mutate()} disabled={refreshPayout.isPending}>
-                  Verifica stato payout
+                  {copy.payoutStatus}
                 </Button>
               </div>
             )}
-            {seller && <Badge variant="secondary">Stato: {seller.status}</Badge>}
+            {seller && <Badge variant="secondary">{copy.sellerStatus}: {getLocalizedListingStatus(seller.status, copy)}</Badge>}
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader><CardTitle>Nuovo listing</CardTitle><CardDescription>Incolla il codice oppure trasferisci il file aperto nell'editor. Ogni invio viene controllato automaticamente: i file senza segnali sospetti sono pubblicati subito, quelli dubbi sono trattenuti e quelli pericolosi bloccati. I controlli non certificano la conformità legale.</CardDescription></CardHeader>
+          <CardHeader><CardTitle>{copy.newListing}</CardTitle><CardDescription>{copy.listingInstructions}</CardDescription></CardHeader>
           <CardContent className="space-y-3">
-            <Input placeholder="Titolo" value={listing.title} onChange={(e) => setListing({ ...listing, title: e.target.value, slug: slugify(e.target.value) })} />
+            <Input placeholder={copy.title} value={listing.title} onChange={(e) => setListing({ ...listing, title: e.target.value, slug: slugify(e.target.value) })} />
             <Textarea
-              placeholder="Descrizione (20–10.000 caratteri)"
+              placeholder={copy.description}
               value={listing.description}
               maxLength={MAX_LISTING_DESCRIPTION_LENGTH}
               onChange={(e) => setListing({ ...listing, description: e.target.value })}
             />
             <p className="text-xs text-muted-foreground text-right">
-              {listing.description.length.toLocaleString("it-IT")}/{MAX_LISTING_DESCRIPTION_LENGTH.toLocaleString("it-IT")} caratteri (minimo 20)
+              {listing.description.length.toLocaleString(language)}/{MAX_LISTING_DESCRIPTION_LENGTH.toLocaleString(language)} {copy.characters} ({copy.minCharacters})
             </p>
             <div className="grid md:grid-cols-3 gap-3">
-              <Input placeholder="Categoria" value={listing.category} onChange={(e) => setListing({ ...listing, category: e.target.value })} />
-              <Input placeholder="Slug URL" value={listing.slug} onChange={(e) => setListing({ ...listing, slug: slugify(e.target.value) })} />
-              <Input type="number" min="1" step="0.01" value={listing.price} onChange={(e) => setListing({ ...listing, price: e.target.value })} />
+              <Input placeholder={copy.category} value={listing.category} onChange={(e) => setListing({ ...listing, category: e.target.value })} />
+              <Input placeholder={copy.slug} value={listing.slug} onChange={(e) => setListing({ ...listing, slug: slugify(e.target.value) })} />
+              <Input type="number" aria-label={copy.price} min="1" step="0.01" value={listing.price} onChange={(e) => setListing({ ...listing, price: e.target.value })} />
             </div>
-            <p className="text-sm text-muted-foreground">Netto stimato: €{(Number(listing.price) * 0.85 || 0).toFixed(2)} dopo commissione 15%.</p>
-            <Button onClick={create} disabled={createListing.isPending || !seller?.termsAcceptedAt}>Crea bozza</Button>
+            <p className="text-sm text-muted-foreground">{copy.estimatedNet} €{(Number(listing.price) * 0.85 || 0).toFixed(2)} {copy.afterCommission}</p>
+            <Button onClick={create} disabled={createListing.isPending || !seller?.termsAcceptedAt}>{copy.createDraft}</Button>
             {createdListingId && (
               <div className="border rounded p-3 space-y-3">
                 <Input
-                  placeholder="Nome file (es. index.html)"
+                  placeholder={copy.fileName}
                   value={sourceFileName}
                   onChange={(event) => setSourceFileName(event.target.value)}
                 />
                 <Textarea
                   rows={12}
-                  placeholder="Incolla qui il codice del template. Limite 2 MB."
+                  placeholder={copy.codePlaceholder}
                   value={sourceContent}
                   onChange={(event) => {
                     setFile(null);
@@ -336,14 +361,14 @@ export default function DeveloperMarketplace() {
                   }}
                   className="font-mono text-xs"
                 />
-                <div className="text-center text-xs text-muted-foreground">oppure scegli un file di codice testuale (max 2 MB)</div>
+                <div className="text-center text-xs text-muted-foreground">{copy.chooseFile}</div>
                 <Input type="file" accept=".html,.htm,.css,.js,.mjs,.cjs,.jsx,.ts,.tsx,.json,.md,.txt,.xml,.svg,.py,.sql" onChange={(e) => {
                   setFile(e.target.files?.[0] || null);
                   if (e.target.files?.[0]) setSourceContent("");
                 }} />
                 <div className="flex gap-2">
-                  <Button variant="outline" onClick={upload} disabled={uploadFile.isPending || (!file && !sourceContent.trim())}>Salva codice privato</Button>
-                  <Button onClick={() => submitReview.mutate({ listingId: createdListingId })} disabled={submitReview.isPending || uploadFile.isPending}>Controlla e pubblica</Button>
+                  <Button variant="outline" onClick={upload} disabled={uploadFile.isPending || (!file && !sourceContent.trim())}>{copy.savePrivateCode}</Button>
+                  <Button onClick={() => submitReview.mutate({ listingId: createdListingId })} disabled={submitReview.isPending || uploadFile.isPending}>{copy.scanPublish}</Button>
                 </div>
               </div>
             )}
@@ -351,29 +376,31 @@ export default function DeveloperMarketplace() {
         </Card>
 
         <Card>
-          <CardHeader><CardTitle>I miei listing</CardTitle></CardHeader>
+          <CardHeader><CardTitle>{copy.myListings}</CardTitle></CardHeader>
           <CardContent className="space-y-2">
             {(listingsQuery.data || []).map((item) => (
               <div key={item.id} className="border-b py-3 space-y-1">
-                <div className="flex justify-between gap-3"><span>{item.title}</span><Badge>{item.status}</Badge></div>
-                <p className="text-xs text-muted-foreground">Controllo automatico: {item.scanStatus}</p>
+                <div className="flex justify-between gap-3"><span>{item.title}</span><Badge>{getLocalizedListingStatus(item.status, copy)}</Badge></div>
+                <p className="text-xs text-muted-foreground">{copy.automaticScan} {getLocalizedListingStatus(item.scanStatus, copy)}</p>
                 {item.rejectionReason && <p className="text-sm text-destructive">{item.rejectionReason}</p>}
               </div>
             ))}
-            {!listingsQuery.data?.length && <p className="text-sm text-muted-foreground">Nessun listing creato.</p>}
+            {listingsQuery.isLoading && <p className="text-sm text-muted-foreground">{copy.loading}</p>}
+            {listingsQuery.isError && <p className="text-sm text-destructive">{listingsQuery.error.message}</p>}
+            {!listingsQuery.isLoading && !listingsQuery.isError && !listingsQuery.data?.length && <p className="text-sm text-muted-foreground">{copy.noListings}</p>}
           </CardContent>
         </Card>
 
         {user.role === "admin" && <Card>
-          <CardHeader><CardTitle>Moderazione listing pubblicati</CardTitle><CardDescription>Sospendi subito la vendita e l'accesso al codice se ricevi una segnalazione o trovi contenuti non conformi. Puoi ripristinare un listing dopo averlo verificato.</CardDescription></CardHeader>
+          <CardHeader><CardTitle>{copy.adminPublished}</CardTitle><CardDescription>{copy.moderationDescription}</CardDescription></CardHeader>
           <CardContent className="space-y-3">
             {(moderationQuery.data || []).map(({ listing: item, sellerName }) => (
               <div key={item.id} className="rounded border p-3 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="mr-auto font-medium">{item.title} · {sellerName}</span>
-                  <Badge variant={item.status === "suspended" ? "destructive" : "secondary"}>{item.status}</Badge>
+                  <Badge variant={item.status === "suspended" ? "destructive" : "secondary"}>{getLocalizedListingStatus(item.status, copy)}</Badge>
                 </div>
-                <p className="text-xs text-muted-foreground">Esito scansione: {item.scanStatus}</p>
+                <p className="text-xs text-muted-foreground">{copy.scanOutcome} {getLocalizedListingStatus(item.scanStatus, copy)}</p>
                 {item.moderationReason && <p className="text-sm text-destructive">{item.moderationReason}</p>}
                 {(item.scanStatus === "legacy_unscanned" || item.scanStatus === "not_scanned") && (
                   <Button
@@ -381,7 +408,7 @@ export default function DeveloperMarketplace() {
                     variant="outline"
                     disabled={rescanLegacyListing.isPending}
                     onClick={() => rescanLegacyListing.mutate({ listingId: item.id })}
-                  >Scansiona template legacy</Button>
+                  >{copy.rescanLegacy}</Button>
                 )}
                 {item.status === "published" ? (
                   <div className="flex flex-wrap gap-2">
@@ -389,7 +416,7 @@ export default function DeveloperMarketplace() {
                       className="min-w-56 flex-1"
                       value={moderationReasons[item.id] || ""}
                       onChange={(event) => setModerationReasons((current) => ({ ...current, [item.id]: event.target.value }))}
-                      placeholder="Motivo della sospensione"
+                      placeholder={copy.suspendReason}
                     />
                     <Button
                       size="sm"
@@ -400,27 +427,29 @@ export default function DeveloperMarketplace() {
                         action: "suspend",
                         reason: moderationReasons[item.id].trim(),
                       })}
-                    >Sospendi vendita e accesso</Button>
+                    >{copy.suspendAccess}</Button>
                   </div>
                 ) : (
                   <Button size="sm" variant="outline" disabled={moderateListing.isPending} onClick={() => moderateListing.mutate({ listingId: item.id, action: "restore" })}>
-                    Ripristina listing
+                    {copy.restoreListing}
                   </Button>
                 )}
               </div>
             ))}
-            {!moderationQuery.data?.length && <p className="text-sm text-muted-foreground">Nessun listing pubblicato o sospeso.</p>}
+            {moderationQuery.isLoading && <p className="text-sm text-muted-foreground">{copy.loading}</p>}
+            {moderationQuery.isError && <p className="text-sm text-destructive">{moderationQuery.error.message}</p>}
+            {!moderationQuery.isLoading && !moderationQuery.isError && !moderationQuery.data?.length && <p className="text-sm text-muted-foreground">{copy.noModerationListings}</p>}
           </CardContent>
         </Card>}
 
         {user.role === "admin" && <Card>
-          <CardHeader><CardTitle>Controlli automatici in revisione</CardTitle><CardDescription>Vengono elencati solo i casi sospetti che il sistema non ha potuto approvare automaticamente.</CardDescription></CardHeader>
+          <CardHeader><CardTitle>{copy.reviewQueue}</CardTitle><CardDescription>{copy.reviewQueueDescription}</CardDescription></CardHeader>
           <CardContent className="space-y-2">
             {selectedReviewListingId !== null && (
               <div className="rounded border p-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <p className="font-medium">{reviewContentQuery.data?.title || "Caricamento codice..."}</p>
-                  <Button size="sm" variant="outline" onClick={() => setSelectedReviewListingId(null)}>Chiudi codice</Button>
+                  <p className="font-medium">{reviewContentQuery.data?.title || copy.codeLoading}</p>
+                  <Button size="sm" variant="outline" onClick={() => setSelectedReviewListingId(null)}>{copy.closeCode}</Button>
                 </div>
                 {reviewContentQuery.isError && <p className="text-sm text-destructive">{reviewContentQuery.error.message}</p>}
                 {reviewContentQuery.data && (
@@ -431,26 +460,30 @@ export default function DeveloperMarketplace() {
             {(queueQuery.data || []).map((item) => <div key={item.id} className="flex flex-wrap gap-2 items-center border-b py-2">
               <div className="mr-auto min-w-56">
                 <p className="font-medium">{item.title}</p>
-                <p className="text-xs text-muted-foreground">{item.rejectionReason || "Controllo automatico da verificare"}</p>
+                <p className="text-xs text-muted-foreground">{item.rejectionReason || copy.checkDetails}</p>
                 {scanMessages(item.scanReport).map((message, index) => <p key={`${item.id}-${index}`} className="text-xs text-amber-700">{message}</p>)}
               </div>
-              <Button size="sm" variant="outline" onClick={() => setSelectedReviewListingId(item.id)}>Esamina codice</Button>
-              <Button size="sm" onClick={() => review.mutate({ listingId: item.id, approved: true })}>Approva dopo verifica</Button>
-              <Button size="sm" variant="destructive" onClick={() => review.mutate({ listingId: item.id, approved: false, reason: "Non conforme dopo controllo amministrativo" })}>Rifiuta</Button>
+              <Button size="sm" variant="outline" onClick={() => setSelectedReviewListingId(item.id)}>{copy.inspectCode}</Button>
+              <Button size="sm" onClick={() => review.mutate({ listingId: item.id, approved: true })}>{copy.approveAfterReview}</Button>
+              <Button size="sm" variant="destructive" onClick={() => review.mutate({ listingId: item.id, approved: false, reason: "Non conforme dopo controllo amministrativo" })}>{copy.reject}</Button>
             </div>)}
+            {queueQuery.isLoading && <p className="text-sm text-muted-foreground">{copy.loading}</p>}
+            {queueQuery.isError && <p className="text-sm text-destructive">{queueQuery.error.message}</p>}
           </CardContent>
         </Card>}
 
         {user.role === "admin" && <Card>
-          <CardHeader><CardTitle>Payout disponibili</CardTitle><CardDescription>Il transfer viene creato solo dopo 14 giorni e KYC attivo.</CardDescription></CardHeader>
+          <CardHeader><CardTitle>{copy.payoutAvailable}</CardTitle><CardDescription>{copy.payoutDelay}</CardDescription></CardHeader>
           <CardContent className="space-y-2">
             {(payoutCandidatesQuery.data || []).map((row) => (
               <div key={row.entry.id} className="flex flex-wrap gap-2 items-center border-b py-2">
                 <span className="mr-auto">{row.seller.displayName} · €{(row.entry.amountCents / 100).toFixed(2)}</span>
-                <Button size="sm" onClick={() => executePayout.mutate({ balanceEntryId: row.entry.id })} disabled={executePayout.isPending}>Esegui transfer</Button>
+                <Button size="sm" onClick={() => executePayout.mutate({ balanceEntryId: row.entry.id })} disabled={executePayout.isPending}>{copy.executeTransfer}</Button>
               </div>
             ))}
-            {!payoutCandidatesQuery.data?.length && <p className="text-sm text-muted-foreground">Nessun payout disponibile.</p>}
+            {payoutCandidatesQuery.isLoading && <p className="text-sm text-muted-foreground">{copy.loading}</p>}
+            {payoutCandidatesQuery.isError && <p className="text-sm text-destructive">{payoutCandidatesQuery.error.message}</p>}
+            {!payoutCandidatesQuery.isLoading && !payoutCandidatesQuery.isError && !payoutCandidatesQuery.data?.length && <p className="text-sm text-muted-foreground">{copy.noPayouts}</p>}
           </CardContent>
         </Card>}
 

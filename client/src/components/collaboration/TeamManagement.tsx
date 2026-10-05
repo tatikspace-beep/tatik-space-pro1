@@ -1,20 +1,20 @@
 // client/src/components/collaboration/TeamManagement.tsx
 import React, { useState } from 'react';
-import { Users, UserPlus, Trash2, ChevronDown, Crown, Pencil, Eye } from 'lucide-react';
+import { Users, Crown, Pencil, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
     DropdownMenu, DropdownMenuContent,
     DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import type { TeamMember, Role } from '@/hooks/useCollaboration';
+import type { CollaborationPageCopy } from '@/lib/collaborationPageCopy';
 
-const ROLE_META: Record<Role, { label: string; icon: React.FC<any>; color: string }> = {
-    owner: { label: 'Owner', icon: Crown, color: 'text-yellow-500' },
-    editor: { label: 'Editor', icon: Pencil, color: 'text-blue-500' },
-    viewer: { label: 'Viewer', icon: Eye, color: 'text-gray-400' },
+const ROLE_ICONS: Record<Role, React.ComponentType<{ className?: string }>> = {
+    owner: Crown,
+    editor: Pencil,
+    viewer: Eye,
 };
 
 function initials(name: string) {
@@ -32,13 +32,14 @@ interface TeamManagementProps {
     onRemove: (userId: string) => void;
     error: string | null;
     onClearError: () => void;
+    copy: CollaborationPageCopy;
 }
 
 export function TeamManagement({
     members, onlineUserIds, currentUserId,
     canManage, canInvite,
     onInvite, onChangeRole, onRemove,
-    error, onClearError,
+    error, onClearError, copy,
 }: TeamManagementProps) {
 
     const [email, setEmail] = useState('');
@@ -51,7 +52,7 @@ export function TeamManagement({
         if (!email.trim() || !email.includes('@')) return;
         setLoading(true);
         onInvite(email.trim(), inviteRole);
-        setSuccess(`Invito inviato a ${email}`);
+        setSuccess(copy.inviteAdded.replace('{email}', email));
         setEmail('');
         setLoading(false);
         setTimeout(() => setSuccess(''), 4000);
@@ -64,24 +65,24 @@ export function TeamManagement({
                     <Users className="h-5 w-5 text-primary" />
                 </div>
                 <div>
-                    <h3 className="font-semibold text-base">Team Management</h3>
-                    <p className="text-xs text-muted-foreground">{members.length} membri · {onlineUserIds.length} online</p>
+                    <h3 className="font-semibold text-base">{copy.teamManagement}</h3>
+                    <p className="text-xs text-muted-foreground">{members.length} {copy.membersLabel} · {onlineUserIds.length} {copy.online}</p>
                 </div>
             </div>
 
             {canInvite && (
                 <form onSubmit={handleInvite} className="flex items-center gap-2">
-                    <Input value={email} onChange={(e) => setEmail((e.target as HTMLInputElement).value)} placeholder="Email da invitare" />
+                    <Input type="email" value={email} onChange={(e) => setEmail((e.target as HTMLInputElement).value)} placeholder={copy.inviteEmail} />
                     <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                            <Button variant="outline">Ruolo</Button>
+                            <Button variant="outline">{copy.role}: {inviteRole === 'editor' ? copy.editorRole : copy.viewerRole}</Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent>
-                            <DropdownMenuItem onClick={() => setInviteRole('editor')}>Editor</DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => setInviteRole('viewer')}>Viewer</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setInviteRole('editor')}>{copy.editorRole}</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => setInviteRole('viewer')}>{copy.viewerRole}</DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
-                    <Button type="submit" disabled={loading}>{loading ? 'Invio...' : 'Invita'}</Button>
+                    <Button type="submit" disabled={loading}>{loading ? copy.sending : copy.invite}</Button>
                 </form>
             )}
 
@@ -100,16 +101,22 @@ export function TeamManagement({
                             </div>
                         </div>
                         <div className="flex items-center gap-2">
-                            <span className="text-xs text-muted-foreground">{m.role}</span>
+                            <span className="text-xs text-muted-foreground">
+                                {m.role === 'owner' ? copy.owner : m.role === 'editor' ? copy.editorRole : copy.viewerRole}
+                            </span>
+                            {(() => {
+                                const RoleIcon = ROLE_ICONS[m.role];
+                                return <RoleIcon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />;
+                            })()}
                             {canManage && currentUserId !== m.userId && (
                                 <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
                                         <Button variant="ghost">⋯</Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent>
-                                        <DropdownMenuItem onClick={() => onChangeRole(m.userId, 'viewer')}>Set Viewer</DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onChangeRole(m.userId, 'editor')}>Set Editor</DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onRemove(m.userId)} className="text-destructive">Rimuovi</DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => onChangeRole(m.userId, 'viewer')}>{copy.setViewer}</DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => onChangeRole(m.userId, 'editor')}>{copy.setEditor}</DropdownMenuItem>
+                                        <DropdownMenuItem onClick={() => onRemove(m.userId)} className="text-destructive">{copy.remove}</DropdownMenuItem>
                                     </DropdownMenuContent>
                                 </DropdownMenu>
                             )}
@@ -120,7 +127,7 @@ export function TeamManagement({
 
             {error && (
                 <div className="text-sm text-destructive">
-                    {error} <Button variant="link" onClick={onClearError}>Chiudi</Button>
+                    {error} <Button variant="link" onClick={onClearError}>{copy.close}</Button>
                 </div>
             )}
         </div>

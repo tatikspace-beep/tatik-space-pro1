@@ -1,21 +1,24 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/_core/hooks/useAuth';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useTranslation } from 'react-i18next';
 import { trpc } from '@/lib/trpc';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { FileExplorer } from '@/components/FileExplorer';
 import { GreenBoxHybrid } from '@/components/GreenBoxHybrid';
-import { Loader2, Upload, Download, Trash2, Copy, Move, Cloud, FolderOpen, Code2, Star } from 'lucide-react';
+import { Loader2, Download, Trash2, Copy, Move, Cloud, FolderOpen, Code2, Star } from 'lucide-react';
 import { toast } from 'sonner';
 import { useLocation } from 'wouter';
+import { FREE_TEMPLATES, TemplateMetadata } from '@/data/templates';
+import { filesPageCopy, formatFilesCopy } from '@/lib/filesPageCopy';
 // PromoBox is rendered globally via App.tsx
 
 export default function Files() {
   const { user, loading: authLoading } = useAuth();
-  const { t } = useLanguage();
-  const { t: i18nT } = useTranslation();
+  const { language } = useLanguage();
+  const copy = filesPageCopy[language];
+  const toastCopy = (key: keyof typeof copy.toast, values: Record<string, string | number> = {}) =>
+    formatFilesCopy(copy.toast[key], values);
   const [, setLocation] = useLocation();
   const [selectedFile, setSelectedFile] = useState<any>(null);
   const [clipboard, setClipboard] = useState<{ file: any; action: 'copy' | 'move' } | null>(null);
@@ -61,6 +64,12 @@ export default function Files() {
   const purchasesQuery = trpc.templatePurchases.list.useQuery(undefined, {
     enabled: !!user,
   });
+  const templateCatalogQuery = trpc.templatePurchases.catalog.useQuery();
+  const getTemplateCodeMutation = trpc.templatePurchases.getCode.useMutation();
+  const templateCatalog: Array<TemplateMetadata & { code?: string }> = [
+    ...FREE_TEMPLATES,
+    ...(templateCatalogQuery.data ?? []),
+  ];
 
   const { data: backups = [], isLoading: backupsLoading } = trpc.backups.list.useQuery(undefined, {
     enabled: !!user,
@@ -114,30 +123,33 @@ export default function Files() {
         element.click();
         document.body.removeChild(element);
         URL.revokeObjectURL(element.href);
-        toast.success(`File "${file.name}" scaricato!`);
+        toast.success(toastCopy('downloadedFile', { name: file.name }));
         break;
       case 'copy-content':
         if (!file) return;
-        navigator.clipboard.writeText(file.content || '');
-        toast.success('Contenuto copiato negli appunti!');
+        void navigator.clipboard.writeText(file.content || '')
+          .then(() => toast.success(toastCopy('copiedContent')))
+          .catch(() => toast.error(copy.clipboardCopyFailed));
         break;
       case 'copy-file':
         if (!file) return;
         setClipboard({ file, action: 'copy' });
-        toast.success(`File "${file.name}" copiato! Incolla dove vuoi.`);
+        toast.success(toastCopy('copiedFile', { name: file.name }));
         break;
       case 'move':
         if (!file) return;
         setClipboard({ file, action: 'move' });
-        toast.success(`File "${file.name}" pronto per il trasferimento!`);
+        toast.success(toastCopy('readyToMove', { name: file.name }));
         break;
       case 'paste':
         if (!clipboard) {
-          toast.error('Nulla da incollare');
+          toast.error(toastCopy('nothingToPaste'));
           return;
         }
-        const pasteAction = clipboard.action === 'move' ? 'Trasferito' : 'Copiato';
-        toast.success(`${pasteAction} "${clipboard.file.name}"!`);
+        toast.success(toastCopy(
+          clipboard.action === 'move' ? 'movedPaste' : 'copiedPaste',
+          { name: clipboard.file.name }
+        ));
         setClipboard(null);
         break;
       case 'delete':
@@ -148,9 +160,9 @@ export default function Files() {
             setSelectedFile(null);
           }),
           {
-            loading: 'Eliminazione...',
-            success: `File "${file.name}" eliminato!`,
-            error: 'Errore durante l\'eliminazione',
+            loading: toastCopy('deleting'),
+            success: toastCopy('deletedFile', { name: file.name }),
+            error: toastCopy('deleteFailed'),
           }
         );
         break;
@@ -176,7 +188,7 @@ export default function Files() {
           try {
             const content = evt.target?.result as string;
             if (!activeProjectId) {
-              toast.error('Errore: nessun progetto disponibile');
+              toast.error(toastCopy('missingProject'));
               resolve();
               return;
             }
@@ -186,10 +198,14 @@ export default function Files() {
               projectId: activeProjectId,
               path: `/${file.name}`,
             });
-            toast.success(`File "${file.name}" caricato con successo!`);
+            toast.success(toastCopy('uploadedFile', { name: file.name }));
           } catch (err) {
-            toast.error(`Errore caricamento "${file.name}"`);
+            toast.error(toastCopy('uploadFailed', { name: file.name }));
           }
+          resolve();
+        };
+        reader.onerror = () => {
+          toast.error(toastCopy('fileReadFailed', { name: file.name }));
           resolve();
         };
         reader.readAsText(file);
@@ -210,13 +226,13 @@ export default function Files() {
 
     if (!fileList) {
       console.warn('[Folder Upload] fileList is null');
-      toast.error('Errore: cartella non selezionata');
+      toast.error(toastCopy('folderNotSelected'));
       return;
     }
 
     if (fileList.length === 0) {
       console.warn('[Folder Upload] fileList.length === 0');
-      toast.error('La cartella è vuota o non è stata selezionata correttamente');
+      toast.error(toastCopy('folderEmpty'));
       return;
     }
 
@@ -237,7 +253,7 @@ export default function Files() {
         webkitRelativePath: (firstFile as any).webkitRelativePath,
       });
 
-      toast.loading(`Caricamento cartella "${folderName}"... (${fileList.length} file)`);
+      toast.loading(toastCopy('loadingFolder', { name: folderName, count: fileList.length }));
 
       const folderFiles: any[] = [];
       let successCount = 0;
@@ -249,7 +265,7 @@ export default function Files() {
 
         try {
           // Read file as Base64 to handle all file types (text + binary)
-          const content = await new Promise<string>((resolve) => {
+          const content = await new Promise<string>((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = () => {
               const result = reader.result;
@@ -264,12 +280,12 @@ export default function Files() {
                 }
                 resolve(btoa(binary));
               } else {
-                resolve('');
+                reject(new Error(toastCopy('fileReadFailed', { name: file.name })));
               }
             };
             reader.onerror = () => {
               console.warn(`[Folder Upload] Errore lettura file: ${file.name}`);
-              resolve('');
+              reject(new Error(toastCopy('fileReadFailed', { name: file.name })));
             };
             // Try readAsArrayBuffer first (works for all files), fallback to readAsText
             reader.readAsArrayBuffer(file);
@@ -294,6 +310,7 @@ export default function Files() {
             console.log(`[Folder Upload] OK: ${file.name}`);
           } catch (uploadErr) {
             console.error(`[Folder Upload] Server error per ${file.name}:`, uploadErr);
+            toast.error(toastCopy('uploadFailed', { name: file.name }));
             // Still add to local folder even if server fails
             successCount++;
           }
@@ -304,6 +321,7 @@ export default function Files() {
           }
         } catch (fileErr) {
           console.error(`[Folder Upload] Errore elaborazione file ${file.name}:`, fileErr);
+          toast.error(fileErr instanceof Error ? fileErr.message : toastCopy('fileReadFailed', { name: file.name }));
         }
       }
 
@@ -321,12 +339,14 @@ export default function Files() {
         filesInState: folderFiles.length,
       });
 
-      toast.success(
-        `✅ Cartella "${folderName}" caricata: ${successCount}/${fileList.length} file`
-      );
+      toast.success(toastCopy('folderUploaded', {
+        name: folderName,
+        count: successCount,
+        total: fileList.length,
+      }));
     } catch (err) {
       console.error('[Folder Upload] Errore generale:', err);
-      toast.error('Errore durante il caricamento della cartella');
+      toast.error(toastCopy('folderUploadFailed'));
     } finally {
       setIsLoadingFolder(false);
       if (folderInputRef.current) {
@@ -338,7 +358,7 @@ export default function Files() {
   if (authLoading || projectsLoading || filesLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <Loader2 className="h-8 w-8 animate-spin text-primary" aria-label={copy.loading} />
       </div>
     );
   }
@@ -347,12 +367,12 @@ export default function Files() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <Card className="p-8 max-w-md text-center">
-          <h2 className="text-2xl font-bold mb-4">Accesso Richiesto</h2>
+          <h2 className="text-2xl font-bold mb-4">{copy.loginRequired}</h2>
           <p className="text-muted-foreground mb-6">
-            {t.please} {t.login} {t.toAccess} {t.manageFiles}
+            {copy.loginPrompt}
           </p>
           <Button asChild>
-            <a href="/api/auth/login">{t.login}</a>
+            <a href="/api/auth/login">{copy.login}</a>
           </Button>
         </Card>
       </div>
@@ -366,8 +386,8 @@ export default function Files() {
         <div className="container px-4 py-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold">Gestione File</h1>
-              <p className="text-muted-foreground">Organizza e gestisci i tuoi file e cartelle</p>
+              <h1 className="text-2xl font-bold">{copy.pageTitle}</h1>
+              <p className="text-muted-foreground">{copy.pageSubtitle}</p>
             </div>
             <div className="flex items-center gap-2">
               <Button
@@ -375,36 +395,36 @@ export default function Files() {
                 variant="outline"
                 onClick={() => handleFileAction('upload-folder')}
                 disabled={isLoadingFolder}
-                title="Seleziona una cartella da caricare"
+                title={copy.selectFolderTitle}
               >
                 {isLoadingFolder ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Caricamento...
+                    {copy.uploading}
                   </>
                 ) : (
                   <>
                     <FolderOpen className="h-4 w-4 mr-2" />
-                    Carica Cartella
+                    {copy.uploadFolder}
                   </>
                 )}
               </Button>
-              <Button variant="outline" size="sm" disabled={!selectedFile} onClick={() => handleFileAction('copy-file', selectedFile)} title="Copia il file selezionato">
+              <Button variant="outline" size="sm" disabled={!selectedFile} onClick={() => handleFileAction('copy-file', selectedFile)} title={copy.copySelectedTitle}>
                 <Copy className="h-4 w-4 mr-2" />
-                Copia
+                {copy.copy}
               </Button>
-              <Button variant="outline" size="sm" disabled={!selectedFile} onClick={() => handleFileAction('move', selectedFile)} title="Sposta il file selezionato">
+              <Button variant="outline" size="sm" disabled={!selectedFile} onClick={() => handleFileAction('move', selectedFile)} title={copy.moveSelectedTitle}>
                 <Move className="h-4 w-4 mr-2" />
-                Sposta
+                {copy.move}
               </Button>
               {clipboard && (
-                <Button size="sm" variant="outline" onClick={() => handleFileAction('paste')} className="bg-primary/10" title="Incolla file copiato/spostato">
-                  ✓ Incolla
+                <Button size="sm" variant="outline" onClick={() => handleFileAction('paste')} className="bg-primary/10" title={copy.pasteTitle}>
+                  ✓ {copy.paste}
                 </Button>
               )}
-              <Button variant="outline" size="sm" disabled={!selectedFile} onClick={() => handleFileAction('delete', selectedFile)} title="Elimina il file selezionato" className="text-destructive hover:bg-destructive/10">
+              <Button variant="outline" size="sm" disabled={!selectedFile} onClick={() => handleFileAction('delete', selectedFile)} title={copy.deleteSelectedTitle} className="text-destructive hover:bg-destructive/10">
                 <Trash2 className="h-4 w-4 mr-2" />
-                Elimina
+                {copy.delete}
               </Button>
             </div>
             <input ref={fileInputRef} name="uploadFile" type="file" multiple hidden onChange={handleFileUpload} accept="*/*" />
@@ -431,7 +451,7 @@ export default function Files() {
                 <div className="flex items-center justify-between mb-3">
                   <h3 className="font-semibold text-sm text-purple-900 dark:text-purple-100 flex items-center gap-2">
                     <FolderOpen className="w-4 h-4" />
-                    Cartelle Caricate
+                    {copy.loadedFolders}
                   </h3>
                 </div>
                 <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -445,14 +465,14 @@ export default function Files() {
                           {folder.name}
                         </p>
                         <p className="text-[11px] text-purple-600 dark:text-purple-300">
-                          {folder.files.length} file
+                          {folder.files.length} {copy.fileCount}
                         </p>
                       </div>
                       <Button
                         size="sm"
                         variant="ghost"
                         className="h-6 w-auto px-2 hover:bg-purple-200 dark:hover:bg-purple-800"
-                        title="Apri con File Editor"
+                        title={copy.openInEditorTitle}
                         onClick={() => {
                           // Save folder files to localStorage for editor access
                           localStorage.setItem(
@@ -464,7 +484,7 @@ export default function Files() {
                         }}
                       >
                         <Code2 className="w-3 h-3 mr-1" />
-                        <span className="text-xs">Editor</span>
+                        <span className="text-xs">{copy.editor}</span>
                       </Button>
                     </div>
                   ))}
@@ -484,7 +504,7 @@ export default function Files() {
               <Card className="p-4 bg-gradient-to-br from-rose-50 to-orange-50 dark:from-rose-950/30 dark:to-orange-950/30 border-rose-200 dark:border-rose-800">
                 <h3 className="font-semibold text-sm text-rose-900 dark:text-rose-100 mb-3 flex items-center gap-2">
                   <Copy className="w-4 h-4" />
-                  Template Copiato
+                  {copy.copiedTemplate}
                 </h3>
                 <div className="space-y-2">
                   <div className="p-2 rounded bg-rose-100/50 dark:bg-rose-900/30">
@@ -497,12 +517,16 @@ export default function Files() {
                         onClick={async () => {
                           const attributionComment = '<!-- This template is from tatik.space - https://tatik.space -->\n';
                           const codeWithAttribution = attributionComment + copiedTemplate.code;
-                          await navigator.clipboard.writeText(codeWithAttribution);
-                          toast.success(i18nT('copied'));
+                          try {
+                            await navigator.clipboard.writeText(codeWithAttribution);
+                            toast.success(toastCopy('copiedContent'));
+                          } catch {
+                            toast.error(copy.clipboardCopyFailed);
+                          }
                         }}
                       >
                         <Copy className="w-3 h-3" />
-                        Copia
+                        {copy.copy}
                       </Button>
                       <Button
                         size="sm"
@@ -516,7 +540,7 @@ export default function Files() {
                           document.body.appendChild(elem);
                           elem.click();
                           document.body.removeChild(elem);
-                          toast.success(i18nT('fileDownloaded'));
+                          toast.success(toastCopy('downloadedFile', { name: copiedTemplate.name }));
                         }}
                       >
                         <Download className="w-3 h-3" />
@@ -533,25 +557,34 @@ export default function Files() {
               <Card className="p-4 bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-950/30 dark:to-teal-950/30 border-emerald-200 dark:border-emerald-800">
                 <h3 className="font-semibold text-sm text-emerald-900 dark:text-emerald-100 mb-3 flex items-center gap-2">
                   <Star className="w-4 h-4" />
-                  Template Acquistati
+                  {copy.purchasedTemplates}
                 </h3>
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {(purchasesQuery.data || []).length > 0 ? (
                     (purchasesQuery.data || []).map((purchase: any) => {
-                      const ALL_TEMPLATES = [...require('@/data/templates').FREE_TEMPLATES, ...require('@/data/templates').PREMIUM_TEMPLATES];
-                      const template = ALL_TEMPLATES.find((t: any) => t.id === purchase.templateId);
+                      const template = templateCatalog.find((t) => t.id === purchase.templateId);
                       if (!template) return null;
                       return (
                         <div key={purchase.id} className="p-2 rounded bg-emerald-100/50 dark:bg-emerald-900/30 flex items-center justify-between gap-2">
                           <div className="flex-1 truncate min-w-0">
                             <p className="text-xs font-medium text-emerald-900 dark:text-emerald-100 truncate">{template.name}</p>
-                            <p className="text-[11px] text-emerald-600 dark:text-emerald-300">Scade: {new Date(purchase.expiresAt).toLocaleDateString('it-IT')}</p>
+                            <p className="text-[11px] text-emerald-600 dark:text-emerald-300">{copy.expires} {new Date(purchase.expiresAt).toLocaleDateString(language)}</p>
                           </div>
                           <div className="shrink-0 flex gap-1">
-                            <Button size="sm" variant="ghost" className="h-6 w-6 p-0 hover:bg-emerald-200 dark:hover:bg-emerald-800" title="Copia" onClick={() => {
-                              localStorage.setItem('copied_template', JSON.stringify(template));
-                              setCopiedTemplate(template);
-                              toast.success('Template copiato! Visibile nella sezione "Template Copiato"');
+                            <Button size="sm" variant="ghost" className="h-6 w-6 p-0 hover:bg-emerald-200 dark:hover:bg-emerald-800" title={copy.copyTitle} aria-label={copy.copyTitle} onClick={() => {
+                              void (async () => {
+                                try {
+                                  const code = template.isPremium
+                                    ? (await getTemplateCodeMutation.mutateAsync({ templateId: template.id })).code
+                                    : template.code ?? '';
+                                  const purchasedTemplate = { ...template, code };
+                                  localStorage.setItem('copied_template', JSON.stringify(purchasedTemplate));
+                                  setCopiedTemplate(purchasedTemplate);
+                                  toast.success(toastCopy('copiedTemplateVisible'));
+                                } catch (error) {
+                                  toast.error(error instanceof Error ? error.message : toastCopy('copyTemplateFailed'));
+                                }
+                              })();
                             }}>
                               <Copy className="w-3 h-3" />
                             </Button>
@@ -560,7 +593,7 @@ export default function Files() {
                       );
                     })
                   ) : (
-                    <p className="text-xs text-emerald-600 dark:text-emerald-400">Nessun template acquistato</p>
+                    <p className="text-xs text-emerald-600 dark:text-emerald-400">{copy.noPurchasedTemplates}</p>
                   )}
                 </div>
               </Card>
@@ -571,13 +604,13 @@ export default function Files() {
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold text-sm text-blue-900 dark:text-blue-100 flex items-center gap-2">
                   <Cloud className="w-4 h-4" />
-                  Backup Online
+                  {copy.onlineBackup}
                 </h3>
               </div>
               {backupsLoading ? (
-                <div className="text-xs text-blue-700 dark:text-blue-300 py-2">Caricamento...</div>
+                <div className="text-xs text-blue-700 dark:text-blue-300 py-2">{copy.loading}</div>
               ) : backups.length === 0 ? (
-                <p className="text-xs text-blue-600 dark:text-blue-400">Nessun backup salvato</p>
+                <p className="text-xs text-blue-600 dark:text-blue-400">{copy.noBackups}</p>
               ) : (
                 <div className="space-y-1 max-h-48 overflow-y-auto">
                   {backups.slice(0, 5).map((backup: any) => (
@@ -592,7 +625,8 @@ export default function Files() {
                         size="sm"
                         variant="ghost"
                         className="h-6 w-6 p-0 hover:bg-blue-200 dark:hover:bg-blue-800"
-                        title="Scarica backup"
+                        title={copy.downloadBackupTitle}
+                        aria-label={copy.downloadBackupTitle}
                         onClick={() => {
                           const element = document.createElement('a');
                           const blob = new Blob([backup.snapshot || ''], { type: 'application/json' });
@@ -601,7 +635,7 @@ export default function Files() {
                           document.body.appendChild(element);
                           element.click();
                           document.body.removeChild(element);
-                          toast.success(`Backup "${backup.name}" scaricato!`);
+                          toast.success(toastCopy('downloadedBackup', { name: backup.name }));
                         }}
                       >
                         <Download className="w-4 h-4" />
@@ -618,23 +652,23 @@ export default function Files() {
             {/* Selected file details */}
             {selectedFile && (
               <Card className="p-4">
-                <h3 className="text-lg font-semibold mb-2">Dettagli File</h3>
+                <h3 className="text-lg font-semibold mb-2">{copy.fileDetails}</h3>
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <p className="text-sm text-muted-foreground">{t.firstName}</p>
+                    <p className="text-sm text-muted-foreground">{copy.name}</p>
                     <p>{selectedFile.name}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Dimensione</p>
-                    <p>{selectedFile.size || 'N/D'}</p>
+                    <p className="text-sm text-muted-foreground">{copy.size}</p>
+                    <p>{selectedFile.size || copy.notAvailable}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Tipo</p>
+                    <p className="text-sm text-muted-foreground">{copy.type}</p>
                     <p>{selectedFile.type}</p>
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Ultima modifica</p>
-                    <p>{selectedFile.updatedAt ? new Date(selectedFile.updatedAt).toLocaleDateString() : 'N/D'}</p>
+                    <p className="text-sm text-muted-foreground">{copy.lastModified}</p>
+                    <p>{selectedFile.updatedAt ? new Date(selectedFile.updatedAt).toLocaleDateString(language) : copy.notAvailable}</p>
                   </div>
                 </div>
 
@@ -644,7 +678,7 @@ export default function Files() {
                     onClick={() => handleFileAction('download', selectedFile)}
                   >
                     <Download className="h-4 w-4 mr-2" />
-                    Scarica
+                    {copy.download}
                   </Button>
                   <Button
                     size="sm"
@@ -652,7 +686,7 @@ export default function Files() {
                     onClick={() => handleFileAction('copy-content', selectedFile)}
                   >
                     <Copy className="h-4 w-4 mr-2" />
-                    Copia Contenuto
+                    {copy.copyContent}
                   </Button>
                 </div>
               </Card>

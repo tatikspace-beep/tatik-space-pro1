@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '@/_core/hooks/useAuth';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useProject } from '@/contexts/ProjectContext';
@@ -18,9 +18,12 @@ import {
   User,
   Globe,
   Timer,
+  Menu,
+  X,
 } from 'lucide-react';
 import { Link, useLocation } from 'wouter';
 import ProfileBadge from '@/components/ProfileBadge';
+import { siteSurfaceCopy } from '@/lib/siteSurfaceCopy';
 
 const languages = [
   { code: 'en', name: 'English', flag: '🇺🇸' },
@@ -49,8 +52,10 @@ const languages = [
 export function GlobalNavbar() {
   const { user, isAuthenticated, logout, login } = useAuth();
   const { language, setLanguage, t } = useLanguage();
+  const copy = siteSurfaceCopy[language];
   const { currentProject } = useProject();
   const [location, setLocation] = useLocation();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleLogout = async () => {
     await logout();
@@ -74,31 +79,33 @@ export function GlobalNavbar() {
   };
 
   return (
-    <nav className="fixed top-0 w-full z-50 bg-background/80 backdrop-blur-md border-b border-border">
-      <div className="container flex h-16 items-center justify-between px-4">
+    <nav className="fixed top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md">
+      <div className="mx-auto w-full max-w-[1680px] px-3 lg:px-6">
+        <div className="grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
         {/* Left section - Logo and PRO badge */}
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-1.5">
           <button
             onClick={handleLogoClick}
+            aria-label={copy.navbar.home}
             className="cursor-pointer hover:opacity-80 transition-opacity"
           >
             <img
               src="/logo.png"
-              alt="Tatik logo"
+              alt={copy.navbar.logo}
               className="w-10 h-10 object-contain"
               onError={(e: any) => (e.currentTarget.src = '/assets/logo.png')}
             />
           </button>
-          <div className="flex items-center gap-2">
-            <span className="text-xl font-bold tracking-tight">{displayName}</span>
-            <span className="px-2 py-0.5 text-xs font-bold bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-md shadow-lg pro-badge">
+          <div className="flex items-center gap-1">
+            <span className="text-base font-bold tracking-tight sm:text-xl">{displayName}</span>
+            <span className="rounded-md bg-gradient-to-r from-blue-500 to-purple-500 px-1 py-0.5 text-[10px] font-bold text-white shadow-lg pro-badge sm:px-2 sm:text-xs">
               PRO
             </span>
           </div>
         </div>
 
         {/* Center section - Main Navigation Menu */}
-        <div className="hidden md:flex items-center gap-6">
+        <div className="hidden items-center justify-center gap-1 lg:col-span-1 lg:col-start-2 lg:row-start-1 lg:flex xl:gap-3">
           <div className="relative group">
             <button className="flex items-center gap-1 px-3 py-2 rounded-md hover:bg-accent transition-colors">
               <span className="font-medium">{t.solutions}</span>
@@ -113,6 +120,9 @@ export function GlobalNavbar() {
                 </Link>
                 <Link href="/marketplace" className="block px-3 py-2 rounded-md hover:bg-accent text-sm">
                   {t.templateMarketplace}
+                </Link>
+                <Link href="/marketplace/developer" className="block px-3 py-2 rounded-md hover:bg-accent text-sm">
+                  {copy.navbar.developerMarketplace}
                 </Link>
                 <Link href="/collaboration" className="block px-3 py-2 rounded-md hover:bg-accent text-sm">
                   {t.collaboration}
@@ -155,7 +165,7 @@ export function GlobalNavbar() {
 
           {/* Trial countdown - only shown when authenticated */}
           {isAuthenticated && user?.trialEndsAt && (
-            <div className="flex items-center gap-2 text-sm">
+            <div className="hidden items-center gap-2 text-sm 2xl:flex">
               <Timer className="w-4 h-4 text-orange-500" />
               <span className="font-medium">{t.freeTrialExpires}</span>
               <Badge variant="secondary" className="bg-orange-100 text-orange-800">
@@ -166,18 +176,21 @@ export function GlobalNavbar() {
         </div>
 
         {/* Right section - Language selector, Auth, Settings */}
-        <div className="flex items-center gap-3">
+        <div className="col-start-2 row-start-1 flex items-center justify-self-end gap-1.5 lg:col-start-3">
           {/* Language Selector - always visible */}
           <Select value={language} onValueChange={(value) => setLanguage(value as any)}>
-            <SelectTrigger className="w-12 h-10 p-0">
+            <SelectTrigger aria-label={t.language} className="w-12 h-10 p-0">
               <SelectValue>
                 <Globe className="w-4 h-4" />
               </SelectValue>
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent
+              className="max-h-[70vh] overflow-hidden"
+              viewportClassName="max-h-[70vh] overflow-y-auto"
+            >
               {languages.map((lang) => (
                 <SelectItem key={lang.code} value={lang.code}>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1">
                     <span className="text-lg">{lang.flag}</span>
                     <span>{lang.name}</span>
                   </div>
@@ -188,7 +201,7 @@ export function GlobalNavbar() {
 
           {/* User Menu */}
           {isAuthenticated ? (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1">
               <ProfileBadge />
             </div>
           ) : (
@@ -206,25 +219,45 @@ export function GlobalNavbar() {
             </div>
           )}
         </div>
+        </div>
+        <div className="flex justify-center border-t border-border py-1 lg:hidden">
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-expanded={mobileMenuOpen}
+            aria-label={mobileMenuOpen ? copy.navbar.closeMenu : copy.navbar.openMenu}
+            onClick={() => setMobileMenuOpen((open) => !open)}
+          >
+            {mobileMenuOpen ? <X className="mr-2 h-4 w-4" /> : <Menu className="mr-2 h-4 w-4" />}
+            {mobileMenuOpen ? t.close : copy.navbar.menu}
+          </Button>
+        </div>
       </div>
+      {mobileMenuOpen && (
+        <div className="lg:hidden border-t border-border bg-background px-4 py-3 shadow-lg">
+          <div className="flex flex-col gap-1">
+            <span className="px-3 pt-2 text-xs font-semibold uppercase text-muted-foreground">{t.solutions}</span>
+            <Link href="/editor" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{t.editorOnline}</Link>
+            <Link href="/marketplace" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{t.templateMarketplace}</Link>
+            <Link href="/marketplace/developer" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{copy.navbar.developerMarketplace}</Link>
+            <Link href="/collaboration" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{t.collaboration}</Link>
+            <Link href="/deployment" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{t.deployment}</Link>
+            <span className="px-3 pt-2 text-xs font-semibold uppercase text-muted-foreground">{t.resources}</span>
+            <Link href="/documentation" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{t.documentation}</Link>
+            <Link href="/tutorials" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{t.tutorials}</Link>
+            <Link href="/blog" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{t.blog}</Link>
+            <Link href="/support" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{t.support}</Link>
+            <Link href="/pricing" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>
+              {t.pricing}
+            </Link>
+            {!isAuthenticated && (
+              <Link href="/contact" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>
+                {t.contactUs}
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
     </nav>
   );
 }
-
-
-
-
-
-/*// Dentro Navbar.tsx
-const { login } = useAuth();
-
-return (
-  <nav>
-    <button 
-      onClick={() => login({ id: "1", name: "Admin", role: "ADMIN" })}
-      style={{ background: 'red', color: 'white', padding: '10px' }}
-    >
-       LOGIN RAPIDO ADMIN
-    </button>
-  </nav>
-);*/

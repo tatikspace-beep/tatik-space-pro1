@@ -55,9 +55,11 @@ interface UseCollaborationOptions {
     userName: string;
     wsUrl?: string; // es. ws://localhost:5000/ws/collaboration
     offline?: boolean; // se true usa una modalità mock offline (no WebSocket)
+    offlineProjectName?: string;
+    offlineSystemMessage?: string;
 }
 
-export function useCollaboration({ projectId, userId, userName, wsUrl, offline }: UseCollaborationOptions) {
+export function useCollaboration({ projectId, userId, userName, wsUrl, offline, offlineProjectName, offlineSystemMessage }: UseCollaborationOptions) {
     const [state, setState] = useState<CollaborationState>({
         status: 'connecting',
         project: null,
@@ -78,8 +80,8 @@ export function useCollaboration({ projectId, userId, userName, wsUrl, offline }
         if (isOffline) {
             const demoProject: Project = {
                 id: projectId || 'proj_demo',
-                name: 'Progetto Offline',
-                description: 'Modalità offline locale per test',
+                name: offlineProjectName || 'Offline demo project',
+                description: 'Local offline demo',
                 ownerId: userId || 'local_owner',
                 shareToken: 'offline_share',
                 sharePermission: 'editor',
@@ -100,7 +102,7 @@ export function useCollaboration({ projectId, userId, userName, wsUrl, offline }
                         projectId: projectId,
                         userId: 'system',
                         userName: 'Sistema',
-                        content: 'Hai aperto la modalità offline. Nessuna connessione esterna è richiesta.',
+                        content: offlineSystemMessage || 'You opened offline mode. No external connection is required.',
                         timestamp: new Date().toISOString(),
                         type: 'system',
                     },
@@ -208,7 +210,7 @@ export function useCollaboration({ projectId, userId, userName, wsUrl, offline }
             console.error('useCollaboration connect error', err);
             setState((s) => ({ ...s, status: 'error', error: String(err) }));
         }
-    }, [projectId, userId, userName, wsUrl, offline]);
+    }, [projectId, userId, userName, wsUrl, offline, offlineProjectName, offlineSystemMessage]);
 
     useEffect(() => {
         connect();

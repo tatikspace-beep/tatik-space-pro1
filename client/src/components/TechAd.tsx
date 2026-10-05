@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { X, Shield, Code2, Zap, Lock, AlertCircle } from 'lucide-react';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { getComponentCopy, type TechAdId } from '@/lib/assistantUiCopy';
 
 interface Ad {
-    id: string;
+    id: TechAdId;
     title: string;
     description: string;
     icon: React.ReactNode;
@@ -10,6 +12,15 @@ interface Ad {
     bgColor: string;
     affiliateUrl?: string;
     category: 'affiliate' | 'adnetwork' | 'internal';
+}
+
+function hasMarketingConsent() {
+    try {
+        const value = localStorage.getItem('tatik-cookie-consent-details');
+        return value ? JSON.parse(value).marketing === true : false;
+    } catch {
+        return false;
+    }
 }
 
 const techAds: Ad[] = [
@@ -76,12 +87,15 @@ const techAds: Ad[] = [
 ];
 
 export function TechAd() {
+    const { language } = useLanguage();
+    const copy = getComponentCopy(language).techAd;
     const [currentAd, setCurrentAd] = useState<Ad | null>(null);
     const [isVisible, setIsVisible] = useState(true);
     const [showAnimation, setShowAnimation] = useState(false);
 
     // Track ad impression
     const trackImpression = (ad: Ad) => {
+        if (!hasMarketingConsent()) return;
         try {
             // Google Analytics 4
             if ((window as any).gtag) {
@@ -108,6 +122,7 @@ export function TechAd() {
 
     // Track ad click
     const trackClick = (ad: Ad) => {
+        if (!hasMarketingConsent()) return;
         try {
             if ((window as any).gtag) {
                 (window as any).gtag('event', 'ad_click', {
@@ -165,6 +180,7 @@ export function TechAd() {
     };
 
     if (!isVisible || !currentAd) return null;
+    const localizedAd = copy.items[currentAd.id] ?? copy.items['security-1'];
 
     return (
         <button
@@ -172,20 +188,20 @@ export function TechAd() {
             className={`w-full ${currentAd.bgColor} border border-slate-600 rounded p-2.5 transition-all duration-300 hover:border-slate-500 hover:bg-slate-600 text-left ${showAnimation ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
                 } focus:outline-none focus:ring-2 focus:ring-slate-500 focus:ring-offset-1`}
             rel="nofollow noopener noreferrer"
-            title={currentAd.category === 'affiliate' ? 'Link affiliato (apre in nuova scheda)' : 'Ad sponsorizzato'}
+            title={currentAd.category === 'affiliate' ? copy.affiliateTitle : copy.sponsoredTitle}
         >
             <div className="flex items-start justify-between gap-2">
                 <div className="flex items-start gap-2 flex-1 min-w-0">
                     <div className={`${currentAd.color} mt-0.5 flex-shrink-0`}>{currentAd.icon}</div>
                     <div className="flex-1 min-w-0">
                         <h4 className={`font-medium text-xs ${currentAd.color}`}>
-                            {currentAd.title}
+                            {localizedAd.title}
                         </h4>
                         <p className="text-xs text-slate-400 mt-0.5 line-clamp-1">
-                            {currentAd.description}
+                            {localizedAd.description}
                         </p>
                         <p className="text-xs text-slate-500 mt-1">
-                            {currentAd.category === 'affiliate' ? '→ Link affiliato' : '→ Sponsorizzato'}
+                            {currentAd.category === 'affiliate' ? copy.affiliateLabel : copy.sponsoredLabel}
                         </p>
                     </div>
                 </div>
@@ -195,7 +211,7 @@ export function TechAd() {
                         setIsVisible(false);
                     }}
                     className="flex-shrink-0 text-slate-500 hover:text-slate-300 transition-colors mt-0.5"
-                    title="Chiudi"
+                    title={copy.close}
                 >
                     <X className="h-3.5 w-3.5" />
                 </button>

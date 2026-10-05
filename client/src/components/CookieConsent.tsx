@@ -7,7 +7,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { trpc } from '@/lib/trpc';
-import { toast } from 'sonner';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { siteSurfaceCopy } from '@/lib/siteSurfaceCopy';
 
 const COOKIE_CONSENT_KEY = 'tatik-cookie-consent-v2';
 const COOKIE_CONSENT_DETAILS = 'tatik-cookie-details';
@@ -22,6 +23,8 @@ interface CookiePreferences {
 }
 
 export function CookieConsent() {
+  const { language, t } = useLanguage();
+  const copy = siteSurfaceCopy[language].cookies;
   const [showBanner, setShowBanner] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const [showCustomizeModal, setShowCustomizeModal] = useState(false);
@@ -70,6 +73,7 @@ export function CookieConsent() {
   }, []);
 
   const saveConsentToBackend = (data: CookiePreferences) => {
+    window.dispatchEvent(new Event('tatik:consent-updated'));
     saveConsentMutation.mutate({
       necessary: data.necessary,
       functional: data.functional,
@@ -149,53 +153,55 @@ export function CookieConsent() {
             <div className="flex items-start gap-4">
               <Cookie className="h-6 w-6 text-primary flex-shrink-0 mt-1" />
               <div className="flex-1">
-                <h3 className="font-semibold text-lg mb-2">Utilizzo dei Cookie</h3>
+                <h3 className="font-semibold text-lg mb-2">{copy.title}</h3>
                 
                 {/* Cookie Types Description */}
                 <div className="space-y-2 mb-4 text-sm text-muted-foreground">
                   <button 
                     onClick={() => setShowDetails(!showDetails)}
+                    aria-expanded={showDetails}
+                    aria-controls="cookie-category-details"
                     className="flex items-center gap-1 font-medium text-primary hover:underline"
                   >
                     {showDetails ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
-                    Dettagli sui cookie
+                    {t.details}
                   </button>
                   
                   {showDetails && (
-                    <div className="space-y-2 ml-4 pt-2 border-l-2 border-border pl-2">
+                    <div id="cookie-category-details" className="space-y-2 ml-4 pt-2 border-l-2 border-border pl-2">
                       <p>
-                        <strong>Cookie Necessari:</strong> Essenziali per il funzionamento del sito (autenticazione, sicurezza).
+                        <strong>{copy.necessary}:</strong> {copy.necessaryDescription}
                       </p>
                       <p>
-                        <strong>Cookie Funzionali:</strong> Memorizzano le tue preferenze (lingua, tema).
+                        <strong>{copy.functional}:</strong> {copy.functionalDescription}
                       </p>
                       <p>
-                        <strong>Cookie Analitici:</strong> Ci aiutano a capire come utilizzi il sito.
+                        <strong>{copy.analytics}:</strong> {copy.analyticsDescription}
                       </p>
                       <p>
-                        <strong>Cookie Marketing:</strong> Personalizzano i contenuti pubblicitari.
+                        <strong>{copy.marketing}:</strong> {copy.marketingDescription}
                       </p>
                     </div>
                   )}
                 </div>
 
                 <p className="text-sm text-muted-foreground mb-4">
-                  Consulta la nostra{' '}
-                  <Link href="/cookies" className="text-primary hover:underline">Cookie Policy</Link>
-                  {' '}e{' '}
-                  <Link href="/privacy" className="text-primary hover:underline">Privacy Policy</Link>.
-                  Il consenso è valido per 12 mesi.
+                  {copy.intro}{' '}
+                  <Link href="/cookies" className="text-primary hover:underline">{t.cookiePolicy}</Link>
+                  {' '}{copy.and}{' '}
+                  <Link href="/privacy" className="text-primary hover:underline">{t.privacyPolicy}</Link>.
+                  {' '}{copy.duration}
                 </p>
 
                 <div className="flex flex-wrap gap-3">
                   <Button onClick={handleAccept} size="sm">
-                    Accetta tutti
+                    {t.acceptAll}
                   </Button>
                   <Button onClick={handleNecessaryOnly} variant="outline" size="sm">
-                    Solo necessari
+                    {t.necessaryOnly}
                   </Button>
                   <Button onClick={handleCustomize} variant="outline" size="sm">
-                    Personalizza
+                    {t.customize}
                   </Button>
                 </div>
               </div>
@@ -208,9 +214,9 @@ export function CookieConsent() {
       <Dialog open={showCustomizeModal} onOpenChange={setShowCustomizeModal}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Preferenze Cookie</DialogTitle>
+            <DialogTitle>{t.cookiePreferences}</DialogTitle>
             <DialogDescription>
-              Seleziona quali categorie di cookie vuoi accettare.
+              {copy.modalDescription}
             </DialogDescription>
           </DialogHeader>
           
@@ -222,9 +228,9 @@ export function CookieConsent() {
                   checked={preferences.necessary}
                   disabled
                 />
-                <Label htmlFor="necessary">Cookie Necessari</Label>
+                <Label htmlFor="necessary">{copy.necessary}</Label>
               </div>
-              <span className="text-xs text-muted-foreground">(obbligatorio)</span>
+              <span className="text-xs text-muted-foreground">{copy.required}</span>
             </div>
             
             <div className="flex items-center justify-between">
@@ -234,7 +240,7 @@ export function CookieConsent() {
                   checked={preferences.functional}
                   onCheckedChange={() => handlePreferenceChange('functional')}
                 />
-                <Label htmlFor="functional">Cookie Funzionali</Label>
+                <Label htmlFor="functional">{copy.functional}</Label>
               </div>
             </div>
             
@@ -245,7 +251,7 @@ export function CookieConsent() {
                   checked={preferences.analytics}
                   onCheckedChange={() => handlePreferenceChange('analytics')}
                 />
-                <Label htmlFor="analytics">Cookie Analitici</Label>
+                <Label htmlFor="analytics">{copy.analytics}</Label>
               </div>
             </div>
             
@@ -256,21 +262,21 @@ export function CookieConsent() {
                   checked={preferences.marketing}
                   onCheckedChange={() => handlePreferenceChange('marketing')}
                 />
-                <Label htmlFor="marketing">Cookie Marketing</Label>
+                <Label htmlFor="marketing">{copy.marketing}</Label>
               </div>
             </div>
           </div>
           
           <div className="flex gap-2">
             <Button onClick={handleSaveCustomPreferences} className="flex-1">
-              Salva Preferenze
+              {t.savePreferences}
             </Button>
             <Button 
               onClick={handleNecessaryOnly} 
               variant="outline" 
               className="flex-1"
             >
-              Solo Necessari
+              {t.necessaryOnly}
             </Button>
           </div>
         </DialogContent>

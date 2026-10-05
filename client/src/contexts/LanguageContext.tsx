@@ -15,7 +15,7 @@ const LanguageContext = createContext<LanguageContextType | undefined>(undefined
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const [language, setLanguageState] = useState<Language>(() => {
     const saved = localStorage.getItem('tatik-language');
-    return (saved as Language) || 'en';
+    return saved && saved in translations ? saved as Language : 'en';
   });
 
   const setLanguage = (lang: Language) => {

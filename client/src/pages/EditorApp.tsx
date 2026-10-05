@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '@/_core/hooks/useAuth';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useTranslation } from 'react-i18next';
 import { useProject } from '@/contexts/ProjectContext';
 import { trpc } from '@/lib/trpc';
-import { suggestExtension, detectLanguage, getExtensionByLanguage } from '@/lib/fileTemplates';
+import { suggestExtension, detectLanguage, detectLanguageFromExtension, getExtensionByLanguage } from '@/lib/fileTemplates';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -28,15 +28,22 @@ import SearchResultsPanel from '@/components/SearchResultsPanel';
 import { GreenBoxHybrid } from '@/components/GreenBoxHybrid';
 import { useAutosave } from '@/hooks/useAutosave';
 import { getLoginUrl } from '@/const';
-import { Loader2, Save, Play, Bot, FolderOpen, FileCode, Search, Menu, X, LogOut, Download, Upload, FolderUp, FilePlus, FolderPlus, Monitor, Smartphone, ChevronDown } from 'lucide-react';
+import { getEditorAppCopy } from '@/lib/editorAppCopy';
+import type { EditorAppCopyKey } from '@/lib/editorAppCopy';
+import { getEditorAppLabelFallback } from '@/lib/editorAppLabelFallbacks';
+import { Loader2, Save, Play, Bot, FolderOpen, FileCode, Search, Menu, X, LogOut, Download, Upload, FolderUp, FilePlus, FolderPlus, Monitor, Smartphone, ChevronDown, CheckCircle2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu';
 import { Helmet } from "react-helmet-async";
 
 export default function EditorApp() {
   const { user, loading: authLoading } = useAuth();
-  const { t } = useLanguage();
+  const { language } = useLanguage();
   const { t: i18nT } = useTranslation();
+  const editorText = (key: EditorAppCopyKey, values: Record<string, string | number> = {}) =>
+    getEditorAppCopy(language, key, values);
+  const editorLabel = (key: string) =>
+    getEditorAppLabelFallback(language, key as Parameters<typeof getEditorAppLabelFallback>[1]) ?? i18nT(key);
   const { setCurrentProject: setContextProject } = useProject();
   const [currentProject, setCurrentProject] = useState<number | null>(null);
   const [currentFile, setCurrentFile] = useState<any>(null);
@@ -47,6 +54,7 @@ export default function EditorApp() {
   const [externalPreviewUrl, setExternalPreviewUrl] = useState<string | null>(null);
   const [isCheckingDevServer, setIsCheckingDevServer] = useState(false);
   const [detectedViteProject, setDetectedViteProject] = useState(false);
+  const [previewMode, setPreviewMode] = useState<'static' | 'vite-react'>('static');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchPanelOpen, setSearchPanelOpen] = useState(true);
   const [jumpToLine, setJumpToLine] = useState<number | null>(null);
@@ -74,6 +82,8 @@ export default function EditorApp() {
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [customSavePath, setCustomSavePath] = useState('');
   const [savingFileContent, setSavingFileContent] = useState<string>('');
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved' | 'error'>('saved');
+  const [selectedDirectoryHandle, setSelectedDirectoryHandle] = useState<any>(null);
   const [newFileDialogOpen, setNewFileDialogOpen] = useState(false);
   const [newFileName, setNewFileName] = useState('');
   const [suggestedExtension, setSuggestedExtension] = useState('');
@@ -96,6 +106,16 @@ export default function EditorApp() {
   const editorWidthRef = useRef(150);
   const previewWidthRef = useRef(200);
   const projectSetupAttemptedRef = useRef(false);
+
+  const isBinaryAsset = (fileName: string) => /\.(avif|apng|bmp|gif|heic|jpe?g|png|svg|tiff?|webp|ico|mp3|wav|ogg|mp4|webm|mov|woff2?|ttf|otf)$/i.test(fileName);
+
+  const readProjectFile = (file: File): Promise<string> => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ''));
+    reader.onerror = () => reject(reader.error ?? new Error(`Unable to read ${file.name}`));
+    if (isBinaryAsset(file.name)) reader.readAsDataURL(file);
+    else reader.readAsText(file);
+  });
 
   // Update refs whenever state changes
   useEffect(() => {
@@ -138,11 +158,58 @@ export default function EditorApp() {
           // Clean up localStorage
           localStorage.removeItem('editor_current_folder');
           localStorage.removeItem(`editor_folder_${folderName}`);
-          toast.success(`Cartella "${folderName}" caricata dall'editor!`);
+          toast.success(editorText('folderLoaded', { name: folderName }));
         }
       }
     } catch (err) {
       console.error('Error loading folder from localStorage:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    const stored = localStorage.getItem("tatik_purchased_marketplace_template");
+    if (!stored) return;
+    try {
+      const imported = JSON.parse(stored) as {
+        title?: string;
+        fileName?: string;
+        content?: string;
+        files?: Array<{ name: string; path?: string; content: string }>;
+      };
+      const importedFiles = Array.isArray(imported.files) && imported.files.length
+        ? imported.files.map((file, index) => ({
+            id: `marketplace-${Date.now()}-${index}`,
+            name: file.name,
+            path: file.path || file.name,
+            content: file.content,
+            type: "file" as const,
+            isLocal: true,
+          }))
+        : [{
+            id: `marketplace-${Date.now()}`,
+            name: imported.fileName || "template.html",
+            path: imported.fileName || "template.html",
+            content: imported.content || "",
+            type: "file" as const,
+            isLocal: true,
+          }];
+      const initialFile = importedFiles.find((file) => /\.html?$/i.test(file.name)) || importedFiles[0];
+      setLocalFiles((current) => [...current, ...importedFiles]);
+      setOpenedFolderName(imported.title || editorText('purchasedTemplate'));
+      setCurrentFile(initialFile);
+      setEditorContent(initialFile.content);
+      const extension = initialFile.name.split(".").pop()?.toLowerCase();
+      const languageByExtension: Record<string, typeof selectedLanguage> = {
+        html: "html", htm: "html", css: "css", js: "javascript", jsx: "javascript",
+        ts: "typescript", tsx: "typescript", json: "json", md: "markdown",
+      };
+      setSelectedLanguage(languageByExtension[extension || ""] || "plaintext");
+      localStorage.removeItem("tatik_purchased_marketplace_template");
+      toast.success(editorText('templateAcquired', { name: imported.title || initialFile.name }));
+    } catch (error) {
+      console.error("Impossibile importare il template acquistato", error);
+      toast.error(editorText('templateUnreadable'));
+      localStorage.removeItem("tatik_purchased_marketplace_template");
     }
   }, []);
 
@@ -172,8 +239,8 @@ export default function EditorApp() {
     if (projects.length === 0) {
       console.log('[EditorApp] No projects found, creating default project');
       createProjectMutation.mutate({
-        name: 'Il mio Progetto',
-        description: 'Progetto predefinito',
+        name: editorText('newDefaultProject'),
+        description: editorText('defaultProjectDescription'),
       });
     } else if (projects.length > 0 && !currentProject) {
       console.log('[EditorApp] Auto-selecting first project:', projects[0].id);
@@ -185,17 +252,35 @@ export default function EditorApp() {
     { projectId: currentProject! },
     { enabled: !!currentProject }
   );
+
+  const previewFiles = useMemo(() => {
+    const merged = new Map<string, any>();
+    [...files, ...localFiles].forEach(file => {
+      merged.set(file.path, file);
+    });
+
+    if (currentFile) {
+      const existing = merged.get(currentFile.path);
+      merged.set(currentFile.path, {
+        ...(existing || currentFile),
+        ...currentFile,
+        content: editorContent,
+      });
+    }
+
+    return Array.from(merged.values());
+  }, [files, localFiles, currentFile, editorContent]);
   const createFileMutation = trpc.files.create.useMutation({
     onSuccess: (res) => {
       console.log('[DEBUG] createFileMutation onSuccess:', res);
-      toast.success('File creato sul server');
+      toast.success(editorText('serverFileCreated'));
       // Invalidate server files list so it refreshes
       if (currentProject) {
         utils.files.list.invalidate({ projectId: currentProject });
       }
     },
     onError: (err) => {
-      toast.error(`Errore creazione file: ${err.message}`);
+      toast.error(editorText('createFileError', { error: err.message }));
     },
   });
 
@@ -246,7 +331,7 @@ export default function EditorApp() {
         localStorage.removeItem('to_open_file_id');
         setFileToOpenId(null);
         openAttemptedRef.current = true;
-        toast.success(`File "${foundFile.name}" aperto!`);
+        toast.success(editorText('fileOpened', { name: foundFile.name }));
       }
     }
   }, [files, fileToOpenId]);
@@ -277,12 +362,12 @@ export default function EditorApp() {
       setCurrentFile(newFile);
       setEditorContent(copiedTemplate.code);
       setSelectedLanguage('html');
-      toast.success(`Template "${copiedTemplate.name}" caricato in editor!`);
+      toast.success(editorText('templateLoaded', { name: copiedTemplate.name }));
 
       localStorage.removeItem('copied_template');
       setCopiedTemplate(null);
     } catch (error) {
-      toast.error('Errore apertura template copiato');
+      toast.error(editorText('templateOpenError'));
     }
   };
 
@@ -290,7 +375,7 @@ export default function EditorApp() {
   const handleOpenTemplateFromPurchase = async () => {
     if (!templateToOpen) return;
     if (!currentProject) {
-      toast.error('Nessun progetto selezionato per aprire il template');
+      toast.error(editorText('noProjectForTemplate'));
       return;
     }
 
@@ -313,12 +398,12 @@ export default function EditorApp() {
       setCurrentFile(newFile);
       setEditorContent(templateToOpen.code);
       setSelectedLanguage('html');
-      toast.success(`Template "${templateToOpen.name}" caricato in editor!`);
+      toast.success(editorText('templateLoaded', { name: templateToOpen.name }));
       localStorage.removeItem('template_to_open');
       setTemplateToOpen(null);
     } catch (err) {
       console.error('[EditorApp] Error opening template from purchase (manual):', err);
-      toast.error('Errore apertura template');
+      toast.error(editorText('templateOpenError'));
     }
   };
 
@@ -361,13 +446,13 @@ export default function EditorApp() {
         setCurrentFile(newFile);
         setEditorContent(templateToOpen.code);
         setSelectedLanguage('html');
-        toast.success(`Template "${templateToOpen.name}" caricato in editor!`);
+        toast.success(editorText('templateLoaded', { name: templateToOpen.name }));
 
         localStorage.removeItem('template_to_open');
         setTemplateToOpen(null);
       } catch (error) {
         console.error('[EditorApp] Error opening template from purchase:', error);
-        toast.error('Errore apertura template');
+        toast.error(editorText('templateOpenError'));
       }
     };
 
@@ -376,10 +461,10 @@ export default function EditorApp() {
 
   const updateFileMutation = trpc.files.update.useMutation({
     onSuccess: () => {
-      toast.success('File salvato con successo!');
+      toast.success(editorText('fileSaved'));
     },
     onError: (error) => {
-      toast.error(`Errore durante il salvataggio: ${error.message}`);
+      toast.error(editorText('saveError', { error: error.message }));
     },
   });
 
@@ -537,7 +622,7 @@ export default function EditorApp() {
     // Don't show individual files - show the whole project preview
     if (openedFolderName) {
       console.log('[Preview Effect] Folder opened - loading complete project');
-      const allFiles = localFiles.length > 0 ? localFiles : [...files, ...localFiles];
+      const allFiles = previewFiles;
       if (allFiles.length > 0) {
         let indexHtmlContent = '';
         let cssContent = '';
@@ -596,7 +681,15 @@ export default function EditorApp() {
 
       // Get all available files for finding related content
       // Always include localFiles even if no folder is opened (single files get added to localFiles)
-      const allFiles = localFiles.length > 0 ? localFiles : [...files, ...localFiles];
+      const allFiles = previewFiles;
+
+      if (isBinaryAsset(fileName) && fileContent.startsWith('data:')) {
+        const escapedSource = fileContent.replace(/"/g, '&quot;');
+        setHtmlContent(`<main style="min-height:100%;display:grid;place-items:center;padding:24px;background:#f8fafc"><img src="${escapedSource}" alt="${currentFile.name}" style="max-width:100%;max-height:100%;object-fit:contain" /></main>`);
+        setCssContent('');
+        setJsContent('');
+        return;
+      }
 
       // Show HTML files directly
       if (fileName.endsWith('.html')) {
@@ -635,12 +728,12 @@ export default function EditorApp() {
           htmlContent = `<!DOCTYPE html>
 <html>
 <head>
-  <title>Preview</title>
+  <title>${editorText('preview')}</title>
   <style></style>
 </head>
 <body>
-  <h1>Anteprima CSS</h1>
-  <p>Collegamento CSS attivo</p>
+  <h1>${editorText('cssPreview')}</h1>
+  <p>${editorText('cssLinkActive')}</p>
 </body>
 </html>`;
         }
@@ -682,11 +775,11 @@ export default function EditorApp() {
           htmlContent = `<!DOCTYPE html>
 <html>
 <head>
-  <title>Preview</title>
+  <title>${editorText('preview')}</title>
 </head>
 <body>
-  <h1>Anteprima ${langLabel}</h1>
-  <p id="output">Esecuzione ${langLabel}...</p>
+  <h1>${editorText('javascriptPreview', { language: langLabel })}</h1>
+  <p id="output">${editorText('javascriptRunning', { language: langLabel })}</p>
   <script></script>
 </body>
 </html>`;
@@ -714,7 +807,7 @@ export default function EditorApp() {
     // If no file being edited, build complete project from files
     // Always use localFiles if available (includes single uploaded files)
     // Otherwise, combine server files and local files
-    const allFiles = localFiles.length > 0 ? localFiles : [...files, ...localFiles];
+    const allFiles = previewFiles;
     if (allFiles.length > 0) {
       console.log('[Preview Effect] Building project from all files, count:', allFiles.length, 'openedFolder:', openedFolderName);
       let indexHtmlContent = '';
@@ -762,17 +855,36 @@ export default function EditorApp() {
         setJsContent(jsContent);
       }
     }
-  }, [currentFile, editorContent, files, localFiles, openedFolderName]);
+  }, [currentFile, editorContent, previewFiles, openedFolderName]);
 
-  // Detect Vite/React projects and try to connect to common dev server URLs
+  // Keep runtime projects separate from the static HTML/CSS/JS renderer.
   useEffect(() => {
-    const allFiles = [...files, ...localFiles];
+    const allFiles = previewFiles;
     const names = new Set(allFiles.map(f => (f.path || f.name || '').toLowerCase()));
-    const hasViteConfig = Array.from(names).some(n => n.includes('vite.config'));
+    const packageFile = allFiles.find(file => (file.path || file.name || '').toLowerCase().endsWith('package.json'));
+    let packageJson: any = null;
+    if (packageFile?.content) {
+      try {
+        packageJson = JSON.parse(packageFile.content);
+      } catch {
+        packageJson = null;
+      }
+    }
+    const dependencies = {
+      ...(packageJson?.dependencies || {}),
+      ...(packageJson?.devDependencies || {}),
+    };
+    const hasViteConfig = Array.from(names).some(n => /(^|\/)vite\.config\./.test(n));
+    const hasReactRuntime = Boolean(dependencies.react || dependencies['react-dom']);
+    const hasViteRuntime = Boolean(dependencies.vite || hasViteConfig);
+    const hasRuntimeEntry = Array.from(names).some(n =>
+      /(^|\/)(src\/)?main\.(jsx?|tsx?)$/.test(n)
+      || /(^|\/)(src\/)?index\.(jsx?|tsx?)$/.test(n),
+    );
 
-    // Only detect as Vite project if vite.config is present
-    const detected = hasViteConfig;
+    const detected = hasViteRuntime || (hasReactRuntime && hasRuntimeEntry);
     setDetectedViteProject(detected);
+    setPreviewMode(detected ? 'vite-react' : 'static');
 
     if (!detected) {
       setExternalPreviewUrl(null);
@@ -814,13 +926,13 @@ export default function EditorApp() {
     })();
 
     return () => { cancelled = true; };
-  }, [files, localFiles]);
+  }, [previewFiles]);
 
 
 
   const handleDownloadFile = () => {
     if (!currentFile) {
-      toast.error('Nessun file selezionato');
+      toast.error(editorText('noFileSelected'));
       return;
     }
 
@@ -835,16 +947,16 @@ export default function EditorApp() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      toast.success('File scaricato!');
+      toast.success(editorLabel('fileDownloaded'));
     } catch (err) {
       console.error('Errore download file:', err);
-      toast.error('Errore durante il download del file');
+      toast.error(editorText('downloadError'));
     }
   };
 
   const handleLocalSave = () => {
     if (!currentFile) {
-      toast.error('Nessun file selezionato');
+      toast.error(editorText('noFileSelected'));
       return;
     }
 
@@ -889,10 +1001,10 @@ export default function EditorApp() {
       element.click();
       document.body.removeChild(element);
       URL.revokeObjectURL(element.href);
-      toast.success(`File "${fileName}" salvato localmente!`);
+      toast.success(editorText('savedLocally', { name: fileName }));
     } catch (err) {
       console.error('Errore salvataggio locale:', err);
-      toast.error('Errore durante il salvataggio locale');
+      toast.error(editorText('localSaveError'));
     }
   };
 
@@ -907,7 +1019,7 @@ export default function EditorApp() {
         }
         return file;
       });
-      toast.success(`File spostato in "${destinationFolderPath}"`);
+      toast.success(editorText('fileMoved', { path: destinationFolderPath }));
       return updated;
     });
   };
@@ -924,7 +1036,7 @@ export default function EditorApp() {
         }
         return file;
       });
-      toast.success(`File rinominato a "${newName}"`);
+      toast.success(editorText('fileRenamed', { name: newName }));
       return updated;
     });
   };
@@ -932,7 +1044,7 @@ export default function EditorApp() {
   const handleDeleteFile = (path: string) => {
     setLocalFiles(prev => {
       const updated = prev.filter(file => file.path !== path);
-      toast.success('File eliminato');
+      toast.success(editorText('fileDeleted'));
       return updated;
     });
   };
@@ -940,7 +1052,7 @@ export default function EditorApp() {
   const handleCreateNewFile = () => {
     console.log('[DEBUG] handleCreateNewFile called, openedFolderName:', openedFolderName);
     if (!newFileName.trim()) {
-      toast.error('Nome file non valido');
+      toast.error(editorText('invalidFileName'));
       return;
     }
 
@@ -979,7 +1091,7 @@ export default function EditorApp() {
     setEditorContent(suggestion.template);
     setSelectedLanguage(suggestion.language as any);
 
-    toast.success(`File "${fileNameWithExt}" creato con template ${suggestion.language}`);
+    toast.success(editorText('createdWithTemplate', { name: fileNameWithExt, language: suggestion.language }));
     setNewFileDialogOpen(false);
     setNewFileName('');
     setSuggestedExtension('');
@@ -989,7 +1101,7 @@ export default function EditorApp() {
   const handleCreateNewFolder = () => {
     console.log('[DEBUG] handleCreateNewFolder called, openedFolderName:', openedFolderName);
     if (!newFolderName.trim()) {
-      toast.error('Nome cartella non valido');
+      toast.error(editorText('invalidFolderName'));
       return;
     }
     const folderPath = openedFolderName ? `${openedFolderName}/${newFolderName}` : newFolderName;
@@ -1020,7 +1132,7 @@ export default function EditorApp() {
       return newFiles;
     });
 
-    toast.success(`Cartella "${newFolderName}" creata`);
+    toast.success(editorText('folderCreated', { name: newFolderName }));
     setNewFolderDialogOpen(false);
     setNewFolderName('');
   };
@@ -1047,6 +1159,7 @@ export default function EditorApp() {
   };
 
   const handleEditorChange = (val: string) => {
+    setSaveStatus('unsaved');
     setEditorContent(val);
 
     // Auto-detect language from content if plaintext
@@ -1194,10 +1307,11 @@ export default function EditorApp() {
 
   const handleSaveFile = async () => {
     if (!currentFile) {
-      toast.error('Nessun file selezionato');
+      toast.error(editorText('noFileSelected'));
       return;
     }
 
+    setSaveStatus('saving');
     console.log('[DEBUG] handleSaveFile called', {
       currentFile: { name: currentFile.name, path: currentFile.path, isLocal: (currentFile as any).isLocal },
       editorContent: { length: editorContent.length },
@@ -1244,10 +1358,12 @@ export default function EditorApp() {
             }
             return [...prev, { ...newServerFile, savedContent: editorContent }];
           });
-          toast.success('File salvato sul server!');
+          toast.success(editorText('serverFileSaved'));
+          setSaveStatus('saved');
         } catch (err: any) {
           console.error('Errore durante la creazione file sul server:', err);
-          toast.error('Errore durante la creazione del file sul server');
+          toast.error(editorText('serverSaveError'));
+          setSaveStatus('error');
         }
       } else {
         // No project open: prompt user to save to local filesystem
@@ -1257,12 +1373,19 @@ export default function EditorApp() {
     } else {
       // Existing DB file: update via RPC
       console.log('[DEBUG] File is SERVER file - updating...');
-      updateFileMutation.mutate({
-        fileId: currentFile.id,
-        content: editorContent,
-      });
-      // Optimistically mark as saved in open tabs
-      setOpenFiles(prev => prev.map(f => f.path === currentFile.path ? { ...f, content: editorContent, savedContent: editorContent } : f));
+      try {
+        await updateFileMutation.mutateAsync({
+          fileId: currentFile.id,
+          content: editorContent,
+        });
+        // Mark the tab as saved only after the server confirms the update.
+        setOpenFiles(prev => prev.map(f => f.path === currentFile.path ? { ...f, content: editorContent, savedContent: editorContent } : f));
+        setSaveStatus('saved');
+      } catch (err) {
+        console.error('Errore durante il salvataggio del file sul server:', err);
+        setSaveStatus('error');
+        return;
+      }
     }
 
     // Save version history locally
@@ -1271,7 +1394,7 @@ export default function EditorApp() {
         id: Date.now().toString(),
         timestamp: new Date(),
         content: editorContent,
-        label: `Salvataggio manuale - ${new Date().toLocaleTimeString('it-IT')}`,
+        label: editorText('manualSave', { time: new Date().toLocaleTimeString(language) }),
       },
       ...prev.slice(0, 19),
     ]);
@@ -1297,7 +1420,7 @@ export default function EditorApp() {
     setCssContent('');
     setJsContent('');
     setContextProject(null); // Reset the global project context
-    toast.success('Cartella chiusa');
+    toast.success(editorText('folderClosed'));
   };
 
   const handleLinkClick = (href: string) => {
@@ -1343,18 +1466,20 @@ export default function EditorApp() {
       }
     } else {
       console.log('[EditorApp] File not found for link:', href);
-      toast.info(`File non trovato: ${href}`);
+      toast.info(editorText('fileNotFound', { path: href }));
     }
   };
   const handleSaveLocal = async (fileName: string) => {
     try {
-      const dirHandle = await (window as any).showDirectoryPicker();
+      const dirHandle = selectedDirectoryHandle ?? await (window as any).showDirectoryPicker();
+      setSelectedDirectoryHandle(dirHandle);
       const fileHandle = await dirHandle.getFileHandle(fileName, { create: true });
       const writable = await fileHandle.createWritable();
       await writable.write(savingFileContent);
       await writable.close();
       setSaveDialogOpen(false);
-      toast.success(`File "${fileName}" salvato in cartella!`);
+      toast.success(editorText('fileSavedToFolder', { name: fileName }));
+      setSaveStatus('saved');
       // Update localFiles state so FileExplorer reflects new content
       const savedPath = openedFolderName ? `${openedFolderName}/${fileName}` : fileName;
       setLocalFiles(prev => {
@@ -1381,7 +1506,8 @@ export default function EditorApp() {
     } catch (err: any) {
       if (err.name !== 'AbortError') {
         console.error('Errore salvataggio:', err);
-        toast.error('Errore nel salvataggio del file');
+        toast.error(editorText('fileSaveError'));
+        setSaveStatus('error');
       }
     }
   };
@@ -1390,13 +1516,16 @@ export default function EditorApp() {
     if (openedFolderName) {
       // Se una cartella è aperta, salva direttamente lì per mantenere la struttura
       const fileName = savingFileName || 'file.txt';
-      const pathParts = (savingFilePath || '').split('/');
-      const relativePath = pathParts.slice(1).join('/');
+      const pathParts = (savingFilePath || '').split('/').filter(Boolean);
+      const relativePath = pathParts[0] === openedFolderName
+        ? pathParts.slice(1).join('/')
+        : pathParts.join('/');
 
       try {
-        const dirHandle = await (window as any).showDirectoryPicker();
-        const targetPath = relativePath.split('/');
-        let currentDir = dirHandle;
+      const dirHandle = selectedDirectoryHandle ?? await (window as any).showDirectoryPicker();
+      setSelectedDirectoryHandle(dirHandle);
+      const targetPath = relativePath ? relativePath.split('/') : [fileName];
+      let currentDir = dirHandle;
 
         // Naviga/crea le cartelle
         for (let i = 0; i < targetPath.length - 1; i++) {
@@ -1408,7 +1537,8 @@ export default function EditorApp() {
         await writable.write(savingFileContent);
         await writable.close();
         setSaveDialogOpen(false);
-        toast.success(`File "${fileName}" salvato mantenendo la struttura!`);
+        toast.success(editorText('folderStructureSaved', { name: fileName }));
+        setSaveStatus('saved');
         // Update localFiles with saved content
         const savedPath = savingFilePath || (openedFolderName ? `${openedFolderName}/${fileName}` : fileName);
         setLocalFiles(prev => {
@@ -1434,7 +1564,8 @@ export default function EditorApp() {
       } catch (err: any) {
         if (err.name !== 'AbortError') {
           console.error('Errore salvataggio:', err);
-          toast.error('Errore nel salvataggio del file');
+          toast.error(editorText('fileSaveError'));
+          setSaveStatus('error');
         }
       }
     } else {
@@ -1443,17 +1574,124 @@ export default function EditorApp() {
   };
 
   const handleSaveAs = async () => {
-    if (customSavePath.trim()) {
-      const fileName = customSavePath.trim().split('/').pop() || 'file.txt';
-      await handleSaveLocal(fileName);
-    } else {
-      toast.error('Inserisci un percorso valido');
+    const suggestedName = customSavePath.trim().split(/[\\/]/).pop() || savingFileName || 'file.txt';
+    try {
+      if (typeof (window as any).showSaveFilePicker !== 'function') {
+        toast.error(editorText('browserSaveUnsupported'));
+        setSaveStatus('error');
+        return;
+      }
+
+      setSaveStatus('saving');
+      const fileHandle = await (window as any).showSaveFilePicker({
+        suggestedName,
+        types: [{
+          description: 'File di progetto',
+          accept: { 'text/plain': ['.txt', '.md', '.json', '.html', '.css', '.js', '.ts', '.py', '.xml', '.sql'] },
+        }],
+      });
+      const writable = await fileHandle.createWritable();
+      await writable.write(savingFileContent);
+      await writable.close();
+      setSaveDialogOpen(false);
+      setSaveStatus('saved');
+      toast.success(editorText('savedLocally', { name: fileHandle.name }));
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') {
+        console.error('Errore Salva con nome:', err);
+        setSaveStatus('error');
+        toast.error(editorText('fileSaveError'));
+      }
     }
   };
 
-  const handleSaveToCloud = () => {
-    toast.info('Salvataggio su cloud in sviluppo');
-    setSaveDialogOpen(false);
+  const handleSaveToCloud = async () => {
+    if (!currentProject) {
+      toast.error(editorText('noCloudProject'));
+      setSaveStatus('error');
+      return;
+    }
+
+    setSaveStatus('saving');
+    try {
+      const mergedFiles = [...files, ...localFiles].reduce<any[]>((all, file) => {
+        const existingIndex = all.findIndex(item => item.path === file.path);
+        if (existingIndex >= 0) {
+          all[existingIndex] = { ...all[existingIndex], ...file };
+        } else {
+          all.push(file);
+        }
+        return all;
+      }, []);
+
+      if (currentFile) {
+        const currentIndex = mergedFiles.findIndex(file => file.path === currentFile.path);
+        if (currentIndex >= 0) {
+          mergedFiles[currentIndex] = { ...mergedFiles[currentIndex], content: editorContent };
+        } else {
+          mergedFiles.push({
+            ...currentFile,
+            content: editorContent,
+            isLocal: true,
+          });
+        }
+      }
+
+      for (const file of mergedFiles) {
+        const serverFile = files.find(item => item.path === file.path);
+        if (serverFile) {
+          await updateFileMutation.mutateAsync({
+            fileId: serverFile.id,
+            content: file.content || '',
+          });
+        } else {
+          await createFileMutation.mutateAsync({
+            projectId: currentProject,
+            name: file.name || file.path.split('/').pop() || 'file.txt',
+            path: file.path,
+            content: file.content || '',
+            language: file.language || detectLanguage(file.content || ''),
+          });
+        }
+      }
+
+      await utils.files.list.invalidate({ projectId: currentProject });
+      setSaveDialogOpen(false);
+      setSaveStatus('saved');
+      toast.success(editorText('projectSavedCloud'));
+    } catch (err) {
+      console.error('Errore salvataggio cloud:', err);
+      setSaveStatus('error');
+      toast.error(editorText('cloudSaveError'));
+    }
+  };
+
+  const handleSellFromEditor = () => {
+    const projectFiles = previewFiles
+      .filter((file) => file.type !== "folder" && typeof file.content === "string" && !isBinaryAsset(file.name || file.path || ""))
+      .map((file) => ({
+        name: file.name || file.path?.split("/").pop() || "file.txt",
+        path: file.path || file.name,
+        content: file.path === currentFile?.path ? editorContent : file.content,
+      }));
+    if (!projectFiles.length && currentFile) {
+      projectFiles.push({ name: currentFile.name || "template.html", path: currentFile.path, content: editorContent });
+    }
+    const serialized = JSON.stringify({ format: "tatik-project-v1", files: projectFiles }, null, 2);
+    if (!serialized || serialized.length > 2 * 1024 * 1024) {
+      toast.error(editorText('projectTooLarge'));
+      return;
+    }
+    try {
+      sessionStorage.setItem("tatik_marketplace_seller_draft", JSON.stringify({
+        title: openedFolderName || currentProject ? (openedFolderName || `Progetto ${currentProject}`) : currentFile?.name?.replace(/\.[^.]+$/, "") || "Il mio template",
+        files: projectFiles,
+      }));
+      window.location.assign("/marketplace/developer");
+    } catch (error) {
+      console.error("Impossibile preparare il progetto per il marketplace", error);
+      toast.error(editorText('marketplaceTransferError'));
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1471,15 +1709,17 @@ export default function EditorApp() {
           type: 'file' as const,
           path: file.webkitRelativePath && file.webkitRelativePath.length > 0 ? file.webkitRelativePath : file.name,
           content: content,
+          language: detectLanguageFromExtension(file.name),
           isLocal: true,
         };
 
         setLocalFiles(prev => [fileObj, ...prev]);
         // Open in editor (adds to tabs and sets currentFile)
         openFile(fileObj as any);
-        toast.success(`File "${file.name}" caricato e aperto!`);
+        toast.success(editorText('fileUploaded', { name: file.name }));
       };
-      reader.readAsText(file);
+      if (isBinaryAsset(file.name)) reader.readAsDataURL(file);
+      else reader.readAsText(file);
     });
   };
 
@@ -1492,37 +1732,20 @@ export default function EditorApp() {
 
       if (item.isFile) {
         const file: File = await new Promise((resolve) => item.file(resolve));
-        const reader = new FileReader();
-
-        return new Promise((resolve) => {
-          reader.onload = (event) => {
-            try {
-              const content = event.target?.result as string;
-              const filePath = path ? `${path}/${file.name}` : file.name;
-
-              results.push({
-                id: Math.random(),
-                name: file.name,
-                type: 'file' as const,
-                path: filePath,
-                content: content
-              });
-              resolve(results);
-            } catch {
-              resolve(results);
-            }
-          };
-
-          reader.onerror = () => {
-            console.error(`Errore lettura: ${file.name}`);
-            resolve(results);
-          };
-
-          try {
-            reader.readAsText(file);
-          } catch {
-            resolve(results);
-          }
+        return readProjectFile(file).then(content => {
+          const filePath = path ? `${path}/${file.name}` : file.name;
+          results.push({
+            id: Math.random(),
+            name: file.name,
+            type: 'file' as const,
+            path: filePath,
+            content,
+            language: detectLanguageFromExtension(file.name),
+          });
+          return results;
+        }).catch(error => {
+          console.error(`Errore lettura: ${file.name}`, error);
+          return results;
         });
       } else if (item.isDirectory) {
         const dirPath = path ? `${path}/${item.name}` : item.name;
@@ -1566,27 +1789,9 @@ export default function EditorApp() {
             const file = await entry.getFile();
             const fullPath = path ? `${path}/${file.name}` : file.name;
 
-            const content = await new Promise<string>((resolve) => {
-              const reader = new FileReader();
-              reader.onload = (e) => {
-                const result = e.target?.result as string;
-                if (result && result.length > 0) {
-                  console.log('[handleDirectoryPicker] ✅ File letto:', file.name, 'bytes:', result.length);
-                } else {
-                  console.log('[handleDirectoryPicker] ⚠️ File vuoto:', file.name);
-                }
-                resolve(result);
-              };
-              reader.onerror = () => {
-                console.log('[handleDirectoryPicker] ❌ Errore FileReader:', file.name);
-                resolve('');
-              };
-              try {
-                reader.readAsText(file);
-              } catch (e) {
-                console.log('[handleDirectoryPicker] ❌ Errore readAsText:', file.name, e);
-                resolve('');
-              }
+            const content = await readProjectFile(file).catch(error => {
+              console.log('[handleDirectoryPicker] ❌ Errore lettura:', file.name, error);
+              return '';
             });
 
             files.push({
@@ -1595,6 +1800,7 @@ export default function EditorApp() {
               type: 'file' as const,
               path: fullPath,
               content,
+              language: detectLanguageFromExtension(file.name),
               isLocal: true  // Mark as local file so savemechanism works
             });
           } else if (entry.kind === 'directory') {
@@ -1623,14 +1829,14 @@ export default function EditorApp() {
         // Replace localFiles completely (don't merge with old ones)
         setLocalFiles(files);
         setOpenedFolderName(dirHandle.name);
-        toast.success(`${files.length} file caricati dalla cartella "${dirHandle.name}"!`);
+        toast.success(editorText('folderFilesUploaded', { count: files.length, name: dirHandle.name }));
       } else {
         console.log('[handleDirectoryPicker] ⚠️ Nessun file trovato');
       }
     } catch (err: any) {
       if (err.name !== 'AbortError') {
         console.error('Errore showDirectoryPicker:', err);
-        toast.error('Errore nel caricamento della cartella. Assicurati di usare Chrome/Edge 86+');
+        toast.error(editorText('folderUploadBrowserError'));
       }
     } finally {
       setIsLoadingFolder(false);
@@ -1650,16 +1856,20 @@ export default function EditorApp() {
       const droppedFiles = await processDroppedItems(items);
 
       if (droppedFiles.length > 0) {
+        const rootFolder = droppedFiles[0].path.split('/').filter(Boolean)[0];
+        if (rootFolder && droppedFiles.some(file => file.path.includes('/'))) {
+          setOpenedFolderName(rootFolder);
+        }
         setLocalFiles(prev => {
           const pathMap = new Map(prev.map(f => [f.path, f]));
           droppedFiles.forEach(f => pathMap.set(f.path, f));
           return Array.from(pathMap.values());
         });
-        toast.success(`${droppedFiles.length} file caricati dalla cartella!`);
+        toast.success(editorText('filesUploadedFromFolder', { count: droppedFiles.length }));
       }
     } catch (err) {
       console.error('Errore drag-drop:', err);
-      toast.error('Errore nel caricamento');
+      toast.error(editorText('uploadError'));
     } finally {
       setIsLoadingFolder(false);
     }
@@ -1682,7 +1892,8 @@ export default function EditorApp() {
             name: file.name,
             type: 'file' as const,
             path: filePath,
-            content: content
+            content,
+            language: detectLanguageFromExtension(file.name),
           });
         };
         reader.onerror = () => {
@@ -1691,9 +1902,11 @@ export default function EditorApp() {
         };
 
         try {
-          reader.readAsText(file);
+          if (isBinaryAsset(file.name)) reader.readAsDataURL(file);
+          else reader.readAsText(file);
         } catch {
-          reader.readAsText(file);
+          console.error(`Errore lettura file: ${file.name}`);
+          resolve(null);
         }
       });
     });
@@ -1702,17 +1915,21 @@ export default function EditorApp() {
       const uploadedFiles = uploadedFilesRaw.filter(f => f !== null);
 
       if (uploadedFiles.length > 0) {
+        const rootFolder = uploadedFiles[0].path.split('/').filter(Boolean)[0];
+        if (rootFolder && uploadedFiles.some(file => file.path.includes('/'))) {
+          setOpenedFolderName(rootFolder);
+        }
         setLocalFiles(prev => {
           const pathMap = new Map(prev.map(f => [f.path, f]));
           uploadedFiles.forEach(f => pathMap.set(f.path, f));
           return Array.from(pathMap.values());
         });
-        toast.success(`${uploadedFiles.length} file caricati dalla cartella!`);
+        toast.success(editorText('filesUploadedFromFolder', { count: uploadedFiles.length }));
       }
       setIsLoadingFolder(false);
     }).catch((err) => {
       console.error('Errore upload cartella:', err);
-      toast.error('Errore nel caricamento');
+      toast.error(editorText('uploadError'));
       setIsLoadingFolder(false);
     });
   };
@@ -1764,17 +1981,17 @@ export default function EditorApp() {
       setHtmlContent(code);
       setJsContent('');
       setCssContent('');
-      toast.success(`Template ${language} inserito e in anteprima!`);
+      toast.success(editorText('templateInsertedPreview', { language }));
     } else if (language.toLowerCase() === 'css') {
       setCssContent(code);
       setHtmlContent('');
       setJsContent('');
-      toast.success(`Template ${language} inserito!`);
+      toast.success(editorText('templateInserted', { language }));
     } else if (language.toLowerCase() === 'javascript') {
       setJsContent(code);
       setHtmlContent('');
       setCssContent('');
-      toast.success(`Template ${language} inserito!`);
+      toast.success(editorText('templateInserted', { language }));
     }
   };
 
@@ -1788,7 +2005,7 @@ export default function EditorApp() {
     } else if (selectedLanguage === 'javascript') {
       setJsContent(editorContent);
     }
-    toast.success('Codice eseguito!');
+    toast.success(editorText('codeExecuted'));
   };
 
   const handleRestoreBackup = (snapshot: string) => {
@@ -1847,16 +2064,16 @@ export default function EditorApp() {
         }
       }
 
-      toast.success(`Backup ripristinato: ${restoredFiles.length} file caricati`);
+      toast.success(editorText('backupRestored', { count: restoredFiles.length }));
     } catch (error) {
       console.error('Errore durante il ripristino del backup:', error);
-      toast.error('Errore durante il ripristino del backup');
+      toast.error(editorText('backupRestoreError'));
     }
   };
 
   const handleRestoreVersion = (version: any) => {
     setEditorContent(version.content);
-    toast.success('Versione ripristinata');
+    toast.success(editorText('versionRestored'));
   };
 
   // Live highlight matches in the currently open file as the user types in search
@@ -1904,12 +2121,12 @@ export default function EditorApp() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-900">
         <Card className="p-8 max-w-md text-center">
-          <h2 className="text-2xl font-bold mb-4">Accesso Richiesto</h2>
+          <h2 className="text-2xl font-bold mb-4">{editorText('accessRequired')}</h2>
           <p className="text-muted-foreground mb-6">
-            {t.please} {t.login} {t.toAccess} Tatik.space Pro
+            {editorText('accessPrompt')}
           </p>
           <Button asChild>
-            <a href="/login">{t.login}</a>
+            <a href="/login">{i18nT('login')}</a>
           </Button>
         </Card>
       </div>
@@ -1929,10 +2146,33 @@ export default function EditorApp() {
             {isSidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </Button>
           <h1 className="text-xl font-bold">
-            Tatik.space Pro Editor
+            {editorText('projectTitle')}
           </h1>
         </div>
         <div className="flex items-center gap-3">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleSellFromEditor}
+          className="border-slate-600 text-white hover:bg-slate-700"
+        >
+          {editorText('sellTemplate')}
+        </Button>
+        <div className="flex items-center gap-1.5 text-xs text-slate-300" aria-live="polite">
+            {saveStatus === 'saving' && <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />}
+            {saveStatus === 'saved' && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />}
+            {saveStatus === 'unsaved' && <Save className="h-3.5 w-3.5 text-amber-400" />}
+            {saveStatus === 'error' && <AlertCircle className="h-3.5 w-3.5 text-red-400" />}
+            <span>
+              {saveStatus === 'saving'
+                ? editorText('saving')
+                : saveStatus === 'error'
+                  ? editorText('saveFailed')
+                  : saveStatus === 'unsaved'
+                    ? editorText('unsavedChanges')
+                    : editorText('saved')}
+            </span>
+          </div>
           <AdBanner />
         </div>
       </header>
@@ -1957,29 +2197,29 @@ export default function EditorApp() {
                 }}
               >
                 <div className="flex items-center justify-between mb-0 flex-shrink-0">
-                  <div className="text-xs font-semibold">Risultati ricerca</div>
-                  <button onClick={() => setSearchPanelOpen(false)} className="text-xs text-slate-400 px-1.5 py-0.5 border border-slate-700 rounded bg-slate-800 hover:bg-slate-700 flex-shrink-0">Nascondi</button>
+                  <div className="text-xs font-semibold">{editorText('searchResults')}</div>
+                  <button onClick={() => setSearchPanelOpen(false)} className="text-xs text-slate-400 px-1.5 py-0.5 border border-slate-700 rounded bg-slate-800 hover:bg-slate-700 flex-shrink-0">{editorText('hide')}</button>
                 </div>
                 {/* In-Search Premium Result (sponsored) */}
                 {searchQuery && searchQuery.trim().length > 0 && (
                   <div className="mb-0.5 p-1 rounded border border-slate-700 bg-gradient-to-r from-indigo-900/60 to-slate-900/40 w-full min-w-0">
                     <div className="flex items-start justify-between gap-1 w-full min-w-0">
                       <div className="flex-1 min-w-0">
-                        <div className="text-[10px] text-indigo-200 font-semibold">[Sponsored] Best React Component Library (Open Source)</div>
-                        <div className="text-[9px] text-slate-300 truncate">Libreria UI ottimizzata per performance e accessibilità — componenti pronti, theming, e supporto enterprise.</div>
+                        <div className="text-[10px] text-indigo-200 font-semibold">{editorText('sponsored')}</div>
+                        <div className="text-[9px] text-slate-300 truncate">{editorText('sponsoredDescription')}</div>
                       </div>
                       <div className="flex items-center gap-1 flex-shrink-0">
-                        <a href="https://example.com/best-react-library" target="_blank" rel="noreferrer noopener" className="text-[9px] bg-indigo-600 hover:bg-indigo-700 text-white px-1.5 py-0.5 rounded">Scopri</a>
+                        <a href="https://example.com/best-react-library" target="_blank" rel="noreferrer noopener" className="text-[9px] bg-indigo-600 hover:bg-indigo-700 text-white px-1.5 py-0.5 rounded">{editorText('discover')}</a>
                       </div>
                     </div>
-                    <div className="text-[8px] text-slate-400 mt-0.5">CPA/CPC — risultato sponsorizzato, mostrato in posizione privilegiata</div>
+                    <div className="text-[8px] text-slate-400 mt-0.5">{editorText('sponsoredDisclosure')}</div>
                   </div>
                 )}
 
                 <div className="overflow-auto flex-1 min-h-0">
                   <SearchResultsPanel
                     query={searchQuery}
-                    localFiles={localFiles}
+                    localFiles={previewFiles}
                     onOpenMatch={(file: any, line: any, from: any, to: any) => {
                       // open file and highlight
                       setCurrentFile(file as any);
@@ -2005,9 +2245,9 @@ export default function EditorApp() {
                     size="sm"
                     variant="destructive"
                     onClick={handleCloseFolder}
-                    title={`Chiudi: ${openedFolderName}`}
+                    title={`${editorText('closeFolder')}: ${openedFolderName}`}
                   >
-                    Chiudi
+                    {editorText('closeFolder')}
                   </Button>
                 </div>
               )}
@@ -2061,7 +2301,7 @@ export default function EditorApp() {
 
                       // Detect language and update preview based on file extension
                       const fileName = (file.name || file.path || '').toLowerCase();
-                      const detectedLang = detectLanguage(file.content || '');
+                      const detectedLang = file.language || detectLanguageFromExtension(file.name || file.path || '') || detectLanguage(file.content || '');
 
                       setSelectedLanguage(detectedLang as 'plaintext' | 'javascript' | 'typescript' | 'html' | 'css' | 'python' | 'xml' | 'json' | 'markdown' | 'sql');
 
@@ -2111,15 +2351,15 @@ export default function EditorApp() {
                 style={{ height: isPromoCollapsed ? 0 : 'auto' }}
               >
                 <div className="w-full flex flex-col items-center justify-center gap-1 border-t border-slate-700 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-3 py-2 rounded">
-                  <span className="text-[10px] text-slate-300 uppercase tracking-widest font-semibold">{i18nT('freeTrialLabel')}</span>
+                  <span className="text-[10px] text-slate-300 uppercase tracking-widest font-semibold">{editorLabel('freeTrialLabel')}</span>
 
                   <span style={{ color: '#60a5fa' }} className="text-lg font-extrabold leading-tight">
                     {trialDaysLeft}
                   </span>
 
-                  <span className="text-xs text-white">{i18nT('days')}</span>
+                  <span className="text-xs text-white">{editorLabel('days')}</span>
 
-                  <span className="text-xs font-semibold text-slate-100">{i18nT('plan')}</span>
+                  <span className="text-xs font-semibold text-slate-100">{editorLabel('plan')}</span>
 
                   <Button
                     className="h-7 px-3 text-xs font-semibold shadow-lg mt-0.5"
@@ -2128,7 +2368,7 @@ export default function EditorApp() {
                       color: 'white',
                       border: 'none'
                     }}
-                    onClick={() => toast.info('Upgrade in sviluppo...')}
+                    onClick={() => toast.info(editorText('upgradeInDevelopment'))}
                   >
                     {i18nT('upgradeToPro')}
                   </Button>
@@ -2150,12 +2390,12 @@ export default function EditorApp() {
                 {isPromoCollapsed ? (
                   <>
                     <ChevronDown size={16} />
-                    <span>{i18nT('expandPromo')}</span>
+                    <span>{editorLabel('expandPromo')}</span>
                   </>
                 ) : (
                   <>
                     <ChevronDown size={16} className="rotate-180" />
-                    <span>{i18nT('collapsePromo')}</span>
+                    <span>{editorLabel('collapsePromo')}</span>
                   </>
                 )}
               </button>
@@ -2219,7 +2459,7 @@ export default function EditorApp() {
             <div className="flex items-center gap-2 min-w-0 flex-shrink-0">
               <Search className="h-4 w-4 text-slate-400" />
               <Input
-                placeholder="Cerca nel codice..."
+                placeholder={editorText('searchPlaceholder')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => setSearchPanelOpen(true)}
@@ -2227,7 +2467,7 @@ export default function EditorApp() {
               />
               <button
                 onClick={() => setSearchPanelOpen(!searchPanelOpen)}
-                title={searchPanelOpen ? 'Nascondi risultati ricerca' : 'Mostra risultati ricerca'}
+                title={searchPanelOpen ? editorText('hideSearchResults') : editorText('showSearchResults')}
                 className={`text-xs px-1.5 py-0.5 border rounded flex-shrink-0 transition-colors ${searchPanelOpen ? 'border-indigo-600 bg-indigo-600/20 text-indigo-300' : 'border-slate-700 bg-slate-800 text-slate-400 hover:bg-slate-700'}`}
               >
                 {searchPanelOpen ? '▼' : '▶'}
@@ -2247,20 +2487,20 @@ export default function EditorApp() {
                 <DropdownMenuContent>
                   <DropdownMenuItem onClick={() => document.getElementById('file-upload')?.click()}>
                     <Upload className="mr-2 h-4 w-4" />
-                    {i18nT('uploadFile')}
+                    {editorLabel('uploadFile')}
                   </DropdownMenuItem>
                   {templateToOpen && (
                     <>
                       <DropdownMenuItem onClick={handleOpenTemplateFromPurchase}>
                         <FilePlus className="mr-2 h-4 w-4" />
-                        {i18nT('openPurchasedTemplate')}
+                        {editorLabel('openPurchasedTemplate')}
                       </DropdownMenuItem>
                       <div className="my-1 h-px bg-slate-200 dark:bg-slate-700" />
                     </>
                   )}
                   <DropdownMenuItem onClick={handleDirectoryPicker}>
                     <FolderUp className="mr-2 h-4 w-4" />
-                    {i18nT('uploadFolder')}
+                    {editorLabel('uploadFolder')}
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={() => setNewFileDialogOpen(true)}>
                     <FilePlus className="mr-2 h-4 w-4" />
@@ -2295,7 +2535,7 @@ export default function EditorApp() {
               <TemplateMarketplace onInsert={setEditorContent} onInsertWithLanguage={handleTemplateInsert} />
               <Button size="sm" className="flex-shrink-0 px-1 py-0.5" onClick={() => setShowBackupDialog(true)} variant="outline">
                 <FileCode className="mr-1 h-3.5 w-3.5" />
-                Backup
+                {i18nT('backup')}
               </Button>
               <VersionHistory versions={versions} onRestore={handleRestoreVersion} />
               <AIAssistant />
@@ -2328,7 +2568,7 @@ export default function EditorApp() {
                       <span className="text-sm">{currentFile?.name}</span>
                     </button>
                   ) : (
-                    <div className="text-sm text-slate-400 px-4 py-3">{i18nT('noFileOpen')}</div>
+                    <div className="text-sm text-slate-400 px-4 py-3">{editorLabel('noFileOpen')}</div>
                   )
                 ) : (
                   openFiles.map((f) => (
@@ -2352,7 +2592,7 @@ export default function EditorApp() {
                 {/* Language detection — subtle pill (non-intrusive) */}
                 {detectedLanguageLabel && detectedLanguageLabel !== 'plaintext' && (
                   <div className="flex items-center gap-3 px-3 py-1 mb-2">
-                    <div className="text-[11px] text-slate-400">Linguaggio</div>
+                    <div className="text-[11px] text-slate-400">{i18nT('language')}</div>
                     <div className="px-2 py-0.5 bg-slate-800 text-slate-200 rounded text-[12px] font-medium">
                       {detectedLanguageLabel}
                     </div>
@@ -2424,29 +2664,32 @@ export default function EditorApp() {
                 {/* Right: Device buttons */}
                 <div className="flex items-center gap-2">
                   <div className="flex items-center gap-2">
-                    <Button size="sm" className={previewDevice === 'desktop' ? 'bg-slate-700 text-white' : ''} onClick={() => setPreviewDevice('desktop')} aria-pressed={previewDevice === 'desktop'} title="Desktop">
+                    <Button size="sm" className={previewDevice === 'desktop' ? 'bg-slate-700 text-white' : ''} onClick={() => setPreviewDevice('desktop')} aria-pressed={previewDevice === 'desktop'} title={editorText('desktop')}>
                       <Monitor size={14} />
                     </Button>
-                    <Button size="sm" className={previewDevice === 'mobile' ? 'bg-slate-700 text-white' : ''} onClick={() => setPreviewDevice('mobile')} aria-pressed={previewDevice === 'mobile'} title="Mobile">
+                    <Button size="sm" className={previewDevice === 'mobile' ? 'bg-slate-700 text-white' : ''} onClick={() => setPreviewDevice('mobile')} aria-pressed={previewDevice === 'mobile'} title={editorText('mobile')}>
                       <Smartphone size={14} />
                     </Button>
                   </div>
                 </div>
               </div>
               <div className="flex-1 relative min-h-0 w-full p-4" style={{ height: '100%', overflow: 'auto' }}>
-                {detectedViteProject && !externalPreviewUrl ? (
+                {previewMode === 'vite-react' && !externalPreviewUrl ? (
                   <div className="p-6 h-full flex flex-col items-center justify-center text-center">
-                    <h3 className="text-lg font-semibold mb-2">Progetto Vite/React rilevato</h3>
-                    <p className="text-sm text-slate-500 mb-4">Non è stato trovato un dev server attivo.</p>
+                    <div className="mb-3 rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
+                      {editorText('vitePreview')}
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2">{editorText('viteRuntime')}</h3>
+                    <p className="text-sm text-slate-500 mb-4">{editorText('devServerNotFound')}</p>
                     <div className="text-sm text-left max-w-md">
-                      <p className="mb-2">Per vedere correttamente l'anteprima esegui il server dev del progetto nella cartella del progetto:</p>
+                      <p className="mb-2">{editorText('runtimeInstructions')}</p>
                       <pre className="bg-slate-900 p-3 rounded text-xs text-white">pnpm install
                         pnpm run dev</pre>
-                      <p className="mt-3">Poi apri <span className="font-medium">http://localhost:5173</span> (o la porta mostrata dal server) oppure clicca il pulsante qui sotto per aprire l'URL nella nuova scheda.</p>
+                      <p className="mt-3">{editorText('runtimeOpenInstructions')}</p>
                     </div>
                     <div className="mt-4">
                       <Button asChild>
-                        <a href="http://localhost:5173" target="_blank" rel="noreferrer">Apri dev server</a>
+                        <a href="http://localhost:5173" target="_blank" rel="noreferrer">{editorText('openDevServer')}</a>
                       </Button>
                     </div>
                   </div>
@@ -2466,6 +2709,7 @@ export default function EditorApp() {
                       }}
                     >
                       <PreviewPanel
+                        mode={previewMode}
                         htmlContent={htmlContent}
                         cssContent={cssContent}
                         jsContent={jsContent}
@@ -2487,9 +2731,9 @@ export default function EditorApp() {
       <Dialog open={showBackupDialog} onOpenChange={setShowBackupDialog}>
         <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{i18nT('backupManagement')}</DialogTitle>
+            <DialogTitle>{editorLabel('backupManagement')}</DialogTitle>
             <DialogDescription>
-              {i18nT('createManageBackup')}
+              {editorLabel('createManageBackup')}
             </DialogDescription>
           </DialogHeader>
           <BackupManager
@@ -2504,15 +2748,15 @@ export default function EditorApp() {
       <Dialog open={confirmCloseDialogOpen} onOpenChange={setConfirmCloseDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Chiudere il file?</DialogTitle>
+            <DialogTitle>{editorText('closeFileQuestion')}</DialogTitle>
             <DialogDescription>
-              {`Vuoi salvare le modifiche a "${openFiles.find(f => f.path === pendingClosePath)?.name || pendingClosePath}" prima di chiudere?`}
+              {editorText('saveChangesBeforeClose', { name: openFiles.find(f => f.path === pendingClosePath)?.name || pendingClosePath || '' })}
             </DialogDescription>
           </DialogHeader>
           <div className="flex gap-2 mt-4">
-            <Button onClick={handleConfirmCloseSave}>Salva</Button>
-            <Button variant="destructive" onClick={handleConfirmCloseDiscard}>Non salvare</Button>
-            <Button variant="outline" onClick={() => setConfirmCloseDialogOpen(false)}>Annulla</Button>
+            <Button onClick={handleConfirmCloseSave}>{editorText('save')}</Button>
+            <Button variant="destructive" onClick={handleConfirmCloseDiscard}>{editorText('discard')}</Button>
+            <Button variant="outline" onClick={() => setConfirmCloseDialogOpen(false)}>{editorText('cancel')}</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -2521,9 +2765,9 @@ export default function EditorApp() {
       <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Salva: {savingFileName}</DialogTitle>
+            <DialogTitle>{editorText('saveFile', { name: savingFileName || '' })}</DialogTitle>
             <DialogDescription>
-              Scegli la cartella di destinazione. Si aprirà un dialog per selezionarla.
+              {editorText('chooseDestination')}
             </DialogDescription>
           </DialogHeader>
 
@@ -2535,18 +2779,18 @@ export default function EditorApp() {
               variant="outline"
             >
               <FolderOpen className="mr-2 h-4 w-4" />
-              Salva in cartella scelta
+              {editorText('saveInChosenFolder')}
             </Button>
             <p className="text-xs text-slate-400 text-center">
-              Mantiene la struttura di cartelle originale
+              {editorText('preserveFolderStructure')}
             </p>
 
             {/* Option 2: Save As */}
             <div className="space-y-2 pt-2">
               <div>
-                <label className="text-sm font-medium">Nome file personalizzato:</label>
+                <label className="text-sm font-medium">{editorText('customFileName')}</label>
                 <Input
-                  placeholder="es: file_modificato.txt"
+                  placeholder={editorText('customFileNamePlaceholder')}
                   value={customSavePath}
                   onChange={(e) => setCustomSavePath(e.target.value)}
                   className="text-sm mt-1"
@@ -2561,7 +2805,7 @@ export default function EditorApp() {
                 variant="outline"
               >
                 <FileCode className="mr-2 h-4 w-4" />
-                Salva con nome
+                {editorText('saveAs')}
               </Button>
             </div>
 
@@ -2572,15 +2816,15 @@ export default function EditorApp() {
               variant="outline"
             >
               <Upload className="mr-2 h-4 w-4" />
-              Salva su cloud (In sviluppo)
+            {editorText('saveProjectCloud')}
             </Button>
           </div>
 
           <DialogFooter>
             <div className="flex items-center gap-3">
-              <div className="text-xs text-slate-400">[Cloud-Vault] Safe Copy — partner storage</div>
+              <div className="text-xs text-slate-400">{editorText('safeCopyLabel')}</div>
               <Button variant="outline" onClick={() => setSaveDialogOpen(false)}>
-                Annulla
+                {editorText('cancel')}
               </Button>
             </div>
           </DialogFooter>
@@ -2591,7 +2835,7 @@ export default function EditorApp() {
         isOpen={newProjectDialogOpen}
         onClose={() => setNewProjectDialogOpen(false)}
         onCreateProject={(name, files) => {
-          toast.success(`Progetto "${name}" creato!`);
+          toast.success(editorText('projectCreated', { name }));
           setNewProjectDialogOpen(false);
         }}
       />
@@ -2600,14 +2844,14 @@ export default function EditorApp() {
       <Dialog open={newFileDialogOpen} onOpenChange={setNewFileDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Crea Nuovo File</DialogTitle>
-            <DialogDescription>Inserisci il nome del file - l'estensione verrà aggiunta automaticamente</DialogDescription>
+            <DialogTitle>{editorText('newFileTitle')}</DialogTitle>
+            <DialogDescription>{editorText('newFileDescription')}</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
             <Input
               id="newFileName"
               name="newFileName"
-              placeholder="es: script, index, config"
+              placeholder={editorText('newFilePlaceholder')}
               value={newFileName}
               onChange={(e) => {
                 setNewFileName(e.target.value);
@@ -2622,7 +2866,7 @@ export default function EditorApp() {
             />
             {suggestedExtension && (
               <div className="flex items-center justify-between p-2 bg-slate-700 rounded text-sm">
-                <span className="text-gray-300">Estensione suggerita:</span>
+                <span className="text-gray-300">{editorText('suggestedExtension')}</span>
                 <span className="font-mono bg-slate-600 px-2 py-1 rounded text-blue-400">
                   .{suggestedExtension}
                 </span>
@@ -2630,7 +2874,7 @@ export default function EditorApp() {
             )}
             {suggestedLanguage && suggestedLanguage !== 'plaintext' && (
               <div className="flex items-center justify-between p-2 bg-slate-700 rounded text-sm">
-                <span className="text-gray-300">Linguaggio:</span>
+                <span className="text-gray-300">{i18nT('language')}:</span>
                 <span className="font-semibold text-green-400 capitalize">
                   {suggestedLanguage}
                 </span>
@@ -2638,8 +2882,8 @@ export default function EditorApp() {
             )}
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setNewFileDialogOpen(false)}>Annulla</Button>
-            <Button onClick={handleCreateNewFile} disabled={!newFileName.trim()}>Crea File</Button>
+            <Button variant="outline" onClick={() => setNewFileDialogOpen(false)}>{editorText('cancel')}</Button>
+            <Button onClick={handleCreateNewFile} disabled={!newFileName.trim()}>{i18nT('newFile')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -2648,13 +2892,13 @@ export default function EditorApp() {
       <Dialog open={newFolderDialogOpen} onOpenChange={setNewFolderDialogOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Crea Nuova Cartella</DialogTitle>
-            <DialogDescription>Inserisci il nome della cartella</DialogDescription>
+            <DialogTitle>{editorText('newFolderTitle')}</DialogTitle>
+            <DialogDescription>{editorText('newFolderDescription')}</DialogDescription>
           </DialogHeader>
-          <Input id="newFolderName" name="newFolderName" placeholder="es: components" value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleCreateNewFolder(); }} autoFocus />
+          <Input id="newFolderName" name="newFolderName" placeholder={editorText('newFolderPlaceholder')} value={newFolderName} onChange={(e) => setNewFolderName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') handleCreateNewFolder(); }} autoFocus />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setNewFolderDialogOpen(false)}>Annulla</Button>
-            <Button onClick={handleCreateNewFolder}>Crea Cartella</Button>
+            <Button variant="outline" onClick={() => setNewFolderDialogOpen(false)}>{editorText('cancel')}</Button>
+            <Button onClick={handleCreateNewFolder}>{i18nT('newFolder')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

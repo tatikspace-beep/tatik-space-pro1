@@ -8,26 +8,28 @@ import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { safeReturnPath } from '@shared/authRedirect';
+import { authFlowCopy, localizedAuthError } from '@/lib/authFlowCopy';
 
 export default function Register() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
+  const copy = authFlowCopy[language];
   const returnTo = safeReturnPath(new URLSearchParams(window.location.search).get('next'));
 
   const requestRegistrationMutation = trpc.auth.requestRegistration.useMutation({
     onSuccess: () => {
-      toast.success('Controlla la tua e-mail: il link è valido per 10 minuti.');
+      toast.success(copy.registrationLinkSent);
     },
     onError: (error) => {
-      toast.error(error.message || t.registrationError);
+      toast.error(localizedAuthError(error.message || t.registrationError, copy));
     }
   });
 
   const handleRegister = (e: React.FormEvent) => {
     e.preventDefault();
 
-    requestRegistrationMutation.mutate({ email, name, redirectTo: returnTo });
+    requestRegistrationMutation.mutate({ email: email.trim(), name: name.trim(), redirectTo: returnTo });
   };
 
   return (
@@ -46,7 +48,7 @@ export default function Register() {
               <Input
                 id="name"
                 type="text"
-                placeholder={t.yourNamePlaceholder || "Il tuo nome"}
+                placeholder={t.firstName}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
@@ -65,7 +67,7 @@ export default function Register() {
               />
             </div>
 
-            <p className="text-sm text-muted-foreground">Riceverai un link sicuro per impostare la password.</p>
+            <p className="text-sm text-muted-foreground">{copy.registrationLinkExplanation}</p>
           </CardContent>
           <CardFooter className="flex flex-col">
             <Button

@@ -1,6 +1,12 @@
 import React, { useMemo } from 'react';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { getEditorAppCopy } from '@/lib/editorAppCopy';
+import { getEditorOutsideCopy } from '@/lib/editorOutsideCopy';
 
 export default function SearchResultsPanel({ query, localFiles, onOpenMatch }: any) {
+    const { language } = useLanguage();
+    const copy = (key: 'noMatches' | 'folderSearchLabel' | 'folderFound' | 'lineNumber', values: Record<string, string | number> = {}) =>
+        getEditorAppCopy(language, key, values);
     const results = useMemo(() => {
         if (!query) return [];
         const q = query; // exact match
@@ -26,18 +32,18 @@ export default function SearchResultsPanel({ query, localFiles, onOpenMatch }: a
             const segments = path.split('/').filter(Boolean);
             const folderMatch = segments.slice(0, -1).find((s: string) => s.toLowerCase() === ql);
             if (folderMatch) {
-                res.push({ file: f, line: 0, preview: `Cartella: ${folderMatch}`, folderMatch });
+                res.push({ file: f, line: 0, preview: copy('folderSearchLabel', { name: folderMatch }), folderMatch });
             }
         }
         return res;
-    }, [query, localFiles]);
+    }, [query, localFiles, language]);
 
-    if (results.length === 0) return <div className="text-slate-400 p-2">Nessuna corrispondenza</div>;
+    if (results.length === 0) return <div className="text-slate-400 p-2">{copy('noMatches')}</div>;
 
     // Group by file
     const grouped: Record<string, any[]> = {};
     for (const r of results) {
-        const key = r.file.path || r.file.name || 'unknown';
+        const key = r.file.path || r.file.name || getEditorOutsideCopy(language, 'unknownFile');
         if (!grouped[key]) grouped[key] = [];
         grouped[key].push(r);
     }
@@ -50,10 +56,10 @@ export default function SearchResultsPanel({ query, localFiles, onOpenMatch }: a
                     <div className="mt-0">
                         {grouped[key].map((m: any, idx: number) => (
                             m.folderMatch ? (
-                                <div key={idx} className="w-full text-left px-0.5 py-0 text-xs text-indigo-300">Cartella trovata: {m.folderMatch}</div>
+                            <div key={idx} className="w-full text-left px-0.5 py-0 text-xs text-indigo-300">{copy('folderFound', { name: m.folderMatch })}</div>
                             ) : (
                                 <button key={idx} onClick={() => onOpenMatch(m.file, m.line, m.from, m.to)} className="w-full text-left px-0.5 py-0 hover:bg-slate-800 rounded">
-                                    <div className="text-slate-300 text-xs">Riga {m.line}: <span className="text-slate-400">{m.preview}</span></div>
+                                <div className="text-slate-300 text-xs">{copy('lineNumber', { line: m.line })}: <span className="text-slate-400">{m.preview}</span></div>
                                 </button>
                             )
                         ))}

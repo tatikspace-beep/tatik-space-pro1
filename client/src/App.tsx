@@ -36,14 +36,49 @@ import { GlobalNavbar } from "@/components/GlobalNavbar";
 import { AppFooter } from "@/components/AppFooter";
 import { PromoBox } from '@/components/PromoBox';
 import { useLocation } from 'wouter';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { publicHomeCopy } from '@/lib/publicHomeCopy';
+import { siteShellCopy } from '@/lib/siteShellCopy';
+import { translations } from '@/lib/i18n';
 import { BetaNotice } from '@/components/BetaNotice';
+import { PUBLIC_SEO, Seo } from "@/components/Seo";
 
 // Initialize i18n
 import './lib/i18n';
 
 function Router() {
+  const [location] = useLocation();
+  const { language } = useLanguage();
+  const seoKey = location.startsWith("/pricing/") ? "/pricing" : location;
+  const seo = PUBLIC_SEO[seoKey];
+  const homeCopy = publicHomeCopy[language] ?? publicHomeCopy.en;
+  const isPrivate = ["/editor", "/dashboard", "/profile", "/files", "/login", "/register", "/access", "/complete-registration", "/marketplace/developer", "/marketplace/demo"].some(path => location === path || location.startsWith(`${path}/`));
+  const currentTranslations = translations[language] ?? translations.en;
+  const currentShellCopy = siteShellCopy[language] ?? siteShellCopy.en;
+  const routeTitle = location.startsWith("/editor") ? currentTranslations.editor
+    : location.startsWith("/dashboard") ? currentTranslations.dashboard
+      : location.startsWith("/profile") ? currentTranslations.profile
+        : location.startsWith("/files") ? currentTranslations.files
+          : location.startsWith("/login") || location.startsWith("/access") ? currentTranslations.login
+            : location.startsWith("/register") || location.startsWith("/complete-registration") ? currentTranslations.register
+              : location.startsWith("/marketplace/developer") || location.startsWith("/marketplace/demo") ? currentTranslations.templateMarketplace
+                : currentShellCopy.notFoundTitle;
+  const fallbackSeo = {
+    title: `${routeTitle} | Tatik.space`,
+    description: isPrivate ? currentTranslations.mustBeAuthenticatedToAccess : currentShellCopy.notFoundMessage,
+    noIndex: true,
+  };
+  const shouldNoIndex = isPrivate || !seo || Boolean(seo.noIndex);
   return (
-    <Switch>
+    <>
+      <Seo
+        {...(seo ?? fallbackSeo)}
+        {...(seoKey === "/" ? { title: homeCopy.seoTitle, description: homeCopy.seoDescription } : {})}
+        path={location}
+        language={language}
+        noIndex={shouldNoIndex}
+      />
+      <Switch>
       <Route path={"/"} component={Home} />
       <Route path={"/editor"} component={EditorApp} />
       <Route path={"/dashboard"} component={EditorApp} />

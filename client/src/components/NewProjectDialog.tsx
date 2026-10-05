@@ -2,9 +2,12 @@ import React, { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { Upload, FolderPlus, FileCode } from 'lucide-react';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { getEditorAppCopy } from '@/lib/editorAppCopy';
+import { getEditorOutsideCopy, type EditorOutsideCopyKey } from '@/lib/editorOutsideCopy';
 
 interface NewProjectDialogProps {
   isOpen: boolean;
@@ -13,6 +16,9 @@ interface NewProjectDialogProps {
 }
 
 export function NewProjectDialog({ isOpen, onClose, onCreateProject }: NewProjectDialogProps) {
+  const { language } = useLanguage();
+  const copy = (key: EditorOutsideCopyKey, values: Record<string, string | number> = {}) =>
+    getEditorOutsideCopy(language, key, values);
   const [projectName, setProjectName] = useState('');
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -20,12 +26,12 @@ export function NewProjectDialog({ isOpen, onClose, onCreateProject }: NewProjec
 
   const handleCreateProject = () => {
     if (!projectName.trim()) {
-      toast.error('Inserisci un nome per il progetto');
+      toast.error(copy('projectNameRequired'));
       return;
     }
 
     if (projectName.length > 50) {
-      toast.error('Il nome del progetto non può superare 50 caratteri');
+      toast.error(copy('projectNameTooLong'));
       return;
     }
 
@@ -37,7 +43,7 @@ export function NewProjectDialog({ isOpen, onClose, onCreateProject }: NewProjec
     setSelectedFiles([]);
     setStep('name');
     onClose();
-    toast.success(`Progetto "${projectName}" creato con successo!`);
+    toast.success(getEditorAppCopy(language, 'projectCreated', { name: projectName }));
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -51,7 +57,7 @@ export function NewProjectDialog({ isOpen, onClose, onCreateProject }: NewProjec
     });
 
     if (validFiles.length !== files.length) {
-      toast.warning(`${files.length - validFiles.length} file non supportati (solo .html, .css, .js, .json, .xml, .txt, .md)`);
+      toast.warning(copy('invalidFiles', { count: files.length - validFiles.length }));
     }
 
     setSelectedFiles(prev => [...prev, ...validFiles]);
@@ -80,6 +86,10 @@ export function NewProjectDialog({ isOpen, onClose, onCreateProject }: NewProjec
       return validExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
     });
 
+    if (validFiles.length !== files.length) {
+      toast.warning(copy('invalidFiles', { count: files.length - validFiles.length }));
+    }
+
     setSelectedFiles(prev => [...prev, ...validFiles]);
   };
 
@@ -89,12 +99,12 @@ export function NewProjectDialog({ isOpen, onClose, onCreateProject }: NewProjec
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <FolderPlus className="h-5 w-5" />
-            Nuovo Progetto
+            {copy('newProjectTitle')}
           </DialogTitle>
           <DialogDescription>
             {step === 'name'
-              ? 'Crea un nuovo progetto e inizia a codificare'
-              : 'Aggiungi file al tuo progetto (opzionale)'}
+              ? copy('createProjectDescription')
+              : copy('addFilesDescription')}
           </DialogDescription>
         </DialogHeader>
 
@@ -102,11 +112,11 @@ export function NewProjectDialog({ isOpen, onClose, onCreateProject }: NewProjec
           <div className="space-y-4">
             <div className="space-y-2">
               <label htmlFor="projectName" className="text-sm font-medium">
-                Nome Progetto *
+                {copy('projectName')}
               </label>
               <Input
                 id="projectName"
-                placeholder="Es: My Web App"
+                placeholder={copy('projectPlaceholder')}
                 value={projectName}
                 onChange={(e) => setProjectName(e.target.value)}
                 onKeyPress={(e) => {
@@ -116,12 +126,12 @@ export function NewProjectDialog({ isOpen, onClose, onCreateProject }: NewProjec
                 }}
               />
               <p className="text-xs text-slate-400">
-                {projectName.length}/50 caratteri
+                {copy('characterCount', { count: projectName.length })}
               </p>
             </div>
 
             <div className="space-y-2">
-              <h3 className="text-sm font-medium">Opzioni</h3>
+              <h3 className="text-sm font-medium">{copy('options')}</h3>
               <div className="space-y-2">
                 <Button
                   variant="outline"
@@ -129,20 +139,20 @@ export function NewProjectDialog({ isOpen, onClose, onCreateProject }: NewProjec
                   onClick={() => setStep('files')}
                 >
                   <Upload className="h-4 w-4" />
-                  Aggiungi File (Opzionale)
+                  {copy('addFilesOptional')}
                 </Button>
               </div>
             </div>
 
             <DialogFooter>
               <Button variant="outline" onClick={onClose}>
-                Annulla
+                {getEditorAppCopy(language, 'cancel')}
               </Button>
               <Button
                 onClick={handleCreateProject}
                 disabled={!projectName.trim()}
               >
-                Crea Progetto
+                {copy('create')}
               </Button>
             </DialogFooter>
           </div>
@@ -157,10 +167,10 @@ export function NewProjectDialog({ isOpen, onClose, onCreateProject }: NewProjec
             >
               <Upload className="h-8 w-8 mx-auto mb-2 text-slate-400" />
               <p className="text-sm font-medium mb-1">
-                Trascina i file qui o clicca
+                {copy('dragDropFiles')}
               </p>
               <p className="text-xs text-slate-400">
-                Supportati: HTML, CSS, JS, JSON, XML, TXT, MD
+                {copy('supportedFiles')}
               </p>
               <input
                 ref={fileInputRef}
@@ -177,7 +187,7 @@ export function NewProjectDialog({ isOpen, onClose, onCreateProject }: NewProjec
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm">
-                    File Selezionati ({selectedFiles.length})
+                    {copy('selectedFiles', { count: selectedFiles.length })}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -199,6 +209,8 @@ export function NewProjectDialog({ isOpen, onClose, onCreateProject }: NewProjec
                           size="sm"
                           onClick={() => handleRemoveFile(index)}
                           className="h-6 w-6 p-0"
+                          title={copy('removeFile')}
+                          aria-label={copy('removeFile')}
                         >
                           ×
                         </Button>
@@ -214,16 +226,16 @@ export function NewProjectDialog({ isOpen, onClose, onCreateProject }: NewProjec
                 variant="outline"
                 onClick={() => setStep('name')}
               >
-                Indietro
+                {copy('back')}
               </Button>
               <Button
                 variant="outline"
                 onClick={() => fileInputRef.current?.click()}
               >
-                Aggiungi File
+                {copy('addFiles')}
               </Button>
               <Button onClick={handleCreateProject}>
-                Crea Progetto
+                {copy('create')}
               </Button>
             </DialogFooter>
           </div>

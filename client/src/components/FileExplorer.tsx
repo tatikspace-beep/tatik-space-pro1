@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { filesPageCopy, formatFilesCopy } from '@/lib/filesPageCopy';
 import { ChevronRight, ChevronDown, File, Folder, Edit2, Trash2, Save, RefreshCw, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -12,6 +13,7 @@ interface FileNode {
   type: 'file' | 'folder';
   path: string;
   content?: string;
+  language?: string;
   children?: FileNode[];
 }
 
@@ -21,6 +23,7 @@ interface RawFile {
   type: 'file';
   path: string;
   content?: string;
+  language?: string;
 }
 
 interface FileExplorerProps {
@@ -44,7 +47,10 @@ export function FileExplorer({ files, onSelectFile, selectedPath, onRefreshFile,
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
   const [deleteConfirmPath, setDeleteConfirmPath] = useState<string | null>(null);
-  const { t } = useLanguage();
+  const { language } = useLanguage();
+  const copy = filesPageCopy[language];
+  const explorerCopy = copy.explorer;
+  const toastCopy = (key: keyof typeof copy.toast) => copy.toast[key];
 
   // Helper function to generate a hash for folder IDs
   const generateHash = (str: string): number => {
@@ -208,20 +214,20 @@ export function FileExplorer({ files, onSelectFile, selectedPath, onRefreshFile,
       onRenameFile?.(renamingPath, newName.trim());
       setRenamingPath(null);
       setNewName('');
-      toast.success('File rinominato!');
+      toast.success(toastCopy('renamedFile'));
     }
   };
 
   const handleDelete = (path: string) => {
     onDeleteFile?.(path);
     setDeleteConfirmPath(null);
-    toast.success('File eliminato!');
+    toast.success(toastCopy('deletedExplorerFile'));
   };
 
   const handleSave = (node: FileNode) => {
     if (node.type === 'file' && node.content !== undefined) {
       onSaveFile?.(node.path, node.content);
-      toast.success('File salvato!');
+      toast.success(toastCopy('savedFile'));
     }
   };
 
@@ -239,6 +245,10 @@ export function FileExplorer({ files, onSelectFile, selectedPath, onRefreshFile,
       <div className="flex items-center gap-2">
         <button
           onClick={() => node.type === 'folder' ? toggleFolder(node.path) : onSelectFile(node)}
+          aria-label={node.type === 'folder'
+            ? formatFilesCopy(expandedFolders[node.path] ? explorerCopy.collapseFolder : explorerCopy.expandFolder, { name: node.name })
+            : undefined}
+          aria-expanded={node.type === 'folder' ? !!expandedFolders[node.path] : undefined}
           className={`flex-1 text-left px-3 py-2 rounded text-sm flex items-center gap-2 transition-colors ${draggedFilePath === node.path ? 'opacity-50' : ''
             } ${node.type === 'folder' && dragOverFolderPath === node.path ? 'bg-blue-500/30 hover:bg-blue-500/40' : 'hover:bg-slate-700/50'
             } ${node.type === 'file' ? 'text-slate-300 cursor-move' : 'text-slate-200'
@@ -256,14 +266,15 @@ export function FileExplorer({ files, onSelectFile, selectedPath, onRefreshFile,
           <span className="truncate">{node.name}</span>
         </button>
 
-        {/* Action buttons - visible on hover */}
-        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity pr-2 pointer-events-auto z-10">
+        {/* Action buttons - close controls stay visible so files/folders can always be closed. */}
+        <div className="flex gap-1 opacity-100 transition-opacity pr-2 pointer-events-auto z-10">
           {node.type === 'file' && (
             <>
               <button
                 onClick={() => handleSave(node)}
                 className="p-1 hover:bg-green-500/30 rounded text-green-400 transition-colors"
-                title="Salva file"
+                title={explorerCopy.saveFile}
+                aria-label={explorerCopy.saveFile}
               >
                 <Save className="h-4 w-4" />
               </button>
@@ -273,33 +284,35 @@ export function FileExplorer({ files, onSelectFile, selectedPath, onRefreshFile,
                   setNewName(node.name);
                 }}
                 className="p-1 hover:bg-blue-500/30 rounded text-blue-400 transition-colors"
-                title="Rinomina file"
+                title={explorerCopy.renameFile}
+                aria-label={explorerCopy.renameFile}
               >
                 <Edit2 className="h-4 w-4" />
               </button>
-              {/* Aggiorna and Chiudi buttons - visible for selected file */}
+              {/* Refresh is only relevant to the selected file. */}
               {node.path === selectedPath && (
-                <>
-                  <button
-                    onClick={() => onRefreshFile?.(node.path)}
-                    className="p-1 hover:bg-slate-700 rounded text-slate-200 transition-colors"
-                    title="Aggiorna anteprima"
-                  >
-                    <RefreshCw className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={() => onCloseFile?.(node.path)}
-                    className="p-1 hover:bg-slate-700 rounded text-slate-200 transition-colors"
-                    title="Chiudi file"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                </>
+                <button
+                  onClick={() => onRefreshFile?.(node.path)}
+                  className="p-1 hover:bg-slate-700 rounded text-slate-200 transition-colors"
+                  title={explorerCopy.refreshPreview}
+                  aria-label={explorerCopy.refreshPreview}
+                >
+                  <RefreshCw className="h-4 w-4" />
+                </button>
               )}
+              <button
+                onClick={() => onCloseFile?.(node.path)}
+                className="p-1 hover:bg-slate-700 rounded text-slate-200 transition-colors"
+                title={explorerCopy.closeFile}
+                aria-label={explorerCopy.closeFile}
+              >
+                <X className="h-4 w-4" />
+              </button>
               <button
                 onClick={() => setDeleteConfirmPath(node.path)}
                 className="p-1 hover:bg-red-500/30 rounded text-red-400 transition-colors"
-                title="Elimina file"
+                title={explorerCopy.deleteFile}
+                aria-label={explorerCopy.deleteFile}
               >
                 <Trash2 className="h-4 w-4" />
               </button>
@@ -318,19 +331,13 @@ export function FileExplorer({ files, onSelectFile, selectedPath, onRefreshFile,
                               onSaveFile?.(file.path, file.content || '');
                             }
                           });
-                          toast.success('Cartella salvata!');
+                          toast.success(toastCopy('savedFolder'));
                         }}
                         className="p-1 hover:bg-green-500/30 rounded text-green-400 transition-colors"
-                        title="Salva cartella"
+                        title={explorerCopy.saveFolder}
+                        aria-label={explorerCopy.saveFolder}
                       >
                         <Save className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={() => onCloseFolder?.()}
-                        className="p-1 hover:bg-slate-700 rounded text-slate-200 transition-colors"
-                        title="Chiudi cartella"
-                      >
-                        <X className="h-4 w-4" />
                       </button>
                     </>
                   ) : (
@@ -341,10 +348,11 @@ export function FileExplorer({ files, onSelectFile, selectedPath, onRefreshFile,
                             onSaveFile?.(file.path, file.content || '');
                           }
                         });
-                        toast.success('Cartella salvata!');
+                        toast.success(toastCopy('savedFolder'));
                       }}
                       className="p-1 hover:bg-green-500/30 rounded text-green-400 transition-colors"
-                      title="Salva cartella"
+                      title={explorerCopy.saveFolder}
+                      aria-label={explorerCopy.saveFolder}
                     >
                       <Save className="h-4 w-4" />
                     </button>
@@ -354,7 +362,8 @@ export function FileExplorer({ files, onSelectFile, selectedPath, onRefreshFile,
                 <button
                   onClick={() => setDeleteConfirmPath(node.path)}
                   className="p-1 hover:bg-red-500/30 rounded text-red-400 transition-colors"
-                  title="Elimina cartella"
+                  title={explorerCopy.deleteFolder}
+                  aria-label={explorerCopy.deleteFolder}
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -362,6 +371,16 @@ export function FileExplorer({ files, onSelectFile, selectedPath, onRefreshFile,
             </>
           )}
         </div>
+        {node.type === 'folder' && openedFolderName && node.path === openedFolderName && (
+          <button
+            onClick={() => onCloseFolder?.()}
+            className="p-1 mr-2 hover:bg-slate-700 rounded text-slate-200 transition-colors opacity-100"
+            title={explorerCopy.closeFolder}
+            aria-label={formatFilesCopy(explorerCopy.closeFolderNamed, { name: node.name })}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       {node.type === 'folder' && expandedFolders[node.path] && node.children?.map(child =>
@@ -372,10 +391,36 @@ export function FileExplorer({ files, onSelectFile, selectedPath, onRefreshFile,
 
   return (
     <>
+      {(selectedPath || openedFolderName) && (
+        <div className="mb-2 flex items-center justify-end gap-2 border-b border-slate-700 pb-2">
+          {selectedPath && (
+            <button
+              onClick={() => onCloseFile?.(selectedPath)}
+              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-slate-200 hover:bg-slate-700"
+              title={explorerCopy.closeSelectedFile}
+              aria-label={explorerCopy.closeSelectedFile}
+            >
+              <X className="h-4 w-4" />
+              {explorerCopy.closeSelectedFile}
+            </button>
+          )}
+          {openedFolderName && (
+            <button
+              onClick={() => onCloseFolder?.()}
+              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-slate-200 hover:bg-slate-700"
+              title={formatFilesCopy(explorerCopy.closeFolderNamed, { name: openedFolderName })}
+              aria-label={formatFilesCopy(explorerCopy.closeFolderNamed, { name: openedFolderName })}
+            >
+              <X className="h-4 w-4" />
+              {explorerCopy.closeFolder}
+            </button>
+          )}
+        </div>
+      )}
       <div className="space-y-1">
         {hierarchicalFiles.length === 0 ? (
           <p className="text-sm text-slate-400 text-center py-8">
-            {t.manageFiles}
+            {explorerCopy.empty}
           </p>
         ) : (
           hierarchicalFiles.map(node => renderNode(node, 0))
@@ -386,12 +431,12 @@ export function FileExplorer({ files, onSelectFile, selectedPath, onRefreshFile,
       <Dialog open={!!renamingPath} onOpenChange={(open) => !open && setRenamingPath(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Rinomina</DialogTitle>
+            <DialogTitle>{explorerCopy.renameDialog}</DialogTitle>
           </DialogHeader>
           <Input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder="Nuovo nome"
+            placeholder={explorerCopy.newName}
             autoFocus
             onKeyDown={(e) => {
               if (e.key === 'Enter') handleRename();
@@ -399,8 +444,8 @@ export function FileExplorer({ files, onSelectFile, selectedPath, onRefreshFile,
             }}
           />
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRenamingPath(null)}>Annulla</Button>
-            <Button onClick={handleRename}>Rinomina</Button>
+            <Button variant="outline" onClick={() => setRenamingPath(null)}>{explorerCopy.cancel}</Button>
+            <Button onClick={handleRename}>{explorerCopy.renameDialog}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -409,14 +454,14 @@ export function FileExplorer({ files, onSelectFile, selectedPath, onRefreshFile,
       <Dialog open={!!deleteConfirmPath} onOpenChange={(open) => !open && setDeleteConfirmPath(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Conferma eliminazione</DialogTitle>
+            <DialogTitle>{explorerCopy.confirmDelete}</DialogTitle>
           </DialogHeader>
           <p className="text-sm text-slate-300">
-            Sei sicuro di voler eliminare <strong>{deleteConfirmPath?.split('/').pop()}</strong>?
+            {formatFilesCopy(explorerCopy.confirmDeleteNamed, { name: deleteConfirmPath?.split('/').pop() ?? '' })}
           </p>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteConfirmPath(null)}>Annulla</Button>
-            <Button variant="destructive" onClick={() => deleteConfirmPath && handleDelete(deleteConfirmPath)}>Elimina</Button>
+            <Button variant="outline" onClick={() => setDeleteConfirmPath(null)}>{explorerCopy.cancel}</Button>
+            <Button variant="destructive" onClick={() => deleteConfirmPath && handleDelete(deleteConfirmPath)}>{copy.delete}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

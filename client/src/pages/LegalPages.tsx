@@ -6,6 +6,8 @@ import { ArrowLeft, Mail, Phone, MapPin } from 'lucide-react';
 import { ContactForm } from '@/components/ContactForm';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { AITranslationWrapper } from '@/components/AITranslationWrapper';
+import { contactPageFallbacks, contactPageTitles } from '@/lib/contactFormTranslations';
+import { legalSupplementalCopy } from '@/lib/legalSupplementalCopy';
 
 function LegalLayout({ children, title }: { children: React.ReactNode; title: string }) {
   const { t } = useLanguage();
@@ -35,7 +37,8 @@ function LegalLayout({ children, title }: { children: React.ReactNode; title: st
 }
 
 export function PrivacyPolicy() {
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
+  const supplementalCopy = legalSupplementalCopy[language];
   
   return (
     <LegalLayout title={t.privacyPolicy}>
@@ -116,7 +119,24 @@ export function PrivacyPolicy() {
             <AITranslationWrapper>{t.privacyPolicySection8Content}</AITranslationWrapper>
           </p>
           <p className="mt-2 text-sm text-muted-foreground">
-            <AITranslationWrapper>{t.lastUpdated}</AITranslationWrapper>: {new Date().toLocaleDateString('it-IT')}
+            <AITranslationWrapper>{t.lastUpdated}</AITranslationWrapper>: {new Date().toLocaleDateString(language)}
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold mb-3">{supplementalCopy.privacyTitle}</h2>
+          <p className="text-sm text-muted-foreground">{supplementalCopy.italianTextNotice}</p>
+          <p>
+            Per il marketplace vengono trattati i dati necessari al profilo venditore, alla pubblicazione dei listing,
+            alla revisione, agli acquisti, ai rimborsi, alle contestazioni e alla contabilizzazione del saldo.
+            I file dei venditori sono conservati in storage privato e non vengono resi disponibili prima
+            dell&apos;autorizzazione prevista dal flusso di acquisto.
+          </p>
+          <p className="mt-3">
+            Per il programma scuole vengono trattati i dati dell&apos;istituto, del referente, degli inviti e dei membri
+            necessari a controllare approvazione, durata, limite di 30 studenti per corso, revoche e audit. Gli inviti usano token
+            temporanei associati all&apos;email indicata dalla scuola. La scuola è responsabile della correttezza degli
+            indirizzi e delle autorizzazioni necessarie per invitare gli studenti.
           </p>
         </section>
       </div>
@@ -125,7 +145,8 @@ export function PrivacyPolicy() {
 }
 
 export function TermsOfService() {
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
+  const supplementalCopy = legalSupplementalCopy[language];
   
   return (
     <LegalLayout title={t.termsOfService}>
@@ -205,7 +226,29 @@ export function TermsOfService() {
             <Link href="/contact" className="text-primary hover:underline">{t.contact}</Link>.
           </p>
           <p className="mt-2 text-sm text-muted-foreground">
-            <AITranslationWrapper>{t.lastUpdated}</AITranslationWrapper>: {new Date().toLocaleDateString('it-IT')}
+            <AITranslationWrapper>{t.lastUpdated}</AITranslationWrapper>: {new Date().toLocaleDateString(language)}
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold mb-3">{supplementalCopy.termsTitle}</h2>
+          <p className="text-sm text-muted-foreground">{supplementalCopy.italianTextNotice}</p>
+          <p>
+            Il venditore è responsabile del template e dei materiali caricati, dei diritti di utilizzo, della descrizione,
+            della qualità e sicurezza del prodotto, delle licenze e degli obblighi verso gli acquirenti previsti dalla legge.
+            Deve caricare esclusivamente contenuti leciti, sicuri e di cui possiede i diritti. Tatik può rifiutare,
+            sospendere o rimuovere un listing durante la revisione o in presenza di violazioni; la revisione non equivale
+            a una garanzia o certificazione del prodotto.
+            La commissione applicata alle vendite è pari al 15%; il saldo può restare sospeso per verifiche,
+            periodo anti-frode, rimborsi o contestazioni. Il venditore riceve l'85% del prezzo prima delle commissioni
+            del provider di pagamento. I payout richiedono Stripe Connect e la verifica KYC. Le recensioni sono
+            consentite agli acquirenti con un ordine pagato e non rimborsato.
+          </p>
+          <p className="mt-3">
+            La registrazione di un istituto scolastico diventa attiva solo dopo l&apos;approvazione di admin o collaboratori
+            Tatik. Gli inviti agli studenti sono creati e approvati dalla scuola, sono temporanei e non trasferibili.
+            L&apos;accesso dura 30 giorni dall&apos;approvazione dell&apos;istituto, è limitato a 30 studenti per corso e può essere revocato
+            in caso di abuso, violazione o dati non verificabili.
           </p>
         </section>
       </div>
@@ -214,7 +257,7 @@ export function TermsOfService() {
 }
 
 export function CookiePolicy() {
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
   
   return (
     <LegalLayout title={t.cookiePolicy}>
@@ -291,7 +334,7 @@ export function CookiePolicy() {
             <AITranslationWrapper>{t.cookiePolicyUpdatesContent}</AITranslationWrapper>
           </p>
           <p className="mt-2 text-sm text-muted-foreground">
-            <AITranslationWrapper>{t.lastUpdated}</AITranslationWrapper>: {new Date().toLocaleDateString('it-IT')}
+            <AITranslationWrapper>{t.lastUpdated}</AITranslationWrapper>: {new Date().toLocaleDateString(language)}
           </p>
         </section>
 
@@ -308,41 +351,38 @@ export function CookiePolicy() {
 }
 
 export function ContactPage() {
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
+  const contactCopy = {
+    ...t,
+    ...contactPageFallbacks[language],
+    contact: contactPageTitles[language] ?? t.contact,
+  };
   
   return (
-    <LegalLayout title={t.contact}>
+    <LegalLayout title={contactCopy.contact}>
       <div className="space-y-6">
         <section>
           <p className="text-lg mb-6">
-            <AITranslationWrapper>{t.contactIntro}</AITranslationWrapper>
-          </p>
-        </section>
-
-        <section>
-          <h2 className="text-xl font-semibold mb-4"><AITranslationWrapper>{t.contactDirect}</AITranslationWrapper></h2>
-          <p className="text-sm text-muted-foreground mb-4">
-            <AITranslationWrapper>{t.contactFormInfo}</AITranslationWrapper>
-          </p>
-        </section>
-
-
-
-        <section>
-          <h2 className="text-xl font-semibold mb-4"><AITranslationWrapper>{t.contactPrivacyRequests}</AITranslationWrapper></h2>
-          <p>
-            <AITranslationWrapper>{t.contactGDPRInfo}</AITranslationWrapper>
-          </p>
-        </section>
-
-        <section>
-          <h2 className="text-xl font-semibold mb-4"><AITranslationWrapper>{t.contactReportsFeedback}</AITranslationWrapper></h2>
-          <p>
-            <AITranslationWrapper>{t.contactFeedbackInfo}</AITranslationWrapper>
+            <AITranslationWrapper>{contactCopy.contactIntro}</AITranslationWrapper>
           </p>
         </section>
 
         <ContactForm />
+
+        <section>
+          <h2 className="text-xl font-semibold mb-4"><AITranslationWrapper>{contactCopy.contactPrivacyRequests}</AITranslationWrapper></h2>
+          <p>
+            <AITranslationWrapper>{contactCopy.contactGDPRInfo}</AITranslationWrapper>
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-xl font-semibold mb-4"><AITranslationWrapper>{contactCopy.contactReportsFeedback}</AITranslationWrapper></h2>
+          <p>
+            <AITranslationWrapper>{contactCopy.contactFeedbackInfo}</AITranslationWrapper>
+          </p>
+        </section>
+
       </div>
     </LegalLayout>
   );

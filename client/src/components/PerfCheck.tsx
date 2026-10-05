@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Activity, Zap, Database } from 'lucide-react';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { getEditorAppCopy } from '@/lib/editorAppCopy';
+import { getEditorOutsideCopy } from '@/lib/editorOutsideCopy';
 
 interface PerfMetrics {
     fps: number;
@@ -9,6 +12,8 @@ interface PerfMetrics {
 }
 
 export function PerfCheck() {
+    const { language } = useLanguage();
+    const copy = (key: 'poweredBy' | 'sponsoredTag') => getEditorAppCopy(language, key);
     const [metrics, setMetrics] = useState<PerfMetrics>({
         fps: 60,
         renderTime: 0,
@@ -124,7 +129,7 @@ export function PerfCheck() {
                 {/* DOM Nodes */}
                 <div className="flex items-center gap-1 border-l border-slate-500 pl-2">
                     <Database size={12} className="text-blue-400 flex-shrink-0" />
-                    <span className="text-blue-400 whitespace-nowrap">{metrics.nodes} nodes</span>
+                    <span className="text-blue-400 whitespace-nowrap">{metrics.nodes} {getEditorOutsideCopy(language, 'nodeLabel')}</span>
                 </div>
 
                 {/* Memory (if available) */}
@@ -137,13 +142,13 @@ export function PerfCheck() {
 
             {/* CPM Badge: Powered by Vercel (compliant disclosure) */}
             <div className="text-[11px] text-slate-400 flex items-center gap-1">
-                ⚡ Powered by{' '}
+                ⚡ {copy('poweredBy')}{' '}
                 <a
                     href="https://vercel.com?utm_source=tatik_preview&utm_medium=app&utm_campaign=perfcheck"
                     target="_blank"
                     rel="noopener noreferrer sponsored"
                     data-sponsored="true"
-                    aria-label="Vercel - Sponsored"
+                    aria-label={`Vercel - ${copy('sponsoredTag')}`}
                     className="text-slate-300 hover:text-slate-200 underline transition-colors"
                 >
                     Vercel

@@ -1,8 +1,17 @@
-         <?xml version="1.0" encoding="UTF-8"?>
-         <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-           <url><loc>https://tatik.space/</loc><lastmod>2026-02-01</lastmod><priority>1.0</priority></url>
-           <url><loc>https://tatik.space/editor</loc><lastmod>2026-02-01</lastmod><priority>0.8</priority></url>
-           <url><loc>https://tatik.space/pricing</loc><lastmod>2026-02-01</lastmod><priority>0.7</priority></url>
-           <!-- Aggiungi altre route da Router in App.tsx -->
-         </urlset>
-         
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://www.tatik.space/</loc></url>
+  <url><loc>https://www.tatik.space/marketplace</loc></url>
+  <url><loc>https://www.tatik.space/documentation</loc></url>
+  <url><loc>https://www.tatik.space/tutorials</loc></url>
+  <url><loc>https://www.tatik.space/blog</loc></url>
+  <url><loc>https://www.tatik.space/pricing</loc></url>
+  <url><loc>https://www.tatik.space/support</loc></url>
+  <url><loc>https://www.tatik.space/collaboration</loc></url>
+  <url><loc>https://www.tatik.space/deployment</loc></url>
+  <url><loc>https://www.tatik.space/schools</loc></url>
+  <url><loc>https://www.tatik.space/privacy</loc></url>
+  <url><loc>https://www.tatik.space/terms</loc></url>
+  <url><loc>https://www.tatik.space/cookies</loc></url>
+  <url><loc>https://www.tatik.space/contact</loc></url>
+</urlset>

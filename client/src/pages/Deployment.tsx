@@ -1,77 +1,67 @@
 import React from 'react';
 import { Link } from 'wouter';
 import { Button } from '@/components/ui/button';
-import { Cloud, Upload, Server, Zap } from 'lucide-react';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { ExternalLink } from 'lucide-react';
+import { deploymentPageCopy } from '@/lib/deploymentPageCopy';
+import { Seo } from '@/components/Seo';
 
 export default function Deployment() {
+  const { language } = useLanguage();
+  const copy = deploymentPageCopy[language] ?? deploymentPageCopy.en;
+
   return (
     <div className="min-h-screen bg-background">
+      <Seo title={copy.seoTitle} description={copy.seoDescription} path="/deployment" language={language} />
       <header className="border-b border-border bg-background/80 backdrop-blur-md sticky top-16 z-40">
         <div className="container px-4 py-4">
           <div className="flex items-center justify-between">
-            <h1 className="text-2xl font-bold">Deployment</h1>
+            <h1 className="text-2xl font-bold">{copy.title}</h1>
             <Link href="/">
-              <Button variant="outline">Torna alla Home</Button>
+              <Button variant="outline">{copy.backHome}</Button>
             </Link>
           </div>
         </div>
       </header>
 
-      <div className="container px-4 py-8">
-        <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-3xl font-bold mb-4">Pubblica i tuoi progetti in pochi click</h2>
-          <p className="text-xl text-muted-foreground mb-8">
-            La pubblicazione diretta dei progetti è una funzionalità attualmente in fase di sviluppo.
-            Nel frattempo puoi esportare il codice dal menu file dell'editor e caricarlo su qualsiasi
-            fornitore di hosting esterno (Vercel, Netlify, ecc.).
-          </p>
+      <main className="container px-4 py-12">
+        <div className="max-w-3xl mx-auto space-y-8">
+          <section className="rounded-lg border border-amber-500/40 bg-amber-500/5 p-6">
+            <h2 className="text-2xl font-bold mb-3">
+              {copy.warningTitle}
+            </h2>
+            <p className="text-muted-foreground">{copy.warningText}</p>
+          </section>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12">
-            <div className="p-6 bg-secondary rounded-lg">
-              <Cloud className="h-12 w-12 mx-auto mb-4 text-primary" />
-              <h3 className="text-xl font-semibold mb-2">Hosting Cloud (prossimamente)</h3>
-              <p className="text-muted-foreground">
-                Presto potrai pubblicare direttamente i tuoi progetti su una nostra piattaforma cloud
-                con CDN e SSL automatico.
-              </p>
-            </div>
+          <section className="space-y-4">
+            <h2 className="text-xl font-semibold">{copy.stepsTitle}</h2>
+            <ol className="list-decimal pl-6 space-y-3 text-muted-foreground">
+              <li>{copy.stepOne}</li>
+              <li>{copy.stepTwo}</li>
+              <li>{copy.stepThree}</li>
+            </ol>
+          </section>
 
-            <div className="p-6 bg-secondary rounded-lg">
-              <Upload className="h-12 w-12 mx-auto mb-4 text-primary" />
-              <h3 className="text-xl font-semibold mb-2">Deploy Automatico (prossimamente)</h3>
-              <p className="text-muted-foreground">
-                Un wizard faciliterà la connessione al tuo repository Git per deployment continui.
-              </p>
-            </div>
+          <section className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Button variant="outline" className="justify-between" asChild>
+              <a href="https://vercel.com/docs" target="_blank" rel="noopener noreferrer">
+                Vercel <ExternalLink className="h-4 w-4" />
+              </a>
+            </Button>
+            <Button variant="outline" className="justify-between" asChild>
+              <a href="https://docs.netlify.com/" target="_blank" rel="noopener noreferrer">
+                Netlify <ExternalLink className="h-4 w-4" />
+              </a>
+            </Button>
+          </section>
 
-            <div className="p-6 bg-secondary rounded-lg">
-              <Server className="h-12 w-12 mx-auto mb-4 text-primary" />
-              <h3 className="text-xl font-semibold mb-2">Ambienti Multipli (in arrivo)</h3>
-              <p className="text-muted-foreground">
-                Sarà possibile creare ambienti distinti per dev, staging e produzione.
-              </p>
-            </div>
-
-            <div className="p-6 bg-secondary rounded-lg">
-              <Zap className="h-12 w-12 mx-auto mb-4 text-primary" />
-              <h3 className="text-xl font-semibold mb-2">Performance Ottimizzate (futura)</h3>
-              <p className="text-muted-foreground">
-                Le build includeranno minificazione, caching e supporto SEO avanzato.
-              </p>
-            </div>
-          </div>
-
-          <div className="bg-primary/5 border border-primary/20 rounded-lg p-6 mb-8">
-            <h3 className="text-xl font-semibold mb-2">Pubblica ora</h3>
-            <p className="text-muted-foreground mb-4">
-              Per pubblicare un progetto, vai all'editor, apri un progetto e usa il pulsante "Deploy".
-            </p>
+          <div className="border-t border-border pt-6">
             <Link href="/editor">
-              <Button size="lg">Vai all'Editor</Button>
+              <Button size="lg">{copy.openEditor}</Button>
             </Link>
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

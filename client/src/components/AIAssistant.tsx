@@ -12,6 +12,8 @@ import {
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/_core/hooks/useAuth';
 import { trpc } from '@/lib/trpc';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { formatCopy, getComponentCopy, getModelCopy } from '@/lib/assistantUiCopy';
 
 // ---------------------------------------------------------------------------
 // Constants & Configuration
@@ -25,49 +27,37 @@ const MODELS = [
     id: 'qwen',
     name: 'Qwen2.5-Coder',
     label: '32B',
-    description: 'Best for complex code generation & architecture',
-    badge: 'Best for Code',
     badgeColor: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
     dotColor: 'bg-blue-400',
     tier: 'free' as const,
     hfModel: 'Qwen/Qwen2.5-Coder-32B-Instruct',
-    strengths: ['HTML/CSS', 'JavaScript', 'Refactoring', 'Architecture'],
   },
   {
     id: 'deepseek',
     name: 'DeepSeek-Coder',
     label: 'V2',
-    description: 'Excellent reasoning & bug fixing',
-    badge: 'Best for Debug',
     badgeColor: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
     dotColor: 'bg-emerald-400',
     tier: 'free' as const,
     hfModel: 'deepseek-ai/DeepSeek-Coder-V2-Instruct',
-    strengths: ['Debugging', 'Algorithms', 'Optimization', 'Explanation'],
   },
   {
     id: 'gemini',
     name: 'Gemini Flash',
     label: '2.0',
-    description: 'Fast, great for SEO, UX & content',
-    badge: 'Best for UX/SEO',
     badgeColor: 'bg-violet-500/10 text-violet-400 border-violet-500/20',
     dotColor: 'bg-violet-400',
     tier: 'free' as const,
     hfModel: null as null,
-    strengths: ['SEO', 'UX Copy', 'Accessibility', 'Performance'],
   },
   {
     id: 'gpt4',
     name: 'GPT-4o',
     label: 'Pro',
-    description: 'Most powerful – unlock with Pro',
-    badge: 'Pro Only',
     badgeColor: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
     dotColor: 'bg-amber-400',
     tier: 'pro' as const,
     hfModel: null as null,
-    strengths: ['Full Stack', 'Complex UX', 'System Design', 'All Tasks'],
   },
 ] as const;
 
@@ -215,9 +205,11 @@ async function callGemini(
 
 export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
   const { user } = useAuth();
+  const { language } = useLanguage();
+  const copy = getComponentCopy(language);
+  const modelCopy = getModelCopy(language);
   const isPro = Boolean(user?.hasProAccess || user?.role === 'admin' || user?.subscriptionType === 'pro');
-  const hfApiKey = (typeof import.meta !== 'undefined' ? (import.meta as any).env?.VITE_HF_API_KEY : '') ?? '';
-  const geminiApiKey = (typeof import.meta !== 'undefined' ? (import.meta as any).env?.VITE_GEMINI_API_KEY : '') ?? '';
+  const chatMutation = trpc.ai.chat.useMutation();
 
   const [isOpen, setIsOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<ModelId>('qwen');
@@ -246,12 +238,12 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
         analysis: result.analysis,
         correctedCode: result.correctedCode,
       });
-      toast.success('Bug analysis complete');
+      toast.success(copy.ai.bugSuccess);
     },
     onError: (error) => {
-      toast.error('Bug analysis failed: ' + error.message);
+      toast.error(copy.ai.bugFailure + error.message);
       setBugFixAnalysis({
-        analysis: 'Error analyzing bug. Please try again.',
+        analysis: copy.ai.bugFailure + error.message,
         correctedCode: '',
       });
     },
@@ -275,12 +267,12 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
         suggestions: result.suggestions,
         count: result.count,
       });
-      toast.success(`${result.count} optimization suggestions found`);
+      toast.success(formatCopy(copy.ai.optimizeSuccess, { count: result.count }));
     },
     onError: (error) => {
-      toast.error('Optimization analysis failed: ' + error.message);
+      toast.error(copy.ai.optimizeFailure + error.message);
       setOptimizationResults({
-        suggestions: 'Error analyzing code. Please try again.',
+        suggestions: copy.ai.optimizeFailure + error.message,
         count: 0,
       });
     },
@@ -313,7 +305,11 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
       setMessages([{
         id: 'welcome',
         role: 'assistant',
-        content: `Ciao! Sono il tuo assistente AI per Tatik.space Pro.\n\n**Modello attivo:** ${currentModel.name} ${currentModel.label} — specializzato in ${currentModel.strengths.join(', ')}.\n\nPosso aiutarti con:\n- **Layout complessi** HTML/CSS/JS pronti all'uso\n- **Debug** e correzione errori\n- **SEO e performance** — Core Web Vitals, meta tag, struttura\n- **React / Tailwind** — componenti, hooks, animazioni\n- **Accessibilità** — WCAG, ARIA, contrasto\n\nIncolla del codice o dimmi cosa vuoi costruire!`,
+        content: formatCopy(copy.ai.welcome, {
+          model: `${currentModel.name} ${currentModel.label}`,
+          description: modelCopy.descriptions[MODELS.indexOf(currentModel)],
+          strengths: modelCopy.strengths[MODELS.indexOf(currentModel)].join(' · '),
+        }),
         timestamp: new Date(),
         modelId: selectedModel,
       }]);
@@ -327,12 +323,17 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
     const model = MODELS.find((m) => m.id === id)!;
     if (model.tier === 'pro' && !isPro) { setShowProBanner(true); return; }
     setSelectedModel(id);
+    const modelIndex = MODELS.indexOf(model);
     setMessages((prev) => [
       ...prev,
       {
         id: `switch-${Date.now()}`,
         role: 'assistant',
-        content: `Modello cambiato: **${model.name} ${model.label}**\n\n${model.description}\n\n**Ottimizzato per:** ${model.strengths.join(' · ')}`,
+        content: formatCopy(copy.ai.modelChanged, {
+          model: `${model.name} ${model.label}`,
+          description: modelCopy.descriptions[modelIndex],
+          strengths: modelCopy.strengths[modelIndex].join(' · '),
+        }),
         timestamp: new Date(),
         modelId: id,
       },
@@ -368,14 +369,11 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
         .filter((m) => m.id !== 'welcome' && !m.id.startsWith('switch-'))
         .map((m) => ({ role: m.role, content: m.content }));
 
-      let reply = '';
-      if (selectedModel === 'gemini') {
-        if (!geminiApiKey) throw new Error('Gemini API key non configurata. Aggiungi VITE_GEMINI_API_KEY nel .env');
-        reply = await callGemini(apiHistory, geminiApiKey);
-      } else {
-        if (!hfApiKey) throw new Error('HuggingFace API key non configurata. Aggiungi VITE_HF_API_KEY nel .env');
-        reply = await callHuggingFace(currentModel.hfModel!, apiHistory, hfApiKey);
-      }
+      const response = await chatMutation.mutateAsync({
+        model: selectedModel === 'gemini' ? 'gemini' : selectedModel === 'deepseek' ? 'deepseek' : 'qwen',
+        messages: apiHistory,
+      });
+      const reply = response.content;
 
       setMessages((prev) => [...prev, {
         id: (Date.now() + 1).toString(),
@@ -385,20 +383,23 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
         modelId: selectedModel,
       }]);
     } catch (err: any) {
+      const failedUsage = { ...dailyUsage, count: Math.max(0, dailyUsage.count) };
+      setDailyUsage(failedUsage);
+      saveDailyUsage(failedUsage);
       setMessages((prev) => [...prev, {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: `**Errore:** ${err.message}`,
+        content: `**${copy.ai.chatError}** ${err.message}`,
         timestamp: new Date(),
         modelId: selectedModel,
         error: true,
       }]);
-      toast.error(err.message);
+      toast.error(copy.ai.chatError + err.message);
     } finally {
       setIsLoading(false);
       textareaRef.current?.focus();
     }
-  }, [input, isLoading, messages, selectedModel, dailyUsage, isLimitReached, hfApiKey, geminiApiKey, currentModel]);
+  }, [input, isLoading, messages, selectedModel, dailyUsage, isLimitReached, chatMutation]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -406,7 +407,7 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
 
   const handleAnalyzeBug = async () => {
     if (!bugFixData.code.trim() || !bugFixData.error.trim()) {
-      toast.error('Per favore inserisci codice e errore');
+      toast.error(copy.ai.bugEmpty);
       return;
     }
 
@@ -419,7 +420,7 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
 
   const handleOptimizeCode = async () => {
     if (!optimizationData.code.trim()) {
-      toast.error('Per favore inserisci il codice da ottimizzare');
+      toast.error(copy.ai.optimizeEmpty);
       return;
     }
 
@@ -437,7 +438,7 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
       {/* Trigger button */}
       <Button onClick={() => setIsOpen(true)} size="sm" className="gap-1 px-2 py-1" variant="outline">
         <Bot className="h-4 w-4" />
-        AI Assistant
+        {copy.ai.button}
         {!isPro && remainingMessages <= 3 && remainingMessages > 0 && (
           <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4 ml-1">{remainingMessages}</Badge>
         )}
@@ -453,7 +454,7 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
                 <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10">
                   <Sparkles className="h-3.5 w-3.5 text-primary" />
                 </div>
-                AI Dev Assistant
+                {copy.ai.title}
                 {isPro && (
                   <Badge className="bg-amber-500/10 text-amber-500 border border-amber-500/20 text-[10px] gap-1">
                     <Crown className="h-2.5 w-2.5" /> PRO
@@ -468,7 +469,7 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
                       style={{ width: `${Math.min((dailyUsage.count / FREE_DAILY_LIMIT) * 100, 100)}%` }}
                     />
                   </div>
-                  <span>{Math.max(remainingMessages, 0)}/{FREE_DAILY_LIMIT} rimasti</span>
+                  <span>{Math.max(remainingMessages, 0)}/{FREE_DAILY_LIMIT}</span>
                 </div>
               )}
             </div>
@@ -509,7 +510,7 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
                 )}
               >
                 <Bug className="h-3.5 w-3.5" />
-                <span>Analizza Bug</span>
+                <span>{copy.ai.bugTab}</span>
               </button>
 
               {/* Optimization Tab */}
@@ -523,7 +524,7 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
                 )}
               >
                 <Flame className="h-3.5 w-3.5" />
-                <span>Ottimizza</span>
+                <span>{copy.ai.optimizeTab}</span>
               </button>
             </div>
           </DialogHeader>
@@ -534,11 +535,11 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
               <>
                 <Badge variant="outline" className={cn('text-[10px] gap-1 px-2', currentModel.badgeColor)}>
                   <Zap className="h-2.5 w-2.5" />
-                  {currentModel.badge}
+                  {modelCopy.badges[MODELS.indexOf(currentModel)]}
                 </Badge>
-                <span className="text-[11px] text-muted-foreground">{currentModel.description}</span>
+                <span className="text-[11px] text-muted-foreground">{modelCopy.descriptions[MODELS.indexOf(currentModel)]}</span>
                 <div className="ml-auto flex gap-1 flex-wrap">
-                  {currentModel.strengths.map((s) => (
+                  {modelCopy.strengths[MODELS.indexOf(currentModel)].map((s) => (
                     <span key={s} className="text-[9px] bg-muted border rounded px-1.5 py-0.5 text-muted-foreground">{s}</span>
                   ))}
                 </div>
@@ -547,17 +548,17 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
               <>
                 <Badge variant="outline" className="text-[10px] gap-1 px-2 bg-red-500/10 text-red-400 border-red-500/20">
                   <Bug className="h-2.5 w-2.5" />
-                  Bug Analysis
+                  {copy.ai.bugTab}
                 </Badge>
-                <span className="text-[11px] text-muted-foreground">Carica il codice con errore per ricevere analisi e correzioni</span>
+                <span className="text-[11px] text-muted-foreground">{copy.ai.bugTitle}</span>
               </>
             ) : (
               <>
                 <Badge variant="outline" className="text-[10px] gap-1 px-2 bg-orange-500/10 text-orange-400 border-orange-500/20">
                   <Flame className="h-2.5 w-2.5" />
-                  Optimization
+                  {copy.ai.optimizeTab}
                 </Badge>
-                <span className="text-[11px] text-muted-foreground">Analizza il tuo codice per trovare opportunità di miglioramento</span>
+                <span className="text-[11px] text-muted-foreground">{copy.ai.optimizeTitle}</span>
               </>
             )}
           </div>
@@ -567,14 +568,14 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
             <div className="mx-4 mt-3 shrink-0 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 flex items-start gap-3">
               <Crown className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-amber-500">Sblocca Tatik.space Pro</p>
+                <p className="text-xs font-semibold text-amber-500">{copy.ai.proTitle}</p>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Messaggi illimitati, GPT-4o, tutti i modelli e priorità server.
+                  {copy.ai.proBenefits}
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <Button size="sm" className="h-7 text-xs bg-amber-500 hover:bg-amber-600 text-white gap-1">
-                  Upgrade <ChevronRight className="h-3 w-3" />
+                  {copy.promo.upgrade} <ChevronRight className="h-3 w-3" />
                 </Button>
                 <button onClick={() => setShowProBanner(false)} className="text-muted-foreground hover:text-foreground text-lg leading-none">×</button>
               </div>
@@ -598,12 +599,12 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
                       >
                         <ArrowLeft className="h-4 w-4" />
                       </button>
-                      <h3 className="text-sm font-semibold">Carica il codice da analizzare</h3>
+                      <h3 className="text-sm font-semibold">{copy.ai.bugTitle}</h3>
                     </div>
 
                     <div className="space-y-3">
                       <div>
-                        <label className="text-xs font-medium mb-1 block">Linguaggio di programmazione</label>
+                        <label className="text-xs font-medium mb-1 block">{copy.ai.language}</label>
                         <select
                           value={bugFixData.language}
                           onChange={(e) => setBugFixData(prev => ({ ...prev, language: e.target.value }))}
@@ -626,21 +627,21 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
                       </div>
 
                       <div>
-                        <label className="text-xs font-medium mb-1 block">Codice (incolla il tuo codice qui)</label>
+                        <label className="text-xs font-medium mb-1 block">{copy.ai.code}</label>
                         <Textarea
                           value={bugFixData.code}
                           onChange={(e) => setBugFixData(prev => ({ ...prev, code: e.target.value }))}
-                          placeholder="function add(a, b) &#10;  return a + c;  // Bug: dovrebbe essere b, non c&#10;}"
+                          placeholder={copy.ai.codePlaceholder}
                           className="w-full h-32 resize-none text-sm font-mono"
                         />
                       </div>
 
                       <div>
-                        <label className="text-xs font-medium mb-1 block">Errore o messaggio di errore</label>
+                        <label className="text-xs font-medium mb-1 block">{copy.ai.errorLabel}</label>
                         <Textarea
                           value={bugFixData.error}
                           onChange={(e) => setBugFixData(prev => ({ ...prev, error: e.target.value }))}
-                          placeholder="Descrivi l'errore, es: 'c is not defined' oppure 'TypeError: invalid operation'"
+                          placeholder={copy.ai.errorPlaceholder}
                           className="w-full h-24 resize-none text-sm"
                         />
                       </div>
@@ -649,7 +650,7 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
                     {bugFixAnalysis && (
                       <div className="mt-4 pt-4 border-t space-y-3">
                         <div className="bg-muted/50 rounded-lg p-3 border border-input">
-                          <p className="text-xs font-semibold mb-2 text-foreground">🔍 Analisi:</p>
+                          <p className="text-xs font-semibold mb-2 text-foreground">🔍 {copy.ai.analysis}:</p>
                           <div className="text-xs leading-relaxed whitespace-pre-wrap text-muted-foreground">
                             {bugFixAnalysis.analysis}
                           </div>
@@ -658,15 +659,15 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
                         {bugFixAnalysis.correctedCode && (
                           <div className="bg-muted/50 rounded-lg p-3 border border-input">
                             <div className="flex items-center justify-between mb-2">
-                              <p className="text-xs font-semibold text-foreground">✅ Codice Corretto:</p>
+                              <p className="text-xs font-semibold text-foreground">✅ {copy.ai.correctedCode}:</p>
                               <button
                                 onClick={() => {
                                   navigator.clipboard.writeText(bugFixAnalysis.correctedCode);
-                                  toast.success('Codice copiato');
+                                  toast.success(copy.ai.copied);
                                 }}
                                 className="text-[10px] text-primary hover:underline"
                               >
-                                Copia
+                                {copy.ai.copy}
                               </button>
                             </div>
                             <pre className="text-[11px] overflow-x-auto whitespace-pre-wrap break-words">
@@ -690,12 +691,12 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
                       >
                         <ArrowLeft className="h-4 w-4" />
                       </button>
-                      <h3 className="text-sm font-semibold">Ottimizza il tuo codice</h3>
+                      <h3 className="text-sm font-semibold">{copy.ai.optimizeTitle}</h3>
                     </div>
 
                     <div className="space-y-3">
                       <div>
-                        <label className="text-xs font-medium mb-1 block">Linguaggio di programmazione</label>
+                        <label className="text-xs font-medium mb-1 block">{copy.ai.language}</label>
                         <select
                           value={optimizationData.language}
                           onChange={(e) => setOptimizationData(prev => ({ ...prev, language: e.target.value }))}
@@ -718,11 +719,11 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
                       </div>
 
                       <div>
-                        <label className="text-xs font-medium mb-1 block">Codice da ottimizzare</label>
+                        <label className="text-xs font-medium mb-1 block">{copy.ai.optimizeCode}</label>
                         <Textarea
                           value={optimizationData.code}
                           onChange={(e) => setOptimizationData(prev => ({ ...prev, code: e.target.value }))}
-                          placeholder="function slowSort(arr) {&#10;  for (let i = 0; i < arr.length; i++) {&#10;    for (let j = 0; j < arr.length; j++) {&#10;      // ..&#10;    }&#10;  }&#10;}"
+                          placeholder={copy.ai.codePlaceholder}
                           className="w-full h-40 resize-none text-sm font-mono"
                         />
                       </div>
@@ -732,15 +733,15 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
                       <div className="mt-4 pt-4 border-t">
                         <div className="bg-muted/50 rounded-lg p-3 border border-input">
                           <div className="flex items-center justify-between mb-2">
-                            <p className="text-xs font-semibold text-foreground">⚡ Suggerimenti di Ottimizzazione ({optimizationResults.count}):</p>
+                            <p className="text-xs font-semibold text-foreground">⚡ {copy.ai.suggestions} ({optimizationResults.count}):</p>
                             <button
                               onClick={() => {
                                 navigator.clipboard.writeText(optimizationResults.suggestions);
-                                toast.success('Suggerimenti copiati');
+                                toast.success(copy.ai.copied);
                               }}
                               className="text-[10px] text-primary hover:underline"
                             >
-                              Copia
+                              {copy.ai.copy}
                             </button>
                           </div>
                           <div className="text-xs leading-relaxed whitespace-pre-wrap text-muted-foreground max-h-64 overflow-y-auto">
@@ -762,7 +763,7 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
                           onCodeInsert && msg.role === 'assistant' && /```/.test(msg.content)
                             ? () => {
                               const code = extractCodeBlock(msg.content);
-                              if (code) { onCodeInsert(code); toast.success("Codice inserito nell'editor"); }
+                              if (code) { onCodeInsert(code); toast.success(copy.ai.codeInserted); }
                             }
                             : undefined
                         }
@@ -773,10 +774,10 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
                     {messages.length > 0 && messages[messages.length - 1].role === 'assistant' && (
                       <div className="rounded-lg border border-slate-700 bg-gradient-to-r from-yellow-900/20 to-slate-900/10 p-3 text-sm">
                         <div className="flex items-center justify-between">
-                          <div className="text-xs text-yellow-200 font-semibold">💡 Deploy & Tools</div>
-                          <div className="text-xs text-slate-400">Suggerito</div>
+                          <div className="text-xs text-yellow-200 font-semibold">💡 {copy.ai.deploy}</div>
+                          <div className="text-xs text-slate-400">{copy.ai.suggested}</div>
                         </div>
-                        <div className="mt-1 text-xs text-slate-300">Deploy rapido: <a href="https://vercel.com" target="_blank" rel="noreferrer noopener" className="underline">Vercel</a> · Linter Premium: <a href="https://example.com/linter" target="_blank" rel="noreferrer noopener" className="underline">Linter Pro</a></div>
+                        <div className="mt-1 text-xs text-slate-300"><a href="https://vercel.com" target="_blank" rel="noreferrer noopener" className="underline">Vercel</a> · {copy.ai.linter} <a href="https://example.com/linter" target="_blank" rel="noreferrer noopener" className="underline">Linter Pro</a></div>
                       </div>
                     )}
 
@@ -798,9 +799,9 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
                     {isLimitReached && (
                       <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-xs text-destructive">
                         <AlertCircle className="h-4 w-4 shrink-0" />
-                        <span>Limite giornaliero raggiunto. Passa a Pro per messaggi illimitati.</span>
+                        <span>{copy.ai.dailyLimit}</span>
                         <Button size="sm" variant="destructive" className="ml-auto h-6 text-[11px]" onClick={() => setShowProBanner(true)}>
-                          Upgrade
+                          {copy.promo.upgrade}
                         </Button>
                       </div>
                     )}
@@ -826,8 +827,8 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
                 onKeyDown={handleKeyDown}
                 placeholder={
                   isLimitReached
-                    ? 'Limite raggiunto — passa a Pro per continuare…'
-                    : `Chiedi a ${currentModel.name}… (Enter invia · Shift+Enter va a capo)`
+                    ? copy.ai.limitPlaceholder
+                    : formatCopy(copy.ai.askModel, { model: currentModel.name })
                 }
                 className="flex-1 resize-none min-h-[40px] max-h-32 text-sm"
                 rows={1}
@@ -852,12 +853,12 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
                 {analyzeBugMutation.isPending ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Analizzando...
+                    {copy.ai.analyzing}
                   </>
                 ) : (
                   <>
                     <Bug className="h-4 w-4" />
-                    Analizza Bug
+                    {copy.ai.analyze}
                   </>
                 )}
               </Button>
@@ -872,12 +873,12 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
                 {optimizeCodeMutation.isPending ? (
                   <>
                     <Loader2 className="h-4 w-4 animate-spin" />
-                    Analizzando...
+                    {copy.ai.analyzing}
                   </>
                 ) : (
                   <>
                     <Flame className="h-4 w-4" />
-                    Ottimizza Codice
+                    {copy.ai.optimize}
                   </>
                 )}
               </Button>
@@ -950,6 +951,8 @@ interface MessageBubbleProps {
 
 function MessageBubble({ message, model, onInsertCode }: MessageBubbleProps) {
   const isUser = message.role === 'user';
+  const { language } = useLanguage();
+  const copy = getComponentCopy(language);
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -992,7 +995,7 @@ function MessageBubble({ message, model, onInsertCode }: MessageBubbleProps) {
           isUser ? 'justify-end' : 'justify-start'
         )}>
           <span className="text-[10px] text-muted-foreground tabular-nums">
-            {message.timestamp.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })}
+            {message.timestamp.toLocaleTimeString(language, { hour: '2-digit', minute: '2-digit' })}
           </span>
           {model && !isUser && (
             <span className="text-[10px] text-muted-foreground">· {model.name}</span>
@@ -1000,12 +1003,12 @@ function MessageBubble({ message, model, onInsertCode }: MessageBubbleProps) {
           {!isUser && (
             <button onClick={handleCopy} className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-0.5 transition-colors">
               {copied ? <Check className="h-2.5 w-2.5" /> : <Copy className="h-2.5 w-2.5" />}
-              {copied ? 'Copiato' : 'Copia'}
+              {copied ? copy.ai.copied : copy.ai.copy}
             </button>
           )}
           {onInsertCode && (
             <button onClick={onInsertCode} className="text-[10px] text-primary hover:underline font-medium">
-              Inserisci nell'editor →
+              {copy.ai.insertCode}
             </button>
           )}
         </div>

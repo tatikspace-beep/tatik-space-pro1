@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /
+Disallow: /editor
+Disallow: /dashboard
+Disallow: /profile
+Disallow: /files
+Disallow: /access
+Disallow: /complete-registration
+Disallow: /login
+Disallow: /register
+Disallow: /marketplace/developer
+
+Sitemap: https://www.tatik.space/sitemap.xml

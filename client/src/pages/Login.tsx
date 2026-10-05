@@ -8,20 +8,22 @@ import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { safeReturnPath } from '@shared/authRedirect';
+import { authFlowCopy, localizedAuthError } from '@/lib/authFlowCopy';
 
 export default function Login() {
   const [email, setEmail] = useState('');
-  const { t } = useLanguage();
+  const { language, t } = useLanguage();
+  const copy = authFlowCopy[language];
   const returnTo = safeReturnPath(new URLSearchParams(window.location.search).get('next'));
 
   const accessCodeMutation = trpc.auth.requestAccessCode.useMutation({
-    onSuccess: () => toast.success('Se l’e-mail è registrata, riceverai un link valido per 10 minuti.'),
-    onError: (error) => toast.error(error.message || t.error),
+    onSuccess: () => toast.success(copy.accessLinkSent),
+    onError: (error) => toast.error(localizedAuthError(error.message || t.error, copy)),
   });
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    accessCodeMutation.mutate({ email, redirectTo: returnTo });
+    accessCodeMutation.mutate({ email: email.trim(), redirectTo: returnTo });
   };
 
   return (
@@ -30,7 +32,7 @@ export default function Login() {
         <CardHeader className="text-center">
           <CardTitle className="text-2xl font-bold">{t.login}</CardTitle>
           <CardDescription>
-            Inserisci la tua e-mail per ricevere un link di accesso.
+            {copy.loginDescription}
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleLogin}>
@@ -47,7 +49,7 @@ export default function Login() {
               />
             </div>
 
-            <p className="text-sm text-muted-foreground">Il link scade automaticamente dopo 10 minuti.</p>
+            <p className="text-sm text-muted-foreground">{copy.linkExpiry}</p>
           </CardContent>
           <CardFooter className="flex flex-col">
             <Button
@@ -55,7 +57,7 @@ export default function Login() {
               className="w-full"
               disabled={accessCodeMutation.isPending}
             >
-              {accessCodeMutation.isPending ? t.loading : 'Invia link di accesso'}
+              {accessCodeMutation.isPending ? t.loading : copy.sendAccessLink}
             </Button>
 
             <div className="mt-4 text-center text-sm">

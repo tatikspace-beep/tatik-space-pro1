@@ -1,43 +1,45 @@
 import { Link } from 'wouter';
-import { useTranslation } from 'react-i18next';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { siteSurfaceCopy } from '@/lib/siteSurfaceCopy';
 
 export function AppFooter({ variant = 'light' }: { variant?: 'light' | 'dark' }) {
-  const { t } = useTranslation();
+  const { language, t } = useLanguage();
+  const copy = siteSurfaceCopy[language];
   const isDark = variant === 'dark';
 
   return (
     <footer className={`py-6 border-t ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'border-border'}`}>
-      <div className="container px-6">
-        <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-          <div className="flex items-center gap-2">
-            <img src="/logo.png" alt="Tatik Logo" className="w-6 h-6 object-contain" onError={(e: any) => (e.currentTarget.src = '/assets/logo.png')} />
-            <span className="font-bold">Tatik.space Pro</span>
+      <div className="container mx-auto max-w-5xl px-6">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <div className="flex w-full flex-col items-center gap-3 text-sm md:flex-row md:justify-center md:gap-5">
+            <Link href="/" aria-label={copy.navbar.home} className="shrink-0 hover:opacity-80 transition-opacity">
+              <img src="/logo.png" alt={copy.navbar.logo} className="h-8 w-8 object-contain" />
+            </Link>
+            <nav aria-label={copy.footer.navigation} className="flex flex-col items-center gap-2 sm:flex-row sm:flex-wrap sm:justify-center sm:gap-x-6 sm:gap-y-2">
+              <Link href="/privacy" className={`hover:${isDark ? 'text-blue-400' : 'text-foreground'} ${isDark ? 'text-slate-400' : 'text-muted-foreground'}`}>
+                {t.privacyPolicy}
+              </Link>
+              <Link href="/terms" className={`hover:${isDark ? 'text-blue-400' : 'text-foreground'} ${isDark ? 'text-slate-400' : 'text-muted-foreground'}`}>
+                {t.termsOfService}
+              </Link>
+              <Link href="/cookies" className={`hover:${isDark ? 'text-blue-400' : 'text-foreground'} ${isDark ? 'text-slate-400' : 'text-muted-foreground'}`}>
+                {t.cookiePolicy}
+              </Link>
+              <Link href="/contact" className={`hover:${isDark ? 'text-blue-400' : 'text-foreground'} ${isDark ? 'text-slate-400' : 'text-muted-foreground'}`}>
+                {t.contactUs}
+              </Link>
+              <Link href="/schools" className={`hover:${isDark ? 'text-blue-400' : 'text-foreground'} ${isDark ? 'text-slate-400' : 'text-muted-foreground'}`}>
+                {copy.footer.schools}
+              </Link>
+            </nav>
           </div>
 
-          <div className="flex flex-wrap justify-center gap-6 text-sm">
-            <Link href="/privacy" className={`hover:${isDark ? 'text-blue-400' : 'text-foreground'} ${isDark ? 'text-slate-400' : 'text-muted-foreground'}`}>
-              {t('privacyPolicyLink')}
-            </Link>
-            <Link href="/terms" className={`hover:${isDark ? 'text-blue-400' : 'text-foreground'} ${isDark ? 'text-slate-400' : 'text-muted-foreground'}`}>
-              {t('termsConditions')}
-            </Link>
-            <Link href="/cookies" className={`hover:${isDark ? 'text-blue-400' : 'text-foreground'} ${isDark ? 'text-slate-400' : 'text-muted-foreground'}`}>
-              {t('cookiePolicyLink')}
-            </Link>
-            <Link href="/contact" className={`hover:${isDark ? 'text-blue-400' : 'text-foreground'} ${isDark ? 'text-slate-400' : 'text-muted-foreground'}`}>
-              {t('contact')}
-            </Link>
-            <Link href="/schools" className={`hover:${isDark ? 'text-blue-400' : 'text-foreground'} ${isDark ? 'text-slate-400' : 'text-muted-foreground'}`}>
-              Programma scuole
-            </Link>
-          </div>
-
-          <div className="flex flex-col items-center md:items-end gap-1">
+          <div className="flex flex-col items-center gap-1">
             <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-muted-foreground'}`}>
-              © 2026 Tatik.space. {t('allRightsReserved')}
+              © 2026 Tatik.space. {copy.footer.copyright}
             </p>
             <p className={`text-xs ${isDark ? 'text-slate-500' : 'text-muted-foreground/60'}`}>
-              {t('developedBy')}
+              {copy.footer.authorCredit}
             </p>
           </div>
         </div>

@@ -9,6 +9,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import { Save, Trash2, RotateCcw, Clock, Cloud, HardDrive } from 'lucide-react';
 import { backups, type Backup } from '../../../drizzle/schema';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { getEditorBackupCopy, type EditorBackupCopyKey } from '@/lib/editorBackupCopy';
 
 interface BackupManagerProps {
   projectId: number;
@@ -30,6 +32,9 @@ type ServerBackup = Backup & { isLocal?: false; backupType: 'local' | 'online' }
 type AnyBackup = ServerBackup | LocalBackup;
 
 export function BackupManager({ projectId, currentFiles, onRestore }: BackupManagerProps) {
+  const { language } = useLanguage();
+  const copy = (key: EditorBackupCopyKey, values: Record<string, string | number> = {}) =>
+    getEditorBackupCopy(language, key, values);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [backupName, setBackupName] = useState('');
   const [backupDescription, setBackupDescription] = useState('');
@@ -66,7 +71,7 @@ export function BackupManager({ projectId, currentFiles, onRestore }: BackupMana
 
   const createBackupMutation = trpc.backups.create.useMutation({
     onSuccess: () => {
-      toast.success(`Backup ${backupTypeSelection === 'online' ? 'online' : 'locale'} creato con successo!`);
+      toast.success(copy('created', { type: backupTypeSelection === 'online' ? copy('online') : copy('local') }));
       utils.backups.list.invalidate();
       setIsCreateDialogOpen(false);
       setBackupName('');
@@ -75,7 +80,7 @@ export function BackupManager({ projectId, currentFiles, onRestore }: BackupMana
     onError: (error) => {
       // Fallback: create local backup if online backup fails or DB is offline
       if (backupTypeSelection === 'online' || error.message.includes('Database unavailable')) {
-        toast.warning('Salvataggio locale del backup...');
+        toast.warning(copy('savingLocal'));
         const snapshot = JSON.stringify(currentFiles);
         const localBackup: LocalBackup = {
           id: `local-${Date.now()}`,
@@ -89,39 +94,39 @@ export function BackupManager({ projectId, currentFiles, onRestore }: BackupMana
         const updated = [localBackup, ...localBackups];
         setLocalBackups(updated.slice(0, 10)); // Keep only 10
         saveLocalBackupsToStorage(updated.slice(0, 10));
-        toast.success('Backup salvato localmente!');
+        toast.success(copy('savedLocal'));
         setIsCreateDialogOpen(false);
         setBackupName('');
         setBackupDescription('');
       } else {
-        toast.error(`Errore durante la creazione del backup: ${error.message}`);
+        toast.error(copy('createError', { error: error.message }));
       }
     },
   });
 
   const deleteBackupMutation = trpc.backups.delete.useMutation({
     onSuccess: () => {
-      toast.success('Backup eliminato con successo!');
+      toast.success(copy('deleted'));
       utils.backups.list.invalidate();
     },
     onError: (error) => {
-      toast.error(`Errore durante l'eliminazione: ${error.message}`);
+      toast.error(copy('deleteError', { error: error.message }));
     },
   });
 
   const restoreBackupMutation = trpc.backups.restore.useMutation({
     onSuccess: (data) => {
-      toast.success('Backup ripristinato con successo!');
+      toast.success(copy('restored'));
       onRestore(data.snapshot);
     },
     onError: (error) => {
-      toast.error(`Errore durante il ripristino: ${error.message}`);
+      toast.error(copy('restoreError', { error: error.message }));
     },
   });
 
   const handleCreateBackup = () => {
     if (!backupName.trim()) {
-      toast.error('Inserisci un nome per il backup');
+      toast.error(copy('nameRequired'));
       return;
     }
 
@@ -141,7 +146,7 @@ export function BackupManager({ projectId, currentFiles, onRestore }: BackupMana
       const updated = [localBackup, ...localBackups];
       setLocalBackups(updated.slice(0, 10)); // Keep only 10
       saveLocalBackupsToStorage(updated.slice(0, 10));
-      toast.success('Backup locale creato!');
+      toast.success(copy('localCreated'));
       setIsCreateDialogOpen(false);
       setBackupName('');
       setBackupDescription('');
@@ -158,13 +163,13 @@ export function BackupManager({ projectId, currentFiles, onRestore }: BackupMana
   };
 
   const handleDeleteBackup = (backup: AnyBackup) => {
-    if (confirm('Sei sicuro di voler eliminare questo backup?')) {
+    if (confirm(copy('deleteConfirm'))) {
       if (backup.backupType === 'local') {
         // Delete local backup
         const updated = localBackups.filter(b => b.id !== backup.id);
         setLocalBackups(updated);
         saveLocalBackupsToStorage(updated);
-        toast.success('Backup locale eliminato!');
+        toast.success(copy('localDeleted'));
       } else {
         deleteBackupMutation.mutate({ backupId: (backup as ServerBackup).id });
       }
@@ -172,11 +177,11 @@ export function BackupManager({ projectId, currentFiles, onRestore }: BackupMana
   };
 
   const handleRestoreBackup = (backup: AnyBackup) => {
-    if (confirm('Sei sicuro di voler ripristinare questo backup? Le modifiche non salvate andranno perse.')) {
+    if (confirm(copy('restoreConfirm'))) {
       if (backup.backupType === 'local') {
         // Restore local backup
         onRestore(backup.snapshot);
-        toast.success('Backup locale ripristinato!');
+        toast.success(copy('localRestored'));
       } else {
         restoreBackupMutation.mutate({ backupId: (backup as ServerBackup).id });
       }
@@ -184,7 +189,7 @@ export function BackupManager({ projectId, currentFiles, onRestore }: BackupMana
   };
 
   const formatDate = (date: Date) => {
-    return new Date(date).toLocaleString('it-IT', {
+    return new Date(date).toLocaleString(language, {
       day: '2-digit',
       month: '2-digit',
       year: 'numeric',
@@ -206,30 +211,30 @@ export function BackupManager({ projectId, currentFiles, onRestore }: BackupMana
       <CardHeader>
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>Gestione Backup</CardTitle>
+            <CardTitle>{copy('panelTitle')}</CardTitle>
             <CardDescription>
-              10 backup locali sul PC + 2 backup online — accedi sempre ai tuoi file
-              <div className="text-xs text-slate-400 mt-1">🛡️ Encrypted by <a href="https://example.com/brand-vpn" target="_blank" rel="noreferrer noopener" className="underline">Brand Name</a></div>
+              {copy('panelDescription')}
+              <div className="text-xs text-slate-400 mt-1">🛡️ {copy('encryptedBy')} <a href="https://example.com/brand-vpn" target="_blank" rel="noreferrer noopener" className="underline">Brand Name</a></div>
             </CardDescription>
           </div>
           <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
             <DialogTrigger asChild>
               <Button size="sm" disabled={!canCreateLocal && !canCreateOnline}>
                 <Save className="mr-2 h-4 w-4" />
-                Crea Backup
+                {copy('createBackup')}
               </Button>
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Crea Nuovo Backup</DialogTitle>
+                <DialogTitle>{copy('newBackup')}</DialogTitle>
                 <DialogDescription>
-                  Salva lo stato del progetto. Scegli se salvare localmente (PC) o online (cloud).
+                  {copy('createDescription')}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-4 py-4">
                 {/* Type selector */}
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Tipo di backup</label>
+                  <label className="text-sm font-medium">{copy('backupType')}</label>
                   <div className="flex gap-2">
                     <Button
                       variant={backupTypeSelection === 'local' ? 'default' : 'outline'}
@@ -239,7 +244,7 @@ export function BackupManager({ projectId, currentFiles, onRestore }: BackupMana
                       className="flex-1 gap-2"
                     >
                       <HardDrive className="h-4 w-4" />
-                      Locale {localOnlyBackups.length}/10
+                      {copy('local')} {localOnlyBackups.length}/10
                     </Button>
                     <Button
                       variant={backupTypeSelection === 'online' ? 'default' : 'outline'}
@@ -249,29 +254,29 @@ export function BackupManager({ projectId, currentFiles, onRestore }: BackupMana
                       className="flex-1 gap-2"
                     >
                       <Cloud className="h-4 w-4" />
-                      Online {onlineBackups.length}/2
+                      {copy('online')} {onlineBackups.length}/2
                     </Button>
                   </div>
                 </div>
 
                 <div className="space-y-2">
                   <label htmlFor="backup-name" className="text-sm font-medium">
-                    Nome Backup *
+                    {copy('name')}
                   </label>
                   <Input
                     id="backup-name"
-                    placeholder="es. Versione stabile 1.0"
+                    placeholder={copy('namePlaceholder')}
                     value={backupName}
                     onChange={(e) => setBackupName(e.target.value)}
                   />
                 </div>
                 <div className="space-y-2">
                   <label htmlFor="backup-description" className="text-sm font-medium">
-                    Descrizione (opzionale)
+                    {copy('description')}
                   </label>
                   <Textarea
                     id="backup-description"
-                    placeholder="Aggiungi una descrizione per ricordare cosa contiene..."
+                    placeholder={copy('descriptionPlaceholder')}
                     value={backupDescription}
                     onChange={(e) => setBackupDescription(e.target.value)}
                     rows={3}
@@ -280,10 +285,10 @@ export function BackupManager({ projectId, currentFiles, onRestore }: BackupMana
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                  Annulla
+                  {copy('cancel')}
                 </Button>
                 <Button onClick={handleCreateBackup} disabled={createBackupMutation.isPending}>
-                  {createBackupMutation.isPending ? 'Creazione...' : 'Crea Backup'}
+                  {createBackupMutation.isPending ? copy('creating') : copy('createBackup')}
                 </Button>
               </DialogFooter>
             </DialogContent>
@@ -295,11 +300,11 @@ export function BackupManager({ projectId, currentFiles, onRestore }: BackupMana
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="local" className="gap-2">
               <HardDrive className="h-4 w-4" />
-              Locali ({localOnlyBackups.length}/10)
+              {copy('localBackups')} ({localOnlyBackups.length}/10)
             </TabsTrigger>
             <TabsTrigger value="online" className="gap-2">
               <Cloud className="h-4 w-4" />
-              Online ({onlineBackups.length}/2)
+              {copy('onlineBackups')} ({onlineBackups.length}/2)
             </TabsTrigger>
           </TabsList>
 
@@ -307,13 +312,13 @@ export function BackupManager({ projectId, currentFiles, onRestore }: BackupMana
           <TabsContent value="local" className="space-y-3 mt-4">
             {isLoading && localOnlyBackups.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                Caricamento backup...
+                {copy('loading')}
               </div>
             ) : localOnlyBackups.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <HardDrive className="mx-auto h-12 w-12 mb-4 opacity-50" />
-                <p>Nessun backup locale</p>
-                <p className="text-sm mt-2">Crea il tuo primo backup locale per salvare su questo PC</p>
+                <p>{copy('noLocal')}</p>
+                <p className="text-sm mt-2">{copy('firstLocal')}</p>
               </div>
             ) : (
               localOnlyBackups.map((backup) => (
@@ -323,6 +328,7 @@ export function BackupManager({ projectId, currentFiles, onRestore }: BackupMana
                   onRestore={handleRestoreBackup}
                   onDelete={handleDeleteBackup}
                   formatDate={formatDate}
+                  copy={copy}
                   isPending={false}
                 />
               ))
@@ -333,13 +339,13 @@ export function BackupManager({ projectId, currentFiles, onRestore }: BackupMana
           <TabsContent value="online" className="space-y-3 mt-4">
             {isLoading && onlineBackups.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
-                Caricamento backup online...
+                {copy('loadingOnline')}
               </div>
             ) : onlineBackups.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 <Cloud className="mx-auto h-12 w-12 mb-4 opacity-50" />
-                <p>Nessun backup online</p>
-                <p className="text-sm mt-2">Crea un backup online per sincronizzare i file in cloud</p>
+                <p>{copy('noOnline')}</p>
+                <p className="text-sm mt-2">{copy('firstOnline')}</p>
               </div>
             ) : (
               onlineBackups.map((backup) => (
@@ -349,6 +355,7 @@ export function BackupManager({ projectId, currentFiles, onRestore }: BackupMana
                   onRestore={handleRestoreBackup}
                   onDelete={handleDeleteBackup}
                   formatDate={formatDate}
+                  copy={copy}
                   isPending={restoreBackupMutation.isPending || deleteBackupMutation.isPending}
                 />
               ))
@@ -359,7 +366,7 @@ export function BackupManager({ projectId, currentFiles, onRestore }: BackupMana
         {/* Show legacy backups if any */}
         {legacyBackups.length > 0 && (
           <div className="mt-6 pt-4 border-t">
-            <p className="text-xs text-muted-foreground mb-3">Backup precedenti (senza tipo)</p>
+            <p className="text-xs text-muted-foreground mb-3">{copy('olderBackups')}</p>
             <div className="space-y-2">
               {legacyBackups.map((backup) => (
                 <BackupCard
@@ -368,6 +375,7 @@ export function BackupManager({ projectId, currentFiles, onRestore }: BackupMana
                   onRestore={handleRestoreBackup}
                   onDelete={handleDeleteBackup}
                   formatDate={formatDate}
+                  copy={copy}
                   isPending={restoreBackupMutation.isPending || deleteBackupMutation.isPending}
                 />
               ))}
@@ -385,17 +393,19 @@ function BackupCard({
   onRestore,
   onDelete,
   formatDate,
+  copy,
   isPending,
 }: {
   backup: AnyBackup;
   onRestore: (backup: AnyBackup) => void;
   onDelete: (backup: AnyBackup) => void;
   formatDate: (date: Date) => string;
+  copy: (key: EditorBackupCopyKey, values?: Record<string, string | number>) => string;
   isPending: boolean;
 }) {
   const isLocal = backup.backupType === 'local';
   const icon = isLocal ? <HardDrive className="h-3.5 w-3.5" /> : <Cloud className="h-3.5 w-3.5" />;
-  const badge = isLocal ? { label: 'Locale', color: 'bg-blue-100 text-blue-800' } : { label: 'Online', color: 'bg-purple-100 text-purple-800' };
+  const badge = isLocal ? { label: copy('local'), color: 'bg-blue-100 text-blue-800' } : { label: copy('online'), color: 'bg-purple-100 text-purple-800' };
 
   return (
     <Card className={`border-2 ${isLocal ? 'border-blue-500/30 bg-blue-50/5' : 'border-purple-500/30 bg-purple-50/5'}`}>
@@ -423,6 +433,8 @@ function BackupCard({
               variant="outline"
               onClick={() => onRestore(backup)}
               disabled={isPending}
+              title={copy('restoreLabel')}
+              aria-label={copy('restoreLabel')}
             >
               <RotateCcw className="h-4 w-4" />
             </Button>
@@ -431,6 +443,8 @@ function BackupCard({
               variant="destructive"
               onClick={() => onDelete(backup)}
               disabled={isPending}
+              title={copy('deleteLabel')}
+              aria-label={copy('deleteLabel')}
             >
               <Trash2 className="h-4 w-4" />
             </Button>
