@@ -59,6 +59,13 @@
   }
 }
 
+@layer utilities {
+  .container {
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+
 /* Custom Components (es. glow effect) */
 .glow-primary {
   box-shadow: 0 0 20px rgba(99, 102, 241, 0.3);
