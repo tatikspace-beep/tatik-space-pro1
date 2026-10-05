@@ -175,34 +175,47 @@ function App() {
 
       console.log('[tRPC] Response:', url, response.status);
 
-      // Guard against empty / non-JSON responses which cause
-      // `Unexpected end of JSON input` in downstream parsers.
-      // Read the text body and return a new Response ensuring
-      // there's always a JSON body (fallback to `{}`) so tRPC's
-      // `response.json()` does not throw on empty bodies.
-      let text = '';
-      try {
-        text = await response.text();
-      } catch (err) {
-        console.warn('[tRPC] Failed to read response text:', err);
-        text = '';
-      }
-
-      if (!text || text.trim().length === 0) {
-        const headers = new Headers(response.headers as any);
-        if (!headers.has('content-type')) headers.set('content-type', 'application/json');
-        return new Response('{}', {
+      const errorResponse = (message: string) => {
+        const batchPath = new URL(url, window.location.origin).pathname.split('/').pop() || '';
+        const procedurePaths = batchPath.split(',').filter(Boolean);
+        const paths = procedurePaths.length > 0 ? procedurePaths : [undefined];
+        const result = paths.map((path) => ({
+          error: superjson.serialize({
+            message,
+            code: -32603,
+            data: {
+              code: 'INTERNAL_SERVER_ERROR',
+              httpStatus: response.status,
+              ...(path ? { path } : {}),
+            },
+          }),
+        }));
+        return new Response(JSON.stringify(result), {
           status: response.status,
           statusText: response.statusText,
-          headers,
+          headers: { 'content-type': 'application/json' },
         });
+      };
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.toLowerCase().includes('json')) {
+        const message = response.status >= 500
+          ? 'Il server non è al momento disponibile. Riprova tra poco.'
+          : `Risposta non valida dal server (HTTP ${response.status}).`;
+        console.error('[tRPC] Il server ha restituito una risposta non JSON.');
+        return errorResponse(message);
       }
 
-      return new Response(text, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: response.headers as any,
-      });
+      try {
+        await response.clone().json();
+      } catch {
+        const message = response.status >= 500
+          ? 'Il server non è al momento disponibile. Riprova tra poco.'
+          : `Risposta JSON non valida dal server (HTTP ${response.status}).`;
+        console.error('[tRPC] Il server ha restituito JSON non valido.');
+        return errorResponse(message);
+      }
+
+      return response;
     };
 
     const batchOptions: any = {
