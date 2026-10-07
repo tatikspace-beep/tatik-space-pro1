@@ -56,6 +56,7 @@ export function GlobalNavbar() {
   const { currentProject } = useProject();
   const [location, setLocation] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [openNavDropdown, setOpenNavDropdown] = useState<'solutions' | 'resources' | null>(null);
 
   const handleLogout = async () => {
     await logout();
@@ -107,14 +108,23 @@ export function GlobalNavbar() {
         {/* Center section - Main Navigation Menu */}
         <div className="hidden items-center justify-center gap-1 xl:col-start-2 xl:row-start-1 xl:flex 2xl:gap-3">
           <div className="relative group">
-            <button className="flex items-center gap-1 px-3 py-2 rounded-md hover:bg-accent transition-colors">
+            <button
+              type="button"
+              aria-expanded={openNavDropdown === 'solutions'}
+              aria-controls="solutions-menu"
+              onClick={() => setOpenNavDropdown(openNavDropdown === 'solutions' ? null : 'solutions')}
+              className="flex items-center gap-1 px-3 py-2 rounded-md hover:bg-accent transition-colors"
+            >
               <span className="font-medium">{t.solutions}</span>
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-chevron-down">
                 <path d="m6 9 6 6 6-6" />
               </svg>
             </button>
-            <div className="absolute top-full left-0 mt-1 w-56 bg-background border border-border rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
-              <div className="p-2">
+            <div
+              id="solutions-menu"
+              className={`absolute left-0 top-full z-50 w-56 pt-1 transition-all duration-200 ${openNavDropdown === 'solutions' ? 'visible opacity-100' : 'invisible opacity-0 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100'}`}
+            >
+              <div className="rounded-md border border-border bg-background p-2 shadow-lg">
                 <Link href="/editor" className="block px-3 py-2 rounded-md hover:bg-accent text-sm">
                   {t.editorOnline}
                 </Link>
@@ -135,14 +145,23 @@ export function GlobalNavbar() {
           </div>
 
           <div className="relative group">
-            <button className="flex items-center gap-1 px-3 py-2 rounded-md hover:bg-accent transition-colors">
+            <button
+              type="button"
+              aria-expanded={openNavDropdown === 'resources'}
+              aria-controls="resources-menu"
+              onClick={() => setOpenNavDropdown(openNavDropdown === 'resources' ? null : 'resources')}
+              className="flex items-center gap-1 px-3 py-2 rounded-md hover:bg-accent transition-colors"
+            >
               <span className="font-medium">{t.resources}</span>
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-chevron-down">
                 <path d="m6 9 6 6 6-6" />
               </svg>
             </button>
-            <div className="absolute top-full left-0 mt-1 w-56 bg-background border border-border rounded-md shadow-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
-              <div className="p-2">
+            <div
+              id="resources-menu"
+              className={`absolute left-0 top-full z-50 w-56 pt-1 transition-all duration-200 ${openNavDropdown === 'resources' ? 'visible opacity-100' : 'invisible opacity-0 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100'}`}
+            >
+              <div className="rounded-md border border-border bg-background p-2 shadow-lg">
                 <Link href="/documentation" className="block px-3 py-2 rounded-md hover:bg-accent text-sm">
                   {t.documentation}
                 </Link>
