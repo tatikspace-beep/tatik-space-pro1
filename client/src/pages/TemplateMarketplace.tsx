@@ -216,13 +216,13 @@ export default function TemplateMarketplace() {
         <div className="min-h-screen bg-background">
             {/* ── HEADER ── */}
             <div className="border-b border-border bg-card/50 backdrop-blur sticky top-0 z-10">
-                <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-4">
-                    <div className="flex items-center gap-2">
+                <div className="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center gap-4">
+                    <div className="flex min-w-0 items-center gap-2">
                         <Zap className="h-5 w-5 text-primary" />
                         <span className="font-semibold text-sm">{ui.marketplaceName}</span>
                         <Badge variant="secondary" className="text-xs">{allTemplates.length + (communityListingsQuery.data?.length || 0)} {ui.resultsFound}</Badge>
                     </div>
-                    <div className="flex-1 max-w-sm ml-auto">
+                    <div className="w-full min-w-0 sm:ml-auto sm:w-auto sm:max-w-sm sm:flex-1">
                         <input
                             type="text"
                             placeholder={ui.searchPlaceholder}
@@ -253,9 +253,9 @@ export default function TemplateMarketplace() {
 
             <DeveloperTemplateListings />
 
-            <div className="max-w-7xl mx-auto px-4 py-6 flex gap-6">
+            <div className="max-w-7xl mx-auto px-4 py-6 flex flex-col gap-6 md:flex-row">
                 {/* ── SIDEBAR ── */}
-                <aside className="w-56 shrink-0 space-y-6">
+                <aside className="w-full shrink-0 space-y-6 md:w-56">
                     {/* Categoria */}
                     <div className="bg-card/50 rounded-lg p-4 border border-border/50">
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">📂 {ui.category}</p>
@@ -364,7 +364,7 @@ export default function TemplateMarketplace() {
                 {/* ── MAIN ── */}
                 <main className="flex-1 min-w-0">
                     {/* Sort bar */}
-                    <div className="flex items-center justify-between mb-4">
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                         <p className="text-sm text-muted-foreground">
                             <span className="font-medium text-foreground">{filtered.length}</span> {ui.resultsFound}
                         </p>
