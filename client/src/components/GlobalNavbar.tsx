@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { useAuth } from '@/_core/hooks/useAuth';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useProject } from '@/contexts/ProjectContext';
@@ -57,6 +57,47 @@ export function GlobalNavbar() {
   const [location, setLocation] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [openNavDropdown, setOpenNavDropdown] = useState<'solutions' | 'resources' | null>(null);
+  const [desktopNavFits, setDesktopNavFits] = useState(false);
+  const navbarRowRef = useRef<HTMLDivElement>(null);
+  const brandRef = useRef<HTMLDivElement>(null);
+  const desktopNavRef = useRef<HTMLDivElement>(null);
+  const controlsRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const row = navbarRowRef.current;
+    const brand = brandRef.current;
+    const desktopNav = desktopNavRef.current;
+    const controls = controlsRef.current;
+    if (!row || !brand || !desktopNav || !controls) return;
+
+    const measureFit = () => {
+      const rowRect = row.getBoundingClientRect();
+      const brandRect = brand.getBoundingClientRect();
+      const navRect = desktopNav.getBoundingClientRect();
+      const controlsRect = controls.getBoundingClientRect();
+      const navLeft = rowRect.left + (rowRect.width - navRect.width) / 2;
+      const navRight = navLeft + navRect.width;
+      const gap = 16;
+      const fits = navRect.width > 0
+        && navLeft >= brandRect.right + gap
+        && navRight + gap <= controlsRect.left;
+
+      setDesktopNavFits((current) => current === fits ? current : fits);
+    };
+
+    measureFit();
+    const observer = new ResizeObserver(measureFit);
+    observer.observe(row);
+    observer.observe(brand);
+    observer.observe(desktopNav);
+    observer.observe(controls);
+    window.addEventListener('resize', measureFit);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measureFit);
+    };
+  }, [language, isAuthenticated, user?.trialEndsAt]);
 
   const handleLogout = async () => {
     await logout();
@@ -82,9 +123,9 @@ export function GlobalNavbar() {
   return (
     <nav className="fixed top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md">
       <div className="mx-auto w-full max-w-[1680px] px-3 xl:px-6">
-        <div className="grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+        <div ref={navbarRowRef} className="relative grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
         {/* Left section - Logo and PRO badge */}
-        <div className="flex min-w-0 items-center gap-1.5">
+        <div ref={brandRef} className="flex w-fit min-w-0 max-w-full items-center gap-1.5">
           <button
             onClick={handleLogoClick}
             aria-label={copy.navbar.home}
@@ -106,7 +147,10 @@ export function GlobalNavbar() {
         </div>
 
         {/* Center section - Main Navigation Menu */}
-        <div className="hidden items-center justify-center gap-1 xl:col-start-2 xl:row-start-1 xl:flex 2xl:gap-3">
+        <div
+          ref={desktopNavRef}
+          className={`absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-1 transition-opacity 2xl:gap-3 ${desktopNavFits ? 'visible opacity-100' : 'invisible pointer-events-none opacity-0'}`}
+        >
           <div className="relative group">
             <button
               type="button"
@@ -197,7 +241,7 @@ export function GlobalNavbar() {
         <Button
           variant="ghost"
           size="icon"
-          className="hidden h-10 w-10 justify-self-center sm:col-start-2 sm:row-start-1 sm:inline-flex xl:hidden"
+          className={`hidden h-10 w-10 justify-self-center sm:col-start-2 sm:row-start-1 ${desktopNavFits ? '' : 'sm:inline-flex'}`}
           aria-expanded={mobileMenuOpen}
           aria-label={mobileMenuOpen ? copy.navbar.closeMenu : copy.navbar.openMenu}
           onClick={() => setMobileMenuOpen((open) => !open)}
@@ -206,7 +250,7 @@ export function GlobalNavbar() {
         </Button>
 
         {/* Right section - Language selector, Auth, Settings */}
-        <div className="col-start-2 row-start-1 flex min-w-0 items-center justify-self-end gap-1.5 sm:col-start-3">
+        <div ref={controlsRef} className="col-start-2 row-start-1 flex min-w-0 items-center justify-self-end gap-1.5 sm:col-start-3">
           {/* Language Selector - always visible */}
           <Select value={language} onValueChange={(value) => setLanguage(value as any)}>
             <SelectTrigger aria-label={t.language} className="w-12 h-10 p-0">
