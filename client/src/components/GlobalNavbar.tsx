@@ -81,7 +81,7 @@ export function GlobalNavbar() {
   return (
     <nav className="fixed top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md">
       <div className="mx-auto w-full max-w-[1680px] px-3 xl:px-6">
-        <div className="grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+        <div className="grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
         {/* Left section - Logo and PRO badge */}
         <div className="flex min-w-0 items-center gap-1.5">
           <button
@@ -105,7 +105,7 @@ export function GlobalNavbar() {
         </div>
 
         {/* Center section - Main Navigation Menu */}
-        <div className="hidden items-center justify-center gap-1 xl:col-span-1 xl:col-start-2 xl:row-start-1 xl:flex 2xl:gap-3">
+        <div className="hidden items-center justify-center gap-1 xl:col-start-2 xl:row-start-1 xl:flex 2xl:gap-3">
           <div className="relative group">
             <button className="flex items-center gap-1 px-3 py-2 rounded-md hover:bg-accent transition-colors">
               <span className="font-medium">{t.solutions}</span>
@@ -175,8 +175,19 @@ export function GlobalNavbar() {
           )}
         </div>
 
+        <Button
+          variant="ghost"
+          size="icon"
+          className="hidden h-10 w-10 justify-self-center sm:col-start-2 sm:row-start-1 sm:inline-flex xl:hidden"
+          aria-expanded={mobileMenuOpen}
+          aria-label={mobileMenuOpen ? copy.navbar.closeMenu : copy.navbar.openMenu}
+          onClick={() => setMobileMenuOpen((open) => !open)}
+        >
+          {mobileMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
+        </Button>
+
         {/* Right section - Language selector, Auth, Settings */}
-        <div className="col-start-2 row-start-1 flex items-center justify-self-end gap-1.5 xl:col-start-3">
+        <div className="col-start-2 row-start-1 flex min-w-0 items-center justify-self-end gap-1.5 sm:col-start-3">
           {/* Language Selector - always visible */}
           <Select value={language} onValueChange={(value) => setLanguage(value as any)}>
             <SelectTrigger aria-label={t.language} className="w-12 h-10 p-0">
@@ -221,7 +232,7 @@ export function GlobalNavbar() {
           <Button
             variant="ghost"
             size="icon"
-            className="xl:hidden h-10 w-10 shrink-0"
+            className="h-10 w-10 shrink-0 sm:hidden"
             aria-expanded={mobileMenuOpen}
             aria-label={mobileMenuOpen ? copy.navbar.closeMenu : copy.navbar.openMenu}
             onClick={() => setMobileMenuOpen((open) => !open)}

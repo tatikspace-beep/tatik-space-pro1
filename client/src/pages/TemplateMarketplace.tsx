@@ -420,6 +420,7 @@ export default function TemplateMarketplace() {
                                                 style={{ width: '400%', height: '400%', transform: 'scale(0.25)', transformOrigin: 'top left' }}
                                                 className="border-0 pointer-events-none"
                                                 title={`${ui.previewAlt}: ${template.name}`}
+                                                scrolling="no"
                                                 sandbox="allow-scripts"
                                             />
                                         )}
