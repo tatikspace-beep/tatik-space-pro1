@@ -80,8 +80,8 @@ export function GlobalNavbar() {
 
   return (
     <nav className="fixed top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md">
-      <div className="mx-auto w-full max-w-[1680px] px-3 lg:px-6">
-        <div className="grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+      <div className="mx-auto w-full max-w-[1680px] px-3 xl:px-6">
+        <div className="grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
         {/* Left section - Logo and PRO badge */}
         <div className="flex min-w-0 items-center gap-1.5">
           <button
@@ -105,7 +105,7 @@ export function GlobalNavbar() {
         </div>
 
         {/* Center section - Main Navigation Menu */}
-        <div className="hidden items-center justify-center gap-1 lg:col-span-1 lg:col-start-2 lg:row-start-1 lg:flex xl:gap-3">
+        <div className="hidden items-center justify-center gap-1 xl:col-span-1 xl:col-start-2 xl:row-start-1 xl:flex 2xl:gap-3">
           <div className="relative group">
             <button className="flex items-center gap-1 px-3 py-2 rounded-md hover:bg-accent transition-colors">
               <span className="font-medium">{t.solutions}</span>
@@ -176,7 +176,7 @@ export function GlobalNavbar() {
         </div>
 
         {/* Right section - Language selector, Auth, Settings */}
-        <div className="col-start-2 row-start-1 flex items-center justify-self-end gap-1.5 lg:col-start-3">
+        <div className="col-start-2 row-start-1 flex items-center justify-self-end gap-1.5 xl:col-start-3">
           {/* Language Selector - always visible */}
           <Select value={language} onValueChange={(value) => setLanguage(value as any)}>
             <SelectTrigger aria-label={t.language} className="w-12 h-10 p-0">
@@ -220,7 +220,7 @@ export function GlobalNavbar() {
           )}
         </div>
         </div>
-        <div className="flex justify-center border-t border-border py-1 lg:hidden">
+        <div className="flex justify-center border-t border-border py-1 xl:hidden">
           <Button
             variant="ghost"
             size="sm"
@@ -234,7 +234,7 @@ export function GlobalNavbar() {
         </div>
       </div>
       {mobileMenuOpen && (
-        <div className="lg:hidden border-t border-border bg-background px-4 py-3 shadow-lg">
+        <div className="xl:hidden border-t border-border bg-background px-4 py-3 shadow-lg">
           <div className="flex flex-col gap-1">
             <span className="px-3 pt-2 text-xs font-semibold uppercase text-muted-foreground">{t.solutions}</span>
             <Link href="/editor" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{t.editorOnline}</Link>

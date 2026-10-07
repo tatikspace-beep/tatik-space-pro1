@@ -9,7 +9,7 @@ export function AppFooter({ variant = 'light' }: { variant?: 'light' | 'dark' })
 
   return (
     <footer className={`py-6 border-t ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'border-border'}`}>
-      <div className="container mx-auto max-w-5xl px-6">
+      <div className="container mx-auto max-w-7xl px-6">
         <div className="flex flex-col items-center gap-4 text-center">
           <div className="flex w-full flex-col items-center gap-3 text-sm md:flex-row md:justify-center md:gap-5">
             <Link href="/" aria-label={copy.navbar.home} className="shrink-0 hover:opacity-80 transition-opacity">
