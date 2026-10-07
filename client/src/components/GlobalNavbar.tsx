@@ -212,25 +212,23 @@ export function GlobalNavbar() {
                 </Button>
               </Link>
               <Link href="/login">
-                <Button className="glow-primary" size="sm">
+                <Button className="glow-primary hidden sm:inline-flex" size="sm">
                   {t.login}
                 </Button>
               </Link>
             </div>
           )}
-        </div>
-        </div>
-        <div className="flex justify-center border-t border-border py-1 xl:hidden">
           <Button
             variant="ghost"
-            size="sm"
+            size="icon"
+            className="xl:hidden h-10 w-10 shrink-0"
             aria-expanded={mobileMenuOpen}
             aria-label={mobileMenuOpen ? copy.navbar.closeMenu : copy.navbar.openMenu}
             onClick={() => setMobileMenuOpen((open) => !open)}
           >
-            {mobileMenuOpen ? <X className="mr-2 h-4 w-4" /> : <Menu className="mr-2 h-4 w-4" />}
-            {mobileMenuOpen ? t.close : copy.navbar.menu}
+            {mobileMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
           </Button>
+        </div>
         </div>
       </div>
       {mobileMenuOpen && (
@@ -251,9 +249,14 @@ export function GlobalNavbar() {
               {t.pricing}
             </Link>
             {!isAuthenticated && (
-              <Link href="/contact" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>
-                {t.contactUs}
-              </Link>
+              <>
+                <Link href="/login" className="rounded-md px-3 py-2 hover:bg-accent sm:hidden" onClick={() => setMobileMenuOpen(false)}>
+                  {t.login}
+                </Link>
+                <Link href="/contact" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>
+                  {t.contactUs}
+                </Link>
+              </>
             )}
           </div>
         </div>
