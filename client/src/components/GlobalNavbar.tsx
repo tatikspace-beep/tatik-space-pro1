@@ -123,24 +123,24 @@ export function GlobalNavbar() {
   return (
     <nav className="fixed top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md">
       <div className="mx-auto w-full max-w-[1680px] px-3 xl:px-6">
-        <div ref={navbarRowRef} className="relative grid min-h-16 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]">
+        <div ref={navbarRowRef} className="relative grid min-h-16 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-2">
         {/* Left section - Logo and PRO badge */}
         <div ref={brandRef} className="flex w-fit min-w-0 max-w-full items-center gap-1.5">
           <button
             onClick={handleLogoClick}
             aria-label={copy.navbar.home}
-            className="cursor-pointer hover:opacity-80 transition-opacity"
+            className="shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
           >
             <img
               src="/logo.png"
               alt={copy.navbar.logo}
-              className="w-10 h-10 object-contain"
+              className="h-8 w-8 object-contain sm:h-10 sm:w-10"
               onError={(e: any) => (e.currentTarget.src = '/assets/logo.png')}
             />
           </button>
-          <div className="flex items-center gap-1">
-            <span className="text-base font-bold tracking-tight sm:text-xl">{displayName}</span>
-            <span className="rounded-md bg-gradient-to-r from-blue-500 to-purple-500 px-1 py-0.5 text-[10px] font-bold text-white shadow-lg pro-badge sm:px-2 sm:text-xs">
+          <div className="flex min-w-0 items-center gap-1">
+            <span className="truncate text-sm font-bold tracking-tight sm:text-xl">{displayName}</span>
+            <span className="shrink-0 rounded-md bg-gradient-to-r from-blue-500 to-purple-500 px-1 py-0.5 text-[10px] font-bold text-white shadow-lg pro-badge sm:px-2 sm:text-xs">
               PRO
             </span>
           </div>
@@ -243,7 +243,7 @@ export function GlobalNavbar() {
         <Button
           variant="ghost"
           size="icon"
-          className={`hidden h-10 w-10 justify-self-center sm:col-start-2 sm:row-start-1 ${desktopNavFits ? '' : 'sm:inline-flex'}`}
+          className={`h-10 w-10 justify-self-center ${desktopNavFits ? 'hidden' : 'inline-flex'}`}
           aria-expanded={mobileMenuOpen}
           aria-label={mobileMenuOpen ? copy.navbar.closeMenu : copy.navbar.openMenu}
           onClick={() => setMobileMenuOpen((open) => !open)}
@@ -252,7 +252,7 @@ export function GlobalNavbar() {
         </Button>
 
         {/* Right section - Language selector, Auth, Settings */}
-        <div ref={controlsRef} className="col-start-2 row-start-1 flex min-w-0 items-center justify-self-end gap-1.5 sm:col-start-3">
+        <div ref={controlsRef} className="col-start-3 row-start-1 flex min-w-0 items-center justify-self-end gap-1.5">
           {/* Language Selector - always visible */}
           <Select value={language} onValueChange={(value) => setLanguage(value as any)}>
             <SelectTrigger aria-label={t.language} className="w-12 h-10 p-0">
@@ -294,16 +294,6 @@ export function GlobalNavbar() {
               </Link>
             </div>
           )}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-10 w-10 shrink-0 sm:hidden"
-            aria-expanded={mobileMenuOpen}
-            aria-label={mobileMenuOpen ? copy.navbar.closeMenu : copy.navbar.openMenu}
-            onClick={() => setMobileMenuOpen((open) => !open)}
-          >
-            {mobileMenuOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
-          </Button>
         </div>
         </div>
       </div>

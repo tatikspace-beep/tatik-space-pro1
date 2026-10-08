@@ -31,7 +31,7 @@ import { getLoginUrl } from '@/const';
 import { getEditorAppCopy } from '@/lib/editorAppCopy';
 import type { EditorAppCopyKey } from '@/lib/editorAppCopy';
 import { getEditorAppLabelFallback } from '@/lib/editorAppLabelFallbacks';
-import { Loader2, Save, Play, Bot, FolderOpen, FileCode, Search, Menu, X, LogOut, Download, Upload, FolderUp, FilePlus, FolderPlus, Monitor, Smartphone, ChevronDown, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Loader2, Save, Play, Bot, FolderOpen, FileCode, Search, Menu, X, LogOut, Download, Upload, FolderUp, FilePlus, FolderPlus, Monitor, Smartphone, RotateCw, ChevronDown, CheckCircle2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu';
 import { Helmet } from "react-helmet-async";
@@ -77,6 +77,8 @@ export default function EditorApp() {
   const [openedFolderName, setOpenedFolderName] = useState<string | null>(null);
   const [previewKey, setPreviewKey] = useState(0);
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('desktop');
+  const [editorRotated, setEditorRotated] = useState(false);
+  const [previewRotated, setPreviewRotated] = useState(false);
   const [savingFilePath, setSavingFilePath] = useState<string | null>(null);
   const [savingFileName, setSavingFileName] = useState<string | null>(null);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
@@ -2135,7 +2137,7 @@ export default function EditorApp() {
 
   return (
     <div className="h-screen flex flex-col bg-slate-900 text-white">
-      <header className="bg-slate-800 border-b border-slate-700 px-20 py-0 flex items-center justify-between" style={{ height: '50px' }}>
+      <header className="editor-app-header bg-slate-800 border-b border-slate-700 px-4 md:px-20 py-0 flex items-center justify-between" style={{ height: '50px' }}>
         <div className="flex items-center gap-4">
           <Button
             variant="ghost"
@@ -2173,14 +2175,16 @@ export default function EditorApp() {
                     : editorText('saved')}
             </span>
           </div>
-          <AdBanner />
+          <div className="hidden md:block">
+            <AdBanner />
+          </div>
         </div>
       </header>
 
-      <div className="flex-1 flex overflow-hidden relative">
+      <div className="editor-workspace-layout flex-1 flex overflow-hidden relative min-h-0 min-w-0">
         {isSidebarOpen && (
           <aside
-            className="bg-slate-800 border-r border-slate-700 flex flex-col hidden md:flex"
+            className="editor-file-explorer bg-slate-800 border-r border-slate-700 flex flex-col"
             style={{ width: `${sidebarWidth}px`, minWidth: '150px', maxWidth: '400px', position: 'relative' }}
           >
             {/* Search Results Panel - Positioned absolutely within sidebar */}
@@ -2454,7 +2458,7 @@ export default function EditorApp() {
           </div>
         )}
 
-        <main className="flex-1 flex flex-col">
+        <main className="editor-main-panel flex-1 flex flex-col min-w-0">
           <div className="bg-slate-800 border-b border-slate-700 px-4 py-2 flex items-center gap-3 overflow-x-auto h-10">
             <div className="flex items-center gap-2 min-w-0 flex-shrink-0">
               <Search className="h-4 w-4 text-slate-400" />
@@ -2544,10 +2548,10 @@ export default function EditorApp() {
 
           {/* Search results panel */}
 
-          <div className="flex-1 flex overflow-auto gap-0 relative">
+          <div className="editor-workspace-panels flex-1 flex overflow-auto gap-0 relative min-h-0">
             {/* EDITOR PANEL */}
             <div
-              className="border-r border-slate-700 flex flex-col"
+              className="editor-code-panel border-r border-slate-700 flex flex-col min-h-0"
               style={{
                 flex: `0 0 ${Math.round(editorWidth)}px`,
                 minWidth: '200px',
@@ -2587,8 +2591,21 @@ export default function EditorApp() {
                     </button>
                   ))
                 )}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="ml-auto h-8 w-8 shrink-0 md:hidden"
+                  aria-label="Ruota area editor di 90 gradi"
+                  aria-pressed={editorRotated}
+                  title="Ruota area editor di 90 gradi"
+                  onClick={() => setEditorRotated((rotated) => !rotated)}
+                >
+                  <RotateCw className={`h-4 w-4 transition-transform ${editorRotated ? 'rotate-90' : ''}`} />
+                </Button>
               </div>
-              <div className="flex-1 flex flex-col min-h-0 h-full" style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+              <div className="mobile-rotate-area flex-1 flex flex-col min-h-0 h-full" data-rotated={editorRotated} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                <div className="mobile-rotate-content flex-1 flex flex-col min-h-0">
                 {/* Language detection — subtle pill (non-intrusive) */}
                 {detectedLanguageLabel && detectedLanguageLabel !== 'plaintext' && (
                   <div className="flex items-center gap-3 px-3 py-1 mb-2">
@@ -2612,6 +2629,7 @@ export default function EditorApp() {
                   jumpToLine={jumpToLine}
                   autoDetectLanguage={selectedLanguage === 'plaintext'}
                 />
+                </div>
               </div>
             </div>
 
@@ -2641,13 +2659,13 @@ export default function EditorApp() {
 
             {/* PREVIEW PANEL */}
             <div
-              className="bg-white flex flex-col min-h-0 h-full"
+              className="editor-preview-panel bg-white flex flex-col min-h-0 h-full"
               style={{
                 flex: `1 1 0`,
                 overflow: 'hidden'
               }}
             >
-              <div className="px-4 py-2 bg-slate-800 border-b border-slate-700 text-white text-sm font-semibold flex-shrink-0 flex items-center justify-between gap-4">
+              <div className="editor-preview-header px-4 py-2 bg-slate-800 border-b border-slate-700 text-white text-sm font-semibold flex-shrink-0 flex items-center justify-between gap-4">
                 {/* Left: ANTEPRIMA + Aggiorna button */}
                 <div className="flex flex-col items-center gap-1">
                   <div className="text-xs font-medium">{i18nT('preview')}</div>
@@ -2657,7 +2675,7 @@ export default function EditorApp() {
                 </div>
 
                 {/* Center: PerfCheck */}
-                <div className="flex-1 flex justify-center px-4">
+                <div className="editor-preview-metrics flex-1 flex justify-center px-4">
                   <PerfCheck />
                 </div>
 
@@ -2671,9 +2689,22 @@ export default function EditorApp() {
                       <Smartphone size={14} />
                     </Button>
                   </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 md:hidden"
+                    aria-label="Ruota area anteprima di 90 gradi"
+                    aria-pressed={previewRotated}
+                    title="Ruota area anteprima di 90 gradi"
+                    onClick={() => setPreviewRotated((rotated) => !rotated)}
+                  >
+                    <RotateCw className={`h-4 w-4 transition-transform ${previewRotated ? 'rotate-90' : ''}`} />
+                  </Button>
                 </div>
               </div>
-              <div className="flex-1 relative min-h-0 w-full p-4" style={{ height: '100%', overflow: 'auto' }}>
+              <div className="mobile-rotate-area flex-1 relative min-h-0 w-full p-4" data-rotated={previewRotated} style={{ height: '100%', overflow: 'auto' }}>
+                <div className="mobile-rotate-content w-full h-full">
                 {previewMode === 'vite-react' && !externalPreviewUrl ? (
                   <div className="p-6 h-full flex flex-col items-center justify-center text-center">
                     <div className="mb-3 rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
@@ -2722,6 +2753,7 @@ export default function EditorApp() {
                     </div>
                   </div>
                 )}
+                </div>
               </div>
             </div>
           </div>
