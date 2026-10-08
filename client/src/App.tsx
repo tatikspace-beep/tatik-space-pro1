@@ -264,7 +264,7 @@ function App() {
                 <TooltipProvider>
                   <Toaster />
                   <GlobalNavbar />
-                  <div className="pt-16 min-h-screen">
+                  <div className="site-content pt-16 min-h-screen">
                     <Router />
                     {/* show beta banner on all pages except editor/dashboard */}
                     <BetaNoticeWrapper />

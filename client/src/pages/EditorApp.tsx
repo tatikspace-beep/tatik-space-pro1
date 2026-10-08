@@ -2175,7 +2175,7 @@ export default function EditorApp() {
                     : editorText('saved')}
             </span>
           </div>
-          <div className="hidden md:block">
+          <div className="hidden lg:block">
             <AdBanner />
           </div>
         </div>
@@ -2432,7 +2432,7 @@ export default function EditorApp() {
         {/* DIVIDER 1: Sidebar ↔ Editor (positioned between sidebar and main) */}
         {isSidebarOpen && (
           <div
-            className="hidden md:block cursor-col-resize hover:bg-slate-600/50 transition-colors"
+            className="hidden lg:block cursor-col-resize hover:bg-slate-600/50 transition-colors"
             style={{
               position: 'relative',
               width: 8,
@@ -2595,7 +2595,7 @@ export default function EditorApp() {
                   type="button"
                   variant="ghost"
                   size="icon"
-                  className="ml-auto h-8 w-8 shrink-0 md:hidden"
+                  className="ml-auto h-8 w-8 shrink-0 lg:hidden"
                   aria-label="Ruota area editor di 90 gradi"
                   aria-pressed={editorRotated}
                   title="Ruota area editor di 90 gradi"
@@ -2635,7 +2635,7 @@ export default function EditorApp() {
 
             {/* DIVIDER 2: Editor ↔ Preview */}
             <div
-              className="hidden md:block cursor-col-resize hover:bg-slate-600/50 transition-colors"
+              className="hidden lg:block cursor-col-resize hover:bg-slate-600/50 transition-colors"
               style={{
                 position: 'relative',
                 width: 8,
@@ -2693,7 +2693,7 @@ export default function EditorApp() {
                     type="button"
                     variant="outline"
                     size="icon"
-                    className="h-8 w-8 md:hidden"
+                    className="h-8 w-8 lg:hidden"
                     aria-label="Ruota area anteprima di 90 gradi"
                     aria-pressed={previewRotated}
                     title="Ruota area anteprima di 90 gradi"

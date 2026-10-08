@@ -121,9 +121,12 @@ export function GlobalNavbar() {
   };
 
   return (
-    <nav className="fixed top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md">
+    <nav
+      data-compact-menu={!desktopNavFits}
+      className="fixed top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md"
+    >
       <div className="mx-auto w-full max-w-[1680px] px-3 xl:px-6">
-        <div ref={navbarRowRef} className="relative grid min-h-16 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-2">
+        <div ref={navbarRowRef} className="relative grid min-h-16 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1">
         {/* Left section - Logo and PRO badge */}
         <div ref={brandRef} className="flex w-fit min-w-0 max-w-full items-center gap-1.5">
           <button
@@ -243,7 +246,7 @@ export function GlobalNavbar() {
         <Button
           variant="ghost"
           size="icon"
-          className={`h-10 w-10 justify-self-center ${desktopNavFits ? 'hidden' : 'inline-flex'}`}
+          className={`col-span-3 row-start-2 h-10 w-10 justify-self-center ${desktopNavFits ? 'hidden' : 'inline-flex'}`}
           aria-expanded={mobileMenuOpen}
           aria-label={mobileMenuOpen ? copy.navbar.closeMenu : copy.navbar.openMenu}
           onClick={() => setMobileMenuOpen((open) => !open)}
@@ -288,7 +291,7 @@ export function GlobalNavbar() {
                 </Button>
               </Link>
               <Link href="/login">
-                <Button className="glow-primary hidden sm:inline-flex" size="sm">
+                <Button className="glow-primary inline-flex px-2 text-xs sm:px-3 sm:text-sm" size="sm">
                   {t.login}
                 </Button>
               </Link>
