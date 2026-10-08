@@ -20,10 +20,20 @@ describe("marketplace localization catalogs", () => {
     }
   });
 
-  it("shows translated German seller terms and identifies the binding Italian original", () => {
-    expect(sellerTermsTranslations.de).toHaveLength(10);
+  it("translates seller terms and identifies the binding Italian original in every supported language", () => {
+    expect(Object.keys(sellerTermsTranslations).sort()).toEqual([...supportedLanguages].sort());
+    expect(Object.keys(officialSellerTermsLabels).sort()).toEqual([...supportedLanguages].sort());
+
+    for (const language of supportedLanguages) {
+      expect(sellerTermsTranslations[language], `seller terms: ${language}`).toHaveLength(10);
+      expect(officialSellerTermsLabels[language], `Italian original label: ${language}`).toBeTruthy();
+      expect(developerMarketplaceCopy[language].termsAreItalian, `seller terms notice: ${language}`).toBeTruthy();
+    }
+
+    expect(sellerTermsTranslations.it[0]).toContain("Il venditore è l'unico responsabile");
+    expect(sellerTermsTranslations.en[0]).toContain("The seller is solely responsible");
     expect(officialSellerTermsLabels.de).toBe("Verbindliche italienische Originalfassung anzeigen");
-    expect(developerMarketplaceCopy.de.termsAreItalian).toContain("Verbindlich ist die italienische Originalfassung");
+    expect(developerMarketplaceCopy.de.termsAreItalian).toContain("italienische Originalfassung");
     expect(commercialSeoCopy.de.pricingHeading).toBe("Wähle den passenden Tarif für deinen Workflow");
     expect(pricingUiLabels.de.backToHome).toBe("Zurück zur Startseite");
   });
