@@ -172,7 +172,7 @@ export default function Pricing() {
                             <div className="absolute -top-3 left-1/2 transform -translate-x-1/2 bg-slate-500 text-white px-3 py-1 rounded-full text-xs font-medium">
                                 {labels.afterTrial}
                             </div>
-                            <h3 className="text-xl font-bold mb-2 mt-2">Free (Limitato)</h3>
+                            <h3 className="text-xl font-bold mb-2 mt-2">{labels.freePlanLimited}</h3>
                             <div className="mb-4">
                                 <span className="text-3xl font-bold">{formatEuro(0)}</span>
                                 <span className="text-muted-foreground">/{labels.month}</span>
@@ -185,19 +185,19 @@ export default function Pricing() {
                             <ul className="space-y-3 mb-6 text-sm text-muted-foreground">
                                 <li className="flex items-center gap-2">
                                     <Check className="h-4 w-4 text-muted-foreground/50" />
-                                    <span>✓ Backup locale solamente</span>
+                                    <span>✓ {labels.localBackupOnly}</span>
                                 </li>
                                 <li className="flex items-center gap-2">
-                                    <span className="opacity-50">✗ Assistente AI disabilitato</span>
+                                    <span className="opacity-50">✗ {labels.aiUnavailable}</span>
                                 </li>
                                 <li className="flex items-center gap-2">
-                                    <span className="opacity-50">✗ Collaborazione disabilitata</span>
+                                    <span className="opacity-50">✗ {details.collaborationUnavailable}</span>
                                 </li>
                                 <li className="flex items-center gap-2">
-                                    <span className="opacity-50">✗ Backup online bloccato</span>
+                                    <span className="opacity-50">✗ {labels.onlineBackupUnavailable}</span>
                                 </li>
                                 <li className="flex items-center gap-2">
-                                    <span className="opacity-50">✗ Features premium bloccate</span>
+                                    <span className="opacity-50">✗ {labels.proFeaturesUnavailable}</span>
                                 </li>
                             </ul>
                             <Button className="w-full" variant="outline" disabled>{labels.freePlanButton}</Button>
