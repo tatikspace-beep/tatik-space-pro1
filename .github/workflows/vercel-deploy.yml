@@ -2,25 +2,40 @@ name: Force Vercel Rebuild
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
     paths:
-      - 'client/**'
-      - 'server/**'
-      - 'api/**'
-      - 'package.json'
-      - 'tsconfig.json'
-      - 'vercel.json'
+      - "client/**"
+      - "server/**"
+      - "api/**"
+      - "shared/**"
+      - "drizzle/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "tsconfig.json"
+      - "vercel.json"
+  workflow_dispatch:
 
 jobs:
   redeploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Deploy to Vercel
+
+      - name: Verify Vercel deployment token
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "::error::Add the VERCEL_TOKEN GitHub Actions secret before deploying."
+            exit 1
+          fi
+
+      - name: Deploy production to Vercel
         run: |
           npm i -g vercel
-          vercel --prod --token=${{ secrets.VERCEL_TOKEN }} --force
+          vercel link --yes --project "$VERCEL_PROJECT_ID" --scope "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN"
+          vercel --prod --token="$VERCEL_TOKEN" --force
         env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: team_V9kqKM41Q9TPBJ4dZjdGveA3
+          VERCEL_PROJECT_ID: prj_ln6ex769J6uEvyqRUnhT0zv1WXqB
