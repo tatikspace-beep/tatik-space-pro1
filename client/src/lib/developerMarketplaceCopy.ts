@@ -92,7 +92,7 @@ export const developerMarketplaceCopy: Record<string, DeveloperMarketplaceCopy> 
     statusPending: "In attesa", statusActive: "Attivo", statusDraft: "Bozza", statusPublished: "Pubblicato", statusReview: "In revisione",
     statusRejected: "Rifiutato", statusSuspended: "Sospeso", scanPassed: "Superato", scanReviewStatus: "Da verificare",
     scanBlockedStatus: "Bloccato", scanLegacyStatus: "Non scansionato (legacy)", scanNotRun: "Non scansionato",
-    automaticStatus: "Stato automatico", notAvailable: "N/D", characters: "caratteri", minCharacters: "minimo 20", maxFileSize: "max 2 MB",
+    automaticStatus: "Stato automatico", notAvailable: "N/D", characters: "caratteri", minCharacters: "minimo 20", maxFileSize: "massimo 2 MB",
   },
   es: {
     loading: "Cargando...", marketplaceName: "Marketplace para desarrolladores", backToMarketplace: "Marketplace de plantillas", becomeSeller: "Hazte vendedor",
@@ -160,13 +160,13 @@ export const developerMarketplaceCopy: Record<string, DeveloperMarketplaceCopy> 
     statusPending: "En attente", statusActive: "Actif", statusDraft: "Brouillon", statusPublished: "Publié", statusReview: "En cours d’examen",
     statusRejected: "Refusé", statusSuspended: "Suspendu", scanPassed: "Réussi", scanReviewStatus: "À examiner",
     scanBlockedStatus: "Bloqué", scanLegacyStatus: "Non analysé (ancien)", scanNotRun: "Non analysé",
-    automaticStatus: "Statut automatique", notAvailable: "S/O", characters: "caractères", minCharacters: "minimum 20", maxFileSize: "max. 2 Mo",
+    automaticStatus: "Statut automatique", notAvailable: "S/O", characters: "caractères", minCharacters: "au moins 20", maxFileSize: "max. 2 Mo",
   },
   de: {
     loading: "Wird geladen...", marketplaceName: "Entwickler-Marktplatz", backToMarketplace: "Vorlagen-Marktplatz", becomeSeller: "Verkäufer werden",
     commissionNote: "Tatik-Provision:", payoutKyc: "Auszahlungen erfordern eine KYC-Verifizierung.", publicName: "Öffentlicher Name", bio: "Profilbeschreibung",
     website: "Website (optional, z. B. beispiel.de)", websiteProtocol: "Wenn du eine Domain ohne Protokoll eingibst, wird HTTPS verwendet.",
-    termsAreItalian: "Die offiziellen Verkäuferbedingungen unten werden vom Server auf Italienisch bereitgestellt und sind der Text, dem du zustimmst.",
+    termsAreItalian: "Die deutsche Fassung dient nur zur Orientierung. Verbindlich ist die italienische Originalfassung.",
     termsAccept: "Ich habe die Verkäuferbedingungen gelesen und akzeptiere sie", termsResponsibility: "Ich bestätige, dass ich für das Produkt, seine Rechte und meine Pflichten gegenüber Käufern verantwortlich bin.",
     acceptSave: "Bedingungen akzeptieren und Profil speichern", onboardingOpening: "Einrichtung wird geöffnet...", setupPayments: "Zahlungen und KYC einrichten", payoutStatus: "Auszahlungsstatus prüfen",
     sellerStatus: "Status", newListing: "Neues Angebot", listingInstructions: "Füge den Code ein oder übertrage die im Editor geöffnete Datei. Jede Einreichung wird automatisch geprüft: Dateien ohne verdächtige Hinweise werden sofort veröffentlicht, zweifelhafte Dateien zurückgehalten und gefährliche Dateien blockiert. Die Prüfungen bestätigen keine rechtliche Konformität.",
@@ -466,7 +466,7 @@ export const developerMarketplaceCopy: Record<string, DeveloperMarketplaceCopy> 
     statusPending: "Oczekuje", statusActive: "Aktywny", statusDraft: "Wersja robocza", statusPublished: "Opublikowany", statusReview: "W trakcie weryfikacji",
     statusRejected: "Odrzucony", statusSuspended: "Zawieszony", scanPassed: "Zaliczono", scanReviewStatus: "Wymaga weryfikacji",
     scanBlockedStatus: "Zablokowano", scanLegacyStatus: "Nieskanowany (starszy)", scanNotRun: "Nieskanowany",
-    automaticStatus: "Status automatyczny", notAvailable: "Nie dotyczy", characters: "znaków", minCharacters: "minimum 20", maxFileSize: "maks. 2 MB",
+    automaticStatus: "Status automatyczny", notAvailable: "Nie dotyczy", characters: "znaków", minCharacters: "co najmniej 20", maxFileSize: "maks. 2 MB",
   },
   nl: {
     loading: "Laden...", marketplaceName: "Marktplaats voor ontwikkelaars", backToMarketplace: "Sjabloonmarktplaats", becomeSeller: "Verkoper worden",
@@ -568,7 +568,7 @@ export const developerMarketplaceCopy: Record<string, DeveloperMarketplaceCopy> 
     statusPending: "Väntar", statusActive: "Aktiv", statusDraft: "Utkast", statusPublished: "Publicerad", statusReview: "Under granskning",
     statusRejected: "Avvisad", statusSuspended: "Pausad", scanPassed: "Godkänd", scanReviewStatus: "Behöver granskas",
     scanBlockedStatus: "Blockerad", scanLegacyStatus: "Inte skannad (äldre)", scanNotRun: "Inte skannad",
-    automaticStatus: "Automatisk status", notAvailable: "Ej tillgängligt", characters: "tecken", minCharacters: "minst 20", maxFileSize: "max 2 MB",
+    automaticStatus: "Automatisk status", notAvailable: "Ej tillgängligt", characters: "tecken", minCharacters: "minst 20", maxFileSize: "högst 2 MB",
   },
   da: {
     loading: "Indlæser...", marketplaceName: "Markedsplads for udviklere", backToMarketplace: "Skabelonmarked", becomeSeller: "Bliv sælger",

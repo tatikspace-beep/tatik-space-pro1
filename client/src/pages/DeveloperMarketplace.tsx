@@ -10,6 +10,8 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { developerMarketplaceCopy } from "@/lib/developerMarketplaceCopy";
+import { developerListingLanguageGuidance } from "@/lib/developerListingLanguageGuidance";
+import { officialSellerTermsLabels, sellerTermsTranslations } from "@/lib/sellerTermsLocalization";
 
 function slugify(value: string) {
   return value
@@ -73,6 +75,7 @@ function scanMessages(scanReport: string | null) {
 export default function DeveloperMarketplace() {
   const { language } = useLanguage();
   const copy = developerMarketplaceCopy[language] ?? developerMarketplaceCopy.en;
+  const languageGuidance = developerListingLanguageGuidance[language] ?? developerListingLanguageGuidance.en;
   const { user, loading } = useAuth({ redirectOnUnauthenticated: true });
   const [profile, setProfile] = useState({ displayName: "", bio: "", websiteUrl: "" });
   const [listing, setListing] = useState({ title: "", description: "", category: "web", price: "9.99", slug: "" });
@@ -95,6 +98,9 @@ export default function DeveloperMarketplace() {
   const [moderationReasons, setModerationReasons] = useState<Record<number, string>>({});
   const payoutCandidatesQuery = trpc.marketplace.listPayoutCandidates.useQuery(undefined, { enabled: user?.role === "admin" });
   const termsQuery = trpc.marketplace.sellerTerms.useQuery();
+  const sellerTerms = termsQuery.data?.terms ?? [];
+  const localizedSellerTerms = sellerTermsTranslations[language];
+  const officialSellerTermsLabel = officialSellerTermsLabels[language] ?? officialSellerTermsLabels.en;
   const seller = profileQuery.data;
   useEffect(() => {
     if (seller && !profileInitialized) {
@@ -302,7 +308,21 @@ export default function DeveloperMarketplace() {
               <p className="text-xs text-muted-foreground">{copy.termsAreItalian}</p>
               {termsQuery.isLoading && <p className="text-xs text-muted-foreground">{copy.loading}</p>}
               {termsQuery.isError && <p className="text-xs text-destructive">{termsQuery.error.message}</p>}
-              <p className="text-xs text-muted-foreground">{termsQuery.data?.terms.join(" ")}</p>
+              {localizedSellerTerms ? (
+                <>
+                  <ol className="list-decimal space-y-1 pl-5 text-xs text-muted-foreground">
+                    {localizedSellerTerms.map((term) => <li key={term}>{term}</li>)}
+                  </ol>
+                  <details className="text-xs">
+                    <summary className="cursor-pointer text-muted-foreground">{officialSellerTermsLabel}</summary>
+                    <ol className="mt-2 list-decimal space-y-1 pl-5 text-muted-foreground">
+                      {sellerTerms.map((term) => <li key={term}>{term}</li>)}
+                    </ol>
+                  </details>
+                </>
+              ) : (
+                <p className="text-xs text-muted-foreground">{sellerTerms.join(" ")}</p>
+              )}
               <label className="flex items-start gap-2 text-sm">
                 <input type="checkbox" checked={termsAccepted} onChange={(event) => setTermsAccepted(event.target.checked)} />
                 <span>{copy.termsAccept} {termsQuery.data?.version ? `(v${termsQuery.data.version})` : ""}. {copy.termsResponsibility}</span>
@@ -334,6 +354,7 @@ export default function DeveloperMarketplace() {
               maxLength={MAX_LISTING_DESCRIPTION_LENGTH}
               onChange={(e) => setListing({ ...listing, description: e.target.value })}
             />
+            <p className="text-xs text-muted-foreground">{languageGuidance}</p>
             <p className="text-xs text-muted-foreground text-right">
               {listing.description.length.toLocaleString(language)}/{MAX_LISTING_DESCRIPTION_LENGTH.toLocaleString(language)} {copy.characters} ({copy.minCharacters})
             </p>

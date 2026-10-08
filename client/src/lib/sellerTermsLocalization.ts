@@ -1,0 +1,38 @@
+export const sellerTermsTranslations: Record<string, string[]> = {
+  de: [
+    "Der Verkäufer ist allein für die angebotenen Vorlagen, Dateien und Inhalte sowie deren Qualität, Richtigkeit, Sicherheit, Lizenzierung und Übereinstimmung mit den geltenden Gesetzen verantwortlich.",
+    "Der Verkäufer erklärt, alle erforderlichen Rechte zu besitzen oder darüber verfügen zu dürfen, und stellt Tatik im gesetzlich zulässigen Umfang von Ansprüchen frei, die sich aus dem Produkt oder Rechten Dritter ergeben.",
+    "Der Verkäufer stellt eine wahrheitsgemäße Beschreibung, Anweisungen und Produktsupport bereit und erfüllt die gesetzlich vorgesehenen Pflichten gegenüber den eigenen Käufern.",
+    "Das Hochladen von Malware, Zugangsdaten, personenbezogenen Daten, rechtswidrigen Inhalten oder Material, das Rechte Dritter verletzt, ist untersagt.",
+    "Alle Dateien werden automatisierten statischen Prüfungen unterzogen. Diese Prüfungen bestätigen weder die Sicherheit noch die rechtliche Konformität. Verdächtige Inhalte können zur Überprüfung zurückgehalten und veröffentlichte Angebote ausgesetzt oder entfernt werden.",
+    "Tatik behält bei jedem Verkauf eine Provision von 15 % ein.",
+    "Der Nettosaldo bleibt bis zum Ablauf der Betrugspräventionsfrist und bis zur Prüfung möglicher Rückerstattungen ausstehend.",
+    "Rückerstattungen und Streitfälle können zu einer Rückbuchung des Verkäufersaldos führen.",
+    "Auszahlungen setzen eine KYC-Prüfung und einen konfigurierten Zahlungsanbieter voraus.",
+    "Die Zustimmung zu diesen Bedingungen ersetzt keine rechtliche Prüfung und schließt zwingende gesetzliche Haftung nicht aus.",
+  ],
+};
+
+export const officialSellerTermsLabels: Record<string, string> = {
+  en: "Show the official Italian terms",
+  it: "Mostra i termini ufficiali in italiano",
+  es: "Mostrar las condiciones oficiales en italiano",
+  fr: "Afficher les conditions officielles en italien",
+  de: "Verbindliche italienische Originalfassung anzeigen",
+  pt: "Mostrar os termos oficiais em italiano",
+  ru: "Показать официальные условия на итальянском языке",
+  zh: "显示意大利语官方条款",
+  ja: "イタリア語の公式規約を表示",
+  ko: "이탈리아어 공식 약관 보기",
+  ar: "عرض الشروط الرسمية باللغة الإيطالية",
+  hi: "आधिकारिक इतालवी शर्तें दिखाएँ",
+  pl: "Pokaż oficjalne warunki w języku włoskim",
+  nl: "De officiële Italiaanse voorwaarden weergeven",
+  tr: "Resmî İtalyanca koşulları göster",
+  sv: "Visa de officiella villkoren på italienska",
+  da: "Vis de officielle vilkår på italiensk",
+  no: "Vis de offisielle vilkårene på italiensk",
+  fi: "Näytä viralliset italiankieliset ehdot",
+  uk: "Показати офіційні умови італійською мовою",
+  cs: "Zobrazit oficiální podmínky v italštině",
+};
