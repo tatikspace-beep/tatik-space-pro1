@@ -166,7 +166,8 @@ export function GlobalNavbar() {
             </button>
             <div
               id="solutions-menu"
-              className={`absolute left-0 top-full z-50 w-56 pt-1 transition-all duration-200 ${openNavDropdown === 'solutions' ? 'visible opacity-100' : 'invisible opacity-0 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100'}`}
+              style={{ visibility: openNavDropdown === 'solutions' ? 'visible' : undefined }}
+              className={`absolute left-0 top-full z-50 w-56 pt-1 transition-all duration-200 ${openNavDropdown === 'solutions' ? 'opacity-100' : 'invisible opacity-0 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100'}`}
             >
               <div className="rounded-md border border-border bg-background p-2 shadow-lg">
                 <Link href="/editor" className="block px-3 py-2 rounded-md hover:bg-accent text-sm">
@@ -203,7 +204,8 @@ export function GlobalNavbar() {
             </button>
             <div
               id="resources-menu"
-              className={`absolute left-0 top-full z-50 w-56 pt-1 transition-all duration-200 ${openNavDropdown === 'resources' ? 'visible opacity-100' : 'invisible opacity-0 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100'}`}
+              style={{ visibility: openNavDropdown === 'resources' ? 'visible' : undefined }}
+              className={`absolute left-0 top-full z-50 w-56 pt-1 transition-all duration-200 ${openNavDropdown === 'resources' ? 'opacity-100' : 'invisible opacity-0 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100'}`}
             >
               <div className="rounded-md border border-border bg-background p-2 shadow-lg">
                 <Link href="/documentation" className="block px-3 py-2 rounded-md hover:bg-accent text-sm">
