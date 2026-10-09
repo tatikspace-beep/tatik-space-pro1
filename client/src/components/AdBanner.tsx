@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { Button } from './ui/button';
 import { trpc } from '@/lib/trpc';
+import { useLanguage } from '@/contexts/LanguageContext';
 
 interface AdBannerProps {
   position?: 'sidebar' | 'footer' | 'subtle' | 'marketplace';
@@ -10,6 +11,7 @@ interface AdBannerProps {
 
 export function AdBanner({ position = 'subtle', dismissible = true }: AdBannerProps) {
   const [visible, setVisible] = useState(true);
+  const { t } = useLanguage();
   const sessionId = typeof window === 'undefined'
     ? undefined
     : window.localStorage.getItem('tatik-banner-session') || (() => {
@@ -41,15 +43,17 @@ export function AdBanner({ position = 'subtle', dismissible = true }: AdBannerPr
   };
 
   return (
-    <div className={`relative ${styles[position]}`}>
+    <div className={`relative ${styles[position]} ${dismissible ? 'pr-12' : ''}`}>
       {dismissible && (
         <Button
           variant="ghost"
           size="sm"
-          className="absolute top-0 right-1 h-5 w-5 p-0"
+          className="absolute top-0 right-0 h-11 w-11 p-0"
           onClick={() => setVisible(false)}
+          aria-label={t.close}
+          title={t.close}
         >
-          <X className="h-3 w-3" />
+          <X className="h-5 w-5" />
         </Button>
       )}
       <div className="flex flex-col gap-0.5">

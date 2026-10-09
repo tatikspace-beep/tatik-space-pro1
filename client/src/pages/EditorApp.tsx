@@ -31,7 +31,7 @@ import { getLoginUrl } from '@/const';
 import { getEditorAppCopy } from '@/lib/editorAppCopy';
 import type { EditorAppCopyKey } from '@/lib/editorAppCopy';
 import { getEditorAppLabelFallback } from '@/lib/editorAppLabelFallbacks';
-import { Loader2, Save, Play, Bot, FolderOpen, FileCode, Search, Menu, X, LogOut, Download, Upload, FolderUp, FilePlus, FolderPlus, Monitor, Smartphone, RotateCw, ChevronDown, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Loader2, Save, Play, Bot, FolderOpen, FileCode, Search, Menu, X, LogOut, Download, Upload, FolderUp, FilePlus, FolderPlus, Monitor, Smartphone, RotateCw, ChevronDown, CheckCircle2, AlertCircle, Store } from 'lucide-react';
 import { toast } from 'sonner';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu';
 import { Helmet } from "react-helmet-async";
@@ -66,9 +66,11 @@ export default function EditorApp() {
   const [trialDaysLeft, setTrialDaysLeft] = useState(60);
   const [isPromoCollapsed, setIsPromoCollapsed] = useState<boolean>(() => {
     try {
-      return localStorage.getItem('editor_promo_collapsed') === '1';
+      const savedPreference = localStorage.getItem('editor_promo_collapsed');
+      if (savedPreference !== null) return savedPreference === '1';
+      return window.matchMedia('(max-width: 1023px)').matches;
     } catch (e) {
-      return false;
+      return typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches;
     }
   });
   const [versions, setVersions] = useState<any[]>([]);
@@ -2136,9 +2138,9 @@ export default function EditorApp() {
   }
 
   return (
-    <div className="h-screen flex flex-col bg-slate-900 text-white">
-      <header className="editor-app-header bg-slate-800 border-b border-slate-700 px-4 md:px-20 py-0 flex items-center justify-between" style={{ height: '50px' }}>
-        <div className="flex items-center gap-4">
+    <div className="editor-app-root h-screen flex flex-col bg-slate-900 text-white">
+      <header className="editor-app-header w-full min-w-0 bg-slate-800 border-b border-slate-700 px-4 md:px-20 py-0 flex items-center justify-between" style={{ height: '50px' }}>
+        <div className="editor-app-header-title flex min-w-0 flex-1 items-center gap-2 sm:gap-4">
           <Button
             variant="ghost"
             size="sm"
@@ -2147,20 +2149,23 @@ export default function EditorApp() {
           >
             {isSidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </Button>
-          <h1 className="text-xl font-bold">
+          <h1 className="min-w-0 truncate whitespace-nowrap text-sm sm:text-xl font-bold">
             {editorText('projectTitle')}
           </h1>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="editor-app-header-actions ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
         <Button
           variant="outline"
           size="sm"
           onClick={handleSellFromEditor}
-          className="border-slate-600 text-white hover:bg-slate-700"
+          className="editor-sell-template-button border-slate-600 text-white hover:bg-slate-700"
+          aria-label={editorText('sellTemplate')}
+          title={editorText('sellTemplate')}
         >
-          {editorText('sellTemplate')}
+          <Store className="h-4 w-4 sm:hidden" />
+          <span className="hidden sm:inline">{editorText('sellTemplate')}</span>
         </Button>
-        <div className="flex items-center gap-1.5 text-xs text-slate-300" aria-live="polite">
+        <div className="editor-save-status flex shrink-0 items-center gap-1.5 whitespace-nowrap text-xs text-slate-300" aria-live="polite">
             {saveStatus === 'saving' && <Loader2 className="h-3.5 w-3.5 animate-spin text-blue-400" />}
             {saveStatus === 'saved' && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />}
             {saveStatus === 'unsaved' && <Save className="h-3.5 w-3.5 text-amber-400" />}
@@ -2258,8 +2263,8 @@ export default function EditorApp() {
             </div>
 
             <div
-              className="flex-1 overflow-y-auto p-4 border-2 border-dashed border-slate-600 hover:border-slate-400 transition-colors rounded min-h-0 h-full"
-              style={{ height: '100%', display: 'flex', flexDirection: 'column' }}
+              className="flex-1 overflow-y-auto p-4 border-2 border-dashed border-slate-600 hover:border-slate-400 transition-colors rounded min-h-0"
+              style={{ display: 'flex', flexDirection: 'column' }}
               onDragOver={(e) => {
                 e.preventDefault();
                 e.currentTarget.classList.add('bg-slate-700');
@@ -2351,58 +2356,77 @@ export default function EditorApp() {
             {/* Sidebar promo (editor) - vertical layout, collapsible with arrow */}
             <div className="px-3 mt-3">
               <div
+                id="editor-trial-promo"
                 className="w-full overflow-hidden transition-all duration-300"
                 style={{ height: isPromoCollapsed ? 0 : 'auto' }}
+                aria-hidden={isPromoCollapsed}
               >
-                <div className="w-full flex flex-col items-center justify-center gap-1 border-t border-slate-700 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-3 py-2 rounded">
-                  <span className="text-[10px] text-slate-300 uppercase tracking-widest font-semibold">{editorLabel('freeTrialLabel')}</span>
+                {!isPromoCollapsed && (
+                  <div className="editor-trial-promo-card relative w-full flex flex-col items-center justify-center gap-1 border-t border-slate-700 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 px-3 pt-8 pb-2 rounded">
+                    <button
+                      type="button"
+                      aria-label={editorLabel('collapsePromo')}
+                      title={editorLabel('collapsePromo')}
+                      aria-expanded="true"
+                      aria-controls="editor-trial-promo"
+                      className="absolute top-0 right-0 inline-flex h-11 w-11 items-center justify-center rounded-md text-slate-300 transition-colors hover:bg-slate-700 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+                      onClick={() => {
+                        try {
+                          localStorage.setItem('editor_promo_collapsed', '1');
+                        } catch (e) {
+                          // ignore
+                        }
+                        setIsPromoCollapsed(true);
+                      }}
+                    >
+                      <X size={20} />
+                    </button>
+                    <span className="text-[10px] text-slate-300 uppercase tracking-widest font-semibold">{editorLabel('freeTrialLabel')}</span>
 
-                  <span style={{ color: '#60a5fa' }} className="text-lg font-extrabold leading-tight">
-                    {trialDaysLeft}
-                  </span>
+                    <span style={{ color: '#60a5fa' }} className="text-lg font-extrabold leading-tight">
+                      {trialDaysLeft}
+                    </span>
 
-                  <span className="text-xs text-white">{editorLabel('days')}</span>
+                    <span className="text-xs text-white">{editorLabel('days')}</span>
 
-                  <span className="text-xs font-semibold text-slate-100">{editorLabel('plan')}</span>
+                    <span className="text-xs font-semibold text-slate-100">{editorLabel('plan')}</span>
 
-                  <Button
-                    className="h-7 px-3 text-xs font-semibold shadow-lg mt-0.5"
-                    style={{
-                      background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
-                      color: 'white',
-                      border: 'none'
-                    }}
-                    onClick={() => toast.info(editorText('upgradeInDevelopment'))}
-                  >
-                    {i18nT('upgradeToPro')}
-                  </Button>
-                </div>
+                    <Button
+                      className="h-7 px-3 text-xs font-semibold shadow-lg mt-0.5"
+                      style={{
+                        background: 'linear-gradient(135deg, #3b82f6, #8b5cf6)',
+                        color: 'white',
+                        border: 'none'
+                      }}
+                      onClick={() => toast.info(editorText('upgradeInDevelopment'))}
+                    >
+                      {i18nT('upgradeToPro')}
+                    </Button>
+                  </div>
+                )}
               </div>
 
-              <button
-                className="w-full flex items-center justify-center gap-2 mt-2 py-1 text-xs text-slate-400 hover:text-slate-200 transition-colors"
-                onClick={() => {
-                  const next = !isPromoCollapsed;
-                  try {
-                    localStorage.setItem('editor_promo_collapsed', next ? '1' : '0');
-                  } catch (e) {
-                    // ignore
-                  }
-                  setIsPromoCollapsed(next);
-                }}
-              >
-                {isPromoCollapsed ? (
-                  <>
-                    <ChevronDown size={16} />
-                    <span>{editorLabel('expandPromo')}</span>
-                  </>
-                ) : (
-                  <>
-                    <ChevronDown size={16} className="rotate-180" />
-                    <span>{editorLabel('collapsePromo')}</span>
-                  </>
-                )}
-              </button>
+              {isPromoCollapsed && (
+                <button
+                  type="button"
+                  className="mt-2 flex min-h-11 w-full items-center justify-center gap-2 rounded border border-slate-700 text-xs text-slate-300 transition-colors hover:bg-slate-700/60 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+                  aria-label={editorLabel('expandPromo')}
+                  title={editorLabel('expandPromo')}
+                  aria-expanded="false"
+                  aria-controls="editor-trial-promo"
+                  onClick={() => {
+                    try {
+                      localStorage.setItem('editor_promo_collapsed', '0');
+                    } catch (e) {
+                      // ignore
+                    }
+                    setIsPromoCollapsed(false);
+                  }}
+                >
+                  <ChevronDown size={18} />
+                  <span>{editorLabel('expandPromo')}</span>
+                </button>
+              )}
             </div>
 
             <div className="p-3 border-t border-slate-700" style={{ position: 'relative' }}>
