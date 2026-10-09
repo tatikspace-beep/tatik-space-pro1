@@ -2860,6 +2860,12 @@ export default function EditorApp() {
                         externalUrl={externalPreviewUrl}
                         localFiles={previewFiles}
                         openedFolderName={openedFolderName}
+                        entryPath={
+                          currentFile && /\.html$/i.test(currentFile.path || currentFile.name || '')
+                            ? currentFile.path
+                            : previewFiles.find(file => file.content === htmlContent && /\.html$/i.test(file.path || file.name || ''))?.path
+                        }
+                        navigationHash={previewNavigationHash}
                         onLinkClick={handleLinkClick}
                         key={previewKey}
                       />
@@ -2873,12 +2879,6 @@ export default function EditorApp() {
         </main>
       </div>
 
-                        entryPath={
-                          currentFile && /\.html$/i.test(currentFile.path || currentFile.name || '')
-                            ? currentFile.path
-                            : previewFiles.find(file => file.content === htmlContent && /\.html$/i.test(file.path || file.name || ''))?.path
-                        }
-                        navigationHash={previewNavigationHash}
       <Dialog open={showBackupDialog} onOpenChange={setShowBackupDialog}>
         <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
