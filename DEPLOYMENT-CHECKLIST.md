@@ -211,7 +211,7 @@ Questi identificativi sono pubblici, ma gli script vengono caricati dal client s
 5. Eseguire un deploy Preview.
 6. Controllare i log di build e Runtime Logs.
 7. Solo dopo i test promuovere il commit in Production.
-8. Prima della promozione, verificare che il progetto Vercel sia `tatik-space-pro1` e che il dominio Production sia `https://tatik.space` (con `https://www.tatik.space` come alias, se configurato). Gli URL Vercel Preview sono secondari e non sostituiscono il dominio principale.
+8. Prima della promozione, verificare che il progetto Vercel sia `tatik-space-pro1`, nel team scope `tatikspace-beeps-projects`, e che il dominio Production sia `https://tatik.space` (con `https://www.tatik.space` come alias, se configurato). Gli URL Vercel Preview sono secondari e non sostituiscono il dominio principale.
 9. Configurare il dominio `tatik.space` e verificare HTTPS.
 
 Non eseguire migrazioni sul database Production come effetto implicito di un deploy. Verificare prima schema, migrazioni richieste e backup, e ottenere l'autorizzazione esplicita per la modifica del database.

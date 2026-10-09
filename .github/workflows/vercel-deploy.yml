@@ -34,9 +34,9 @@ jobs:
       - name: Deploy production to Vercel
         run: |
           npm i -g vercel
-          vercel link --yes --project "$VERCEL_PROJECT_ID" --team "$VERCEL_ORG_ID" --token "$VERCEL_TOKEN"
-          vercel --prod --token="$VERCEL_TOKEN" --force
+          vercel link --yes --project "$VERCEL_PROJECT_ID" --scope "$VERCEL_TEAM_SCOPE" --token "$VERCEL_TOKEN"
+          vercel --prod --scope "$VERCEL_TEAM_SCOPE" --token="$VERCEL_TOKEN" --force
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_ORG_ID: team_V9kqKM41Q9TPBJ4dZjdGveA3
+          VERCEL_TEAM_SCOPE: tatikspace-beeps-projects
           VERCEL_PROJECT_ID: prj_ln6ex769J6uEvyqRUnhT0zv1WXqB
