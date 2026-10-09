@@ -8,7 +8,7 @@ Questa checklist descrive il passaggio dall'ambiente di sviluppo alla produzione
 - [ ] Creare un progetto Vercel collegato al repository corretto.
 - [ ] Non incollare mai nel repository, nelle issue o nella chat `DATABASE_URL`, chiavi Stripe, PayPal, Resend, SMTP, AI o AWS.
 - [ ] Ruotare le chiavi eventualmente esposte in precedenza.
-- [ ] Preparare un dominio pubblico stabile, per esempio `https://tatik.space`.
+- [ ] Usare `https://www.tatik.space` come dominio pubblico principale e `https://tatik.space` come dominio secondario.
 - [ ] Configurare prima l'ambiente Preview, testare, poi replicare le variabili in Production.
 
 ## 2. Supabase PostgreSQL
@@ -94,7 +94,7 @@ In **Vercel > Project > Settings > Environment Variables** configurare le variab
 ```text
 NODE_ENV=production
 DATABASE_URL=...
-APP_URL=https://tatik.space
+APP_URL=https://www.tatik.space
 JWT_SECRET=...
 SESSION_SECRET=...
 ADMIN_EMAILS=tatik.space@gmail.com
@@ -211,8 +211,8 @@ Questi identificativi sono pubblici, ma gli script vengono caricati dal client s
 5. Eseguire un deploy Preview.
 6. Controllare i log di build e Runtime Logs.
 7. Un deploy Preview riuscito non autorizza da solo la pubblicazione Production. Prima di portare modifiche su `main`, ottenere la conferma esplicita dell'utente e chiarire che il deploy Vercel collegato a `main` aggiorna il sito pubblico.
-8. Il deploy Production avviene tramite l'integrazione Git di Vercel dopo il push sul branch `main`; verificare che il repository collegato e il branch Production siano quelli previsti, che il progetto sia `tatik-space-pro1` nel team scope `tatikspace-beeps-projects` e che il dominio Production sia `https://tatik.space` (con `https://www.tatik.space` come alias, se configurato). Gli URL Vercel Preview sono secondari e non sostituiscono il dominio principale.
-9. Configurare il dominio `tatik.space` e verificare HTTPS.
+8. Il deploy Production avviene tramite l'integrazione Git di Vercel dopo il push sul branch `main`; verificare che il repository collegato e il branch Production siano quelli previsti, che il progetto sia `tatik-space-pro1` nel team scope `tatikspace-beeps-projects` e che il dominio principale sia `https://www.tatik.space`, mentre `https://tatik.space` resta secondario. Gli URL Vercel Preview sono ambienti di test distinti e non sostituiscono il dominio principale.
+9. Configurare `www.tatik.space` come dominio principale e verificare HTTPS; configurare `tatik.space` come dominio secondario.
 
 Non eseguire migrazioni sul database Production come effetto implicito di un deploy. Verificare prima schema, migrazioni richieste e backup, e ottenere l'autorizzazione esplicita per la modifica del database.
 
