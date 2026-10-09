@@ -31,7 +31,8 @@ import { getLoginUrl } from '@/const';
 import { getEditorAppCopy } from '@/lib/editorAppCopy';
 import type { EditorAppCopyKey } from '@/lib/editorAppCopy';
 import { getEditorAppLabelFallback } from '@/lib/editorAppLabelFallbacks';
-import { Loader2, Save, Play, Bot, FolderOpen, FileCode, Search, Menu, X, LogOut, Download, Upload, FolderUp, FilePlus, FolderPlus, Monitor, Smartphone, RotateCw, ChevronDown, CheckCircle2, AlertCircle, Store } from 'lucide-react';
+import { normalizePreviewPath } from '@/lib/previewFileResolver';
+import { Loader2, Save, Play, Bot, FolderOpen, FileCode, Search, Menu, X, LogOut, Download, Upload, FolderUp, FilePlus, FolderPlus, Monitor, Smartphone, RotateCw, ChevronDown, CheckCircle2, AlertCircle, Store, Minus, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu';
 import { Helmet } from "react-helmet-async";
@@ -50,6 +51,7 @@ export default function EditorApp() {
   const [editorContent, setEditorContent] = useState('');
   const [htmlContent, setHtmlContent] = useState('');
   const [cssContent, setCssContent] = useState('');
+  const [previewNavigationHash, setPreviewNavigationHash] = useState('');
   const [jsContent, setJsContent] = useState('');
   const [externalPreviewUrl, setExternalPreviewUrl] = useState<string | null>(null);
   const [isCheckingDevServer, setIsCheckingDevServer] = useState(false);
@@ -81,7 +83,11 @@ export default function EditorApp() {
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('desktop');
   const [editorRotated, setEditorRotated] = useState(false);
   const [previewRotated, setPreviewRotated] = useState(false);
+  const [rotatedEditorExtraHeight, setRotatedEditorExtraHeight] = useState(0);
   const [savingFilePath, setSavingFilePath] = useState<string | null>(null);
+  const [rotatedPreviewExtraHeight, setRotatedPreviewExtraHeight] = useState(0);
+  const editorRotateAreaRef = useRef<HTMLDivElement>(null);
+  const editorRotateContentRef = useRef<HTMLDivElement>(null);
   const [savingFileName, setSavingFileName] = useState<string | null>(null);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [customSavePath, setCustomSavePath] = useState('');
@@ -112,6 +118,37 @@ export default function EditorApp() {
   const projectSetupAttemptedRef = useRef(false);
 
   const isBinaryAsset = (fileName: string) => /\.(avif|apng|bmp|gif|heic|jpe?g|png|svg|tiff?|webp|ico|mp3|wav|ogg|mp4|webm|mov|woff2?|ttf|otf)$/i.test(fileName);
+  useEffect(() => {
+    const area = editorRotateAreaRef.current;
+    const content = editorRotateContentRef.current;
+    if (!area || !content) return;
+
+    let measurementFrame = 0;
+    const updateRotatedSize = () => {
+      if (measurementFrame) cancelAnimationFrame(measurementFrame);
+      measurementFrame = requestAnimationFrame(() => {
+        measurementFrame = 0;
+        const { width, height } = area.getBoundingClientRect();
+        const rotatedWidth = `${height}px`;
+        const rotatedHeight = `${width}px`;
+        if (content.style.getPropertyValue('--rotated-content-width') !== rotatedWidth) {
+          content.style.setProperty('--rotated-content-width', rotatedWidth);
+        }
+        if (content.style.getPropertyValue('--rotated-content-height') !== rotatedHeight) {
+          content.style.setProperty('--rotated-content-height', rotatedHeight);
+        }
+      });
+    };
+
+    updateRotatedSize();
+    const observer = new ResizeObserver(updateRotatedSize);
+    observer.observe(area);
+    return () => {
+      observer.disconnect();
+      if (measurementFrame) cancelAnimationFrame(measurementFrame);
+    };
+  }, [editorRotated]);
+
 
   const readProjectFile = (file: File): Promise<string> => new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -622,8 +659,7 @@ export default function EditorApp() {
       return;
     }
 
-    // If a folder is opened, ALWAYS load the complete project (all files together)
-    // Don't show individual files - show the whole project preview
+    // Keep the complete project available while allowing local HTML links to change pages.
     if (openedFolderName) {
       console.log('[Preview Effect] Folder opened - loading complete project');
       const allFiles = previewFiles;
@@ -632,23 +668,15 @@ export default function EditorApp() {
         let cssContent = '';
         let jsContent = '';
 
-        // Find index.html or first HTML file
-        for (const f of allFiles) {
-          const fileName = (f.path || f.name).toLowerCase();
-          if (fileName.includes('index.html')) {
-            indexHtmlContent = f.content || '';
-            console.log('[Preview] Found index.html:', indexHtmlContent.length, 'bytes');
-            break;
-          }
-        }
-
-        // If no index.html, use first HTML file
-        if (!indexHtmlContent) {
+        if (currentFile && /\.html$/i.test(currentFile.path || currentFile.name || '')) {
+          indexHtmlContent = editorContent;
+        } else {
+          // Find index.html or first HTML file
           for (const f of allFiles) {
             const fileName = (f.path || f.name).toLowerCase();
-            if (fileName.endsWith('.html')) {
+            if (fileName.includes('index.html')) {
               indexHtmlContent = f.content || '';
-              console.log('[Preview] Found first HTML file:', fileName, indexHtmlContent.length, 'bytes');
+              console.log('[Preview] Found index.html:', indexHtmlContent.length, 'bytes');
               break;
             }
           }
@@ -665,6 +693,18 @@ export default function EditorApp() {
         }
 
         console.log('[Preview] Loading project - HTML:', indexHtmlContent.length, 'bytes, CSS:', cssContent.length, 'bytes, JS:', jsContent.length, 'bytes');
+
+          // If no index.html, use first HTML file
+          if (!indexHtmlContent) {
+            for (const f of allFiles) {
+              const fileName = (f.path || f.name).toLowerCase();
+              if (fileName.endsWith('.html')) {
+                indexHtmlContent = f.content || '';
+                console.log('[Preview] Found first HTML file:', fileName, indexHtmlContent.length, 'bytes');
+                break;
+              }
+            }
+          }
 
         // Update preview with project files
         if (indexHtmlContent) {
@@ -1173,6 +1213,7 @@ export default function EditorApp() {
         setDetectedLanguageLabel(detected);
         const extension = getExtensionByLanguage(detected);
         const newFileName = `nuovo-file.${extension}`;
+    setPreviewNavigationHash('');
         const newPath = newFileName;
 
         const newFile = {
@@ -1427,35 +1468,16 @@ export default function EditorApp() {
     toast.success(editorText('folderClosed'));
   };
 
-  const handleLinkClick = (href: string) => {
-    if (!openedFolderName) {
-      console.log('[EditorApp] No folder open, ignoring link click');
-      return;
-    }
-
-    console.log('[EditorApp] Link clicked:', href, 'in folder:', openedFolderName);
-
-    // Normalize the href (remove leading ./, /,  etc.)
-    let normalizedHref = href.replace(/^\.\/?/, '').replace(/^\//, '');
-
-    // Search for the file in localFiles
-    let foundFile = localFiles.find(f => {
-      const filePath = (f.path || f.name).toLowerCase();
-      return filePath.includes(normalizedHref.toLowerCase());
-    });
-
-    // If not found, try exact match
-    if (!foundFile) {
-      foundFile = localFiles.find(f => {
-        const fileName = (f.name || f.path).toLowerCase();
-        return fileName === normalizedHref.toLowerCase();
-      });
-    }
+  const handleLinkClick = (href: string, fragment = '') => {
+    const targetPath = normalizePreviewPath(href, openedFolderName || '').toLowerCase();
+    const files = previewFiles;
+    const foundFile = files.find(file =>
+      normalizePreviewPath(file.path || file.name || '', openedFolderName || '').toLowerCase() === targetPath,
+    );
 
     if (foundFile) {
-      console.log('[EditorApp] Found file for link:', foundFile.name);
-      setCurrentFile(foundFile);
-      setEditorContent(foundFile.content || '');
+      openFile(foundFile);
+      setPreviewNavigationHash(fragment);
 
       // Detect file type and set language
       const fileName = (foundFile.name || foundFile.path).toLowerCase();
@@ -1469,7 +1491,7 @@ export default function EditorApp() {
         setSelectedLanguage('typescript');
       }
     } else {
-      console.log('[EditorApp] File not found for link:', href);
+      setPreviewNavigationHash('');
       toast.info(editorText('fileNotFound', { path: href }));
     }
   };
@@ -2580,8 +2602,9 @@ export default function EditorApp() {
                 flex: `0 0 ${Math.round(editorWidth)}px`,
                 minWidth: '200px',
                 overflowX: 'auto',
-                overflowY: 'hidden'
-              }}
+                overflowY: 'hidden',
+                '--rotated-editor-extra-height': `${rotatedEditorExtraHeight}px`
+              } as React.CSSProperties}
             >
               {/* Tabs for open files */}
               <div className="flex items-center gap-2 px-4 py-2 bg-slate-900 border-b border-slate-700 overflow-hidden flex-shrink-0 min-w-0">
@@ -2589,6 +2612,7 @@ export default function EditorApp() {
                   currentFile ? (
                     <button
                       className={`flex items-center gap-2 px-4 py-3 rounded ${currentFile ? 'bg-slate-700' : ''}`}
+              data-rotated={editorRotated}
                       onClick={() => {
                         // keep focus on currentFile
                       }}
@@ -2615,21 +2639,51 @@ export default function EditorApp() {
                     </button>
                   ))
                 )}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="ml-auto h-8 w-8 shrink-0 lg:hidden"
-                  aria-label="Ruota area editor di 90 gradi"
-                  aria-pressed={editorRotated}
-                  title="Ruota area editor di 90 gradi"
-                  onClick={() => setEditorRotated((rotated) => !rotated)}
-                >
-                  <RotateCw className={`h-4 w-4 transition-transform ${editorRotated ? 'rotate-90' : ''}`} />
-                </Button>
+                <div className="ml-auto flex shrink-0 items-center gap-1 lg:hidden">
+                  {editorRotated && (
+                    <>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-11 w-11"
+                        aria-label="Riduci altezza area editor"
+                        title="Riduci altezza area editor"
+                        disabled={rotatedEditorExtraHeight === 0}
+                        onClick={() => setRotatedEditorExtraHeight((height) => Math.max(0, height - 80))}
+                      >
+                        <Minus className="h-5 w-5" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-11 w-11"
+                        aria-label="Aumenta altezza area editor"
+                        title="Aumenta altezza area editor"
+                        disabled={rotatedEditorExtraHeight >= 640}
+                        onClick={() => setRotatedEditorExtraHeight((height) => Math.min(640, height + 80))}
+                      >
+                        <Plus className="h-5 w-5" />
+                      </Button>
+                    </>
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-11 w-11"
+                    aria-label="Ruota area editor di 90 gradi"
+                    aria-pressed={editorRotated}
+                    title="Ruota area editor di 90 gradi"
+                    onClick={() => setEditorRotated((rotated) => !rotated)}
+                  >
+                    <RotateCw className={`h-4 w-4 transition-transform ${editorRotated ? 'rotate-90' : ''}`} />
+                  </Button>
+                </div>
               </div>
-              <div className="mobile-rotate-area flex-1 flex flex-col min-h-0 h-full" data-rotated={editorRotated} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                <div className="mobile-rotate-content flex-1 flex flex-col min-h-0">
+              <div ref={editorRotateAreaRef} className="mobile-rotate-area mobile-rotate-code-area flex-1 flex flex-col min-h-0 h-full" data-rotated={editorRotated} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                <div ref={editorRotateContentRef} className="mobile-rotate-content mobile-rotate-code-content flex-1 flex flex-col min-h-0">
                 {/* Language detection — subtle pill (non-intrusive) */}
                 {detectedLanguageLabel && detectedLanguageLabel !== 'plaintext' && (
                   <div className="flex items-center gap-3 px-3 py-1 mb-2">
@@ -2644,15 +2698,18 @@ export default function EditorApp() {
                     )}
                   </div>
                 )}
-                <CodeEditor
-                  value={editorContent}
-                  onChange={handleEditorChange}
-                  language={selectedLanguage}
-                  height="100%"
-                  highlightRanges={editorHighlights}
-                  jumpToLine={jumpToLine}
-                  autoDetectLanguage={selectedLanguage === 'plaintext'}
-                />
+                <div className="min-h-0 min-w-0 flex-1">
+                  <CodeEditor
+                    value={editorContent}
+                    onChange={handleEditorChange}
+                    language={selectedLanguage}
+                    height="100%"
+                    highlightRanges={editorHighlights}
+                    jumpToLine={jumpToLine}
+                    autoDetectLanguage={selectedLanguage === 'plaintext'}
+                    rotationFrame={editorRotated}
+                  />
+                </div>
                 </div>
               </div>
             </div>
@@ -2686,8 +2743,9 @@ export default function EditorApp() {
               className="editor-preview-panel bg-white flex flex-col min-h-0 h-full"
               style={{
                 flex: `1 1 0`,
-                overflow: 'hidden'
-              }}
+                overflow: 'hidden',
+                '--rotated-preview-extra-height': `${rotatedPreviewExtraHeight}px`
+              } as React.CSSProperties}
             >
               <div className="editor-preview-header px-4 py-2 bg-slate-800 border-b border-slate-700 text-white text-sm font-semibold flex-shrink-0 flex items-center justify-between gap-4">
                 {/* Left: ANTEPRIMA + Aggiorna button */}
@@ -2697,6 +2755,7 @@ export default function EditorApp() {
                     {i18nT('refreshPreview')}
                   </Button>
                 </div>
+              data-rotated={previewRotated}
 
                 {/* Center: PerfCheck */}
                 <div className="editor-preview-metrics flex-1 flex justify-center px-4">
@@ -2713,18 +2772,48 @@ export default function EditorApp() {
                       <Smartphone size={14} />
                     </Button>
                   </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="h-8 w-8 lg:hidden"
-                    aria-label="Ruota area anteprima di 90 gradi"
-                    aria-pressed={previewRotated}
-                    title="Ruota area anteprima di 90 gradi"
-                    onClick={() => setPreviewRotated((rotated) => !rotated)}
-                  >
-                    <RotateCw className={`h-4 w-4 transition-transform ${previewRotated ? 'rotate-90' : ''}`} />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    {previewRotated && (
+                      <>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="h-11 w-11 lg:hidden"
+                          aria-label="Riduci altezza area anteprima"
+                          title="Riduci altezza area anteprima"
+                          disabled={rotatedPreviewExtraHeight === 0}
+                          onClick={() => setRotatedPreviewExtraHeight((height) => Math.max(0, height - 80))}
+                        >
+                          <Minus className="h-5 w-5" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="h-11 w-11 lg:hidden"
+                          aria-label="Aumenta altezza area anteprima"
+                          title="Aumenta altezza area anteprima"
+                          disabled={rotatedPreviewExtraHeight >= 640}
+                          onClick={() => setRotatedPreviewExtraHeight((height) => Math.min(640, height + 80))}
+                        >
+                          <Plus className="h-5 w-5" />
+                        </Button>
+                      </>
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-11 w-11 lg:hidden"
+                      aria-label="Ruota area anteprima di 90 gradi"
+                      aria-pressed={previewRotated}
+                      title="Ruota area anteprima di 90 gradi"
+                      onClick={() => setPreviewRotated((rotated) => !rotated)}
+                    >
+                      <RotateCw className={`h-4 w-4 transition-transform ${previewRotated ? 'rotate-90' : ''}`} />
+                    </Button>
+                  </div>
                 </div>
               </div>
               <div className="mobile-rotate-area flex-1 relative min-h-0 w-full p-4" data-rotated={previewRotated} style={{ height: '100%', overflow: 'auto' }}>
@@ -2769,7 +2858,7 @@ export default function EditorApp() {
                         cssContent={cssContent}
                         jsContent={jsContent}
                         externalUrl={externalPreviewUrl}
-                        localFiles={localFiles}
+                        localFiles={previewFiles}
                         openedFolderName={openedFolderName}
                         onLinkClick={handleLinkClick}
                         key={previewKey}
@@ -2784,6 +2873,12 @@ export default function EditorApp() {
         </main>
       </div>
 
+                        entryPath={
+                          currentFile && /\.html$/i.test(currentFile.path || currentFile.name || '')
+                            ? currentFile.path
+                            : previewFiles.find(file => file.content === htmlContent && /\.html$/i.test(file.path || file.name || ''))?.path
+                        }
+                        navigationHash={previewNavigationHash}
       <Dialog open={showBackupDialog} onOpenChange={setShowBackupDialog}>
         <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>

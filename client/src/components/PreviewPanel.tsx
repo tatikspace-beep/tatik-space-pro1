@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { getEditorOutsideCopy } from '@/lib/editorOutsideCopy';
+import { normalizePreviewPath, resolvePreviewFile } from '@/lib/previewFileResolver';
 
 interface PreviewPanelProps {
   mode?: 'static' | 'vite-react';
@@ -8,12 +9,14 @@ interface PreviewPanelProps {
   cssContent: string;
   jsContent: string;
   externalUrl?: string | null;
-  localFiles?: any[];
+  localFiles?: Array<{ name?: string; path?: string; content?: string }>;
   openedFolderName?: string | null;
-  onLinkClick?: (filePath: string) => void;
+  entryPath?: string | null;
+  navigationHash?: string;
+  onLinkClick?: (filePath: string, fragment?: string) => void;
 }
 
-export function PreviewPanel({ mode = 'static', htmlContent, cssContent, jsContent, externalUrl, localFiles = [], openedFolderName, onLinkClick }: PreviewPanelProps) {
+export function PreviewPanel({ mode = 'static', htmlContent, cssContent, jsContent, externalUrl, localFiles = [], openedFolderName, entryPath, navigationHash, onLinkClick }: PreviewPanelProps) {
   const { language } = useLanguage();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [refreshCounter, setRefreshCounter] = React.useState(0);
@@ -51,39 +54,10 @@ export function PreviewPanel({ mode = 'static', htmlContent, cssContent, jsConte
       return;
     }
 
-    const normalizePath = (value: string) => value
-      .replace(/\\/g, '/')
-      .replace(/^\/+/, '')
-      .replace(/^\.\/+/, '');
-
-    const fileMap = new Map<string, any>();
+    const normalizePath = (value: string) => normalizePreviewPath(value, openedFolderName || '');
+    const resolveFile = (reference: string, basePath = '') =>
+      resolvePreviewFile(localFiles, reference, basePath, openedFolderName || '');
     const objectUrls: string[] = [];
-    localFiles.forEach(file => {
-      const fullPath = normalizePath(file.path || file.name || '');
-      const relativePath = openedFolderName && fullPath.startsWith(`${normalizePath(openedFolderName)}/`)
-        ? fullPath.slice(normalizePath(openedFolderName).length + 1)
-        : fullPath;
-      fileMap.set(fullPath, file);
-      fileMap.set(relativePath, file);
-      fileMap.set(normalizePath(file.name || ''), file);
-    });
-
-    const resolveFile = (reference: string, basePath = '') => {
-      const cleanReference = normalizePath(reference.split(/[?#]/)[0]);
-      if (!cleanReference || cleanReference.startsWith('data:') || cleanReference.startsWith('blob:')) return undefined;
-      if (/^(https?:|mailto:|javascript:|#)/i.test(reference)) return undefined;
-
-      const baseParts = normalizePath(basePath).split('/').filter(Boolean);
-      baseParts.pop();
-      const candidateParts = [...baseParts, ...cleanReference.split('/')];
-      const normalizedParts: string[] = [];
-      candidateParts.forEach(part => {
-        if (!part || part === '.') return;
-        if (part === '..') normalizedParts.pop();
-        else normalizedParts.push(part);
-      });
-      return fileMap.get(normalizedParts.join('/')) || fileMap.get(cleanReference);
-    };
 
     const mimeTypeFor = (fileName: string) => {
       const extension = fileName.split('.').pop()?.toLowerCase();
@@ -119,56 +93,158 @@ export function PreviewPanel({ mode = 'static', htmlContent, cssContent, jsConte
       return types[extension || ''] || 'text/plain';
     };
 
-    const toLocalUrl = (file: any) => {
+    const toLocalUrl = (file: (typeof localFiles)[number] | undefined) => {
       if (!file || typeof file.content !== 'string') return undefined;
       if (file.content.startsWith('data:')) return file.content;
+      const path = normalizePath(file.path || file.name || '').toLowerCase();
+      const existingUrl = fileObjectUrls.get(path);
+      if (existingUrl) return existingUrl;
       const blob = new Blob([file.content], { type: mimeTypeFor(file.name || file.path || '') });
       const url = URL.createObjectURL(blob);
       objectUrls.push(url);
+      fileObjectUrls.set(path, url);
       return url;
     };
 
-    const rewriteCss = (css: string, sourcePath = '') => css.replace(
-      /url\(\s*(['"]?)([^'")]+)\1\s*\)/gi,
+    const fileObjectUrls = new Map<string, string>();
+    const rewriteCss = (css: string, sourcePath = '', importedPaths = new Set<string>()): string => {
+      const withImports = css.replace(
+        /@import\s+(?:url\(\s*)?(?:"([^"]+)"|'([^']+)'|([^'"\s)]+))\s*\)?\s*([^;]*);/gi,
+        (match, doubleQuoted, singleQuoted, unquoted, conditions) => {
+          const reference = doubleQuoted || singleQuoted || unquoted;
+          const resolved = resolveFile(reference, sourcePath);
+          if (!resolved || !/\.css$/i.test(resolved.path) || typeof resolved.file.content !== 'string') return match;
+
+          const path = resolved.path.toLowerCase();
+          if (importedPaths.has(path)) return '';
+          importedPaths.add(path);
+
+          const importedCss = rewriteCss(
+            resolved.file.content,
+            resolved.file.path || resolved.file.name || '',
+            importedPaths,
+          );
+          const media = (conditions || '').trim();
+          return media ? `@media ${media} { ${importedCss} }` : importedCss;
+        },
+      );
+
+      return withImports.replace(
+        /url\(\s*(['"]?)([^'")]+)\1\s*\)/gi,
       (match, quote, reference) => {
-        const file = resolveFile(reference, sourcePath);
-        const url = toLocalUrl(file);
-        return url ? `url("${url}")` : match;
+        const resolved = resolveFile(reference, sourcePath);
+        const url = toLocalUrl(resolved?.file);
+        const suffix = reference.match(/[?#].*$/)?.[0] || '';
+        return url ? `url("${url}${suffix}")` : match;
       },
-    );
+      );
+    };
 
     const rewriteHtml = (html: string) => {
       const parser = new DOMParser();
       const parsed = parser.parseFromString(html, 'text/html');
-      const sourcePath = localFiles.find(file => file.content === html)?.path || 'index.html';
+      const sourcePath = entryPath || localFiles.find(file => file.content === html)?.path || 'index.html';
+      const linkedCssPaths = new Set<string>();
+      const linkedScriptPaths = new Set<string>();
 
       parsed.querySelectorAll('link[rel="stylesheet"][href]').forEach(link => {
-        const file = resolveFile(link.getAttribute('href') || '', sourcePath);
-        if (file) {
-          link.remove();
+        const resolved = resolveFile(link.getAttribute('href') || '', sourcePath);
+        if (resolved && typeof resolved.file.content === 'string') {
+          const style = parsed.createElement('style');
+          for (const attribute of ['media', 'title']) {
+            const value = link.getAttribute(attribute);
+            if (value) style.setAttribute(attribute, value);
+          }
+          style.textContent = rewriteCss(
+            resolved.file.content,
+            resolved.file.path || resolved.file.name || '',
+            new Set([resolved.path.toLowerCase()]),
+          );
+          link.replaceWith(style);
+          linkedCssPaths.add(resolved.path);
         }
       });
 
       parsed.querySelectorAll('script[src]').forEach(script => {
-        const file = resolveFile(script.getAttribute('src') || '', sourcePath);
-        if (file) {
-          script.remove();
+        const resolved = resolveFile(script.getAttribute('src') || '', sourcePath);
+        if (resolved && typeof resolved.file.content === 'string') {
+          const type = script.getAttribute('type');
+          if (type === 'module') {
+            const localUrl = toLocalUrl(resolved.file);
+            if (localUrl) script.setAttribute('src', localUrl);
+          } else {
+            script.removeAttribute('src');
+            script.textContent = resolved.file.content;
+          }
+          linkedScriptPaths.add(resolved.path);
         }
       });
 
-      parsed.querySelectorAll('[src], [href], [poster]').forEach(element => {
-        const attribute = element.hasAttribute('src') ? 'src' : element.hasAttribute('poster') ? 'poster' : 'href';
-        const reference = element.getAttribute(attribute);
-        if (!reference || attribute === 'href' && reference.startsWith('#')) return;
-        const file = resolveFile(reference, sourcePath);
-        const url = toLocalUrl(file);
-        if (url) element.setAttribute(attribute, url);
+      const rewriteLocalAssets = (root: ParentNode) => {
+        root.querySelectorAll('[src], [href], [poster]').forEach(element => {
+          if (element instanceof HTMLAnchorElement) return;
+          const attribute = element.hasAttribute('src') ? 'src' : element.hasAttribute('poster') ? 'poster' : 'href';
+          const reference = element.getAttribute(attribute);
+          if (!reference || reference.startsWith('#')) return;
+          const resolved = resolveFile(reference, sourcePath);
+          const url = toLocalUrl(resolved?.file);
+          if (url) element.setAttribute(attribute, `${url}${reference.match(/[?#].*$/)?.[0] || ''}`);
+        });
+        root.querySelectorAll('[srcset]').forEach(element => {
+          const srcset = element.getAttribute('srcset');
+          if (!srcset) return;
+          const rewritten = srcset.split(',').map(candidate => {
+            const [reference, ...descriptors] = candidate.trim().split(/\s+/);
+            const resolved = resolveFile(reference, sourcePath);
+            const url = toLocalUrl(resolved?.file);
+            const suffix = reference.match(/[?#].*$/)?.[0] || '';
+            return `${url ? `${url}${suffix}` : reference}${descriptors.length ? ` ${descriptors.join(' ')}` : ''}`;
+          }).join(', ');
+          element.setAttribute('srcset', rewritten);
+        });
+      };
+
+      rewriteLocalAssets(parsed.head);
+      rewriteLocalAssets(parsed.body);
+      parsed.head.querySelectorAll('style').forEach(style => {
+        style.textContent = rewriteCss(style.textContent || '', sourcePath);
       });
 
-      return parsed.body.innerHTML;
+      const projectStyles = localFiles
+        .filter(file => {
+          const path = normalizePath(file.path || file.name || '').toLowerCase();
+          return /\.css$/i.test(path) && typeof file.content === 'string' && !linkedCssPaths.has(path);
+        })
+        .map(file => {
+          const path = normalizePath(file.path || file.name || '').toLowerCase();
+          return `<style>${rewriteCss(file.content || '', file.path || file.name || '', new Set([path]))}</style>`;
+        })
+        .join('\n');
+      const projectScripts = localFiles
+        .filter(file => {
+          const path = normalizePath(file.path || file.name || '').toLowerCase();
+          return /\.(?:js|ts)$/i.test(path) && !/\.d\.ts$/i.test(path) && typeof file.content === 'string' && !linkedScriptPaths.has(path);
+        })
+        .map(file => {
+          const content = (file.content || '').replace(/<\/script/gi, '<\\/script');
+          return `<script>${content}</script>`;
+        })
+        .join('\n');
+
+      const hasProjectStyles = localFiles.some(file => /\.css$/i.test(file.path || file.name || '') && typeof file.content === 'string');
+      const hasProjectScripts = localFiles.some(file => /\.(?:js|ts)$/i.test(file.path || file.name || '') && !/\.d\.ts$/i.test(file.path || file.name || '') && typeof file.content === 'string');
+      const extraStyles = projectStyles || (!hasProjectStyles && cssContent ? `<style>${rewriteCss(cssContent, sourcePath)}</style>` : '');
+      const extraScripts = projectScripts || (!hasProjectScripts && jsContent ? `<script>${jsContent}</script>` : '');
+
+      return {
+        head: parsed.head.innerHTML,
+        body: parsed.body.innerHTML,
+        extraStyles,
+        extraScripts,
+        sourcePath,
+      };
     };
 
-    const rewrittenCss = rewriteCss(cssContent);
     const rewrittenHtml = rewriteHtml(htmlContent);
 
     // Create complete HTML with CSS and JS
@@ -188,14 +264,13 @@ export function PreviewPanel({ mode = 'static', htmlContent, cssContent, jsConte
             overflow: scroll;
             display: block;
           }
-          ${rewrittenCss}
         </style>
+        ${rewrittenHtml.extraStyles}
+        ${rewrittenHtml.head}
       </head>
       <body>
-        ${rewrittenHtml}
-        <script>
-          ${jsContent}
-        </script>
+        ${rewrittenHtml.body}
+        ${rewrittenHtml.extraScripts}
       </body>
       </html>`;
 
@@ -204,6 +279,20 @@ export function PreviewPanel({ mode = 'static', htmlContent, cssContent, jsConte
       doc.write(completeHTML);
       doc.close();
       console.log('[PreviewPanel] ✅ Content written to iframe (injected)');
+      if (navigationHash) {
+        const fragment = (() => {
+          try {
+            return decodeURIComponent(navigationHash.replace(/^#/, ''));
+          } catch {
+            return navigationHash.replace(/^#/, '');
+          }
+        })();
+        window.requestAnimationFrame(() => {
+          const target = doc.getElementById(fragment)
+            || Array.from(doc.getElementsByName(fragment))[0];
+          target?.scrollIntoView();
+        });
+      }
 
       // Add click listener for links within the iframe
       if (doc.body) {
@@ -211,18 +300,16 @@ export function PreviewPanel({ mode = 'static', htmlContent, cssContent, jsConte
           const target = e.target as HTMLElement;
           const link = target.closest('a') as HTMLAnchorElement;
 
-          if (link && link.href) {
-            const href = link.getAttribute('href');
-            if (href && !href.startsWith('http') && !href.startsWith('#')) {
-              e.preventDefault();
-              console.log('[PreviewPanel] Link clicked:', href);
-
-              // Call the callback to handle link navigation
-              if (onLinkClick) {
-                onLinkClick(href);
-              }
-            }
-          }
+          if (!link || !link.href || !onLinkClick) return;
+          if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+          if (link.hasAttribute('download') || (link.target && link.target.toLowerCase() !== '_self')) return;
+          const href = link.getAttribute('href') || '';
+          if (!href || /^(?:[a-z]+:|\/\/)/i.test(href)) return;
+          if (href.startsWith('#')) return;
+          const resolved = resolveFile(href, rewrittenHtml.sourcePath);
+          const fragment = href.includes('#') ? href.slice(href.indexOf('#')) : '';
+          e.preventDefault();
+          onLinkClick(resolved?.file.path || resolved?.file.name || href, fragment);
         };
 
         doc.body.addEventListener('click', handleLinkClick);
@@ -234,7 +321,7 @@ export function PreviewPanel({ mode = 'static', htmlContent, cssContent, jsConte
     return () => {
       objectUrls.forEach(url => URL.revokeObjectURL(url));
     };
-  }, [mode, htmlContent, cssContent, jsContent, externalUrl, localFiles, openedFolderName, onLinkClick, refreshCounter]);
+  }, [mode, htmlContent, cssContent, jsContent, externalUrl, localFiles, openedFolderName, entryPath, navigationHash, onLinkClick, refreshCounter]);
   // Render iframe with refresh button overlay
   const handleRefresh = () => {
     if (externalUrl) {

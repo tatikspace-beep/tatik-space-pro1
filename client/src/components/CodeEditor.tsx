@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { EditorView, basicSetup } from 'codemirror';
 import { oneDark } from '@codemirror/theme-one-dark';
 import { Decoration } from '@codemirror/view';
@@ -165,6 +166,7 @@ interface CodeEditorProps {
   highlightRanges?: { from: number; to: number }[];
   jumpToLine?: number | null;
   autoDetectLanguage?: boolean;
+  rotationFrame?: boolean;
 }
 
 const languageMap: Record<string, () => any> = {
@@ -200,10 +202,15 @@ export function CodeEditor({
   highlightRanges = [],
   jumpToLine = null,
   autoDetectLanguage = false,
+  rotationFrame = false,
 }: CodeEditorProps) {
   const { language: appLanguage } = useLanguage();
   const containerRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const [frameDocument, setFrameDocument] = useState<Document | null>(null);
   const viewRef = useRef<EditorView | null>(null);
+  const selectionRef = useRef<{ anchor: number; head: number } | null>(null);
+  const scrollTopRef = useRef(0);
   const [isDarkTheme, setIsDarkTheme] = useState(() => {
     return document.documentElement.classList.contains('dark');
   });
@@ -237,6 +244,10 @@ export function CodeEditor({
   }, [value, autoDetectLanguage, language]);
 
   useEffect(() => {
+    if (!rotationFrame) setFrameDocument(null);
+  }, [rotationFrame]);
+
+  useEffect(() => {
     if (!containerRef.current) return;
 
     if (viewRef.current) {
@@ -248,8 +259,15 @@ export function CodeEditor({
 
     const languageExtension = languageMap[detectedLanguage] ? languageMap[detectedLanguage]() : [];
 
+    const selection = selectionRef.current;
     const state = EditorState.create({
       doc: value,
+      selection: selection
+        ? {
+            anchor: Math.min(selection.anchor, value.length),
+            head: Math.min(selection.head, value.length),
+          }
+        : undefined,
       extensions: [
         basicSetup,
         isDarkTheme ? oneDark : lightTheme,
@@ -288,6 +306,7 @@ export function CodeEditor({
 
     view.dom.style.height = '100%';
     view.dom.style.width = '100%';
+    view.scrollDOM.scrollTop = scrollTopRef.current;
 
     const scroller = view.dom.querySelector('.cm-scroller') as HTMLElement;
     if (scroller) {
@@ -299,9 +318,15 @@ export function CodeEditor({
     console.log('[CodeEditor] Editor recreated with isDarkTheme:', isDarkTheme);
 
     return () => {
+      selectionRef.current = {
+        anchor: view.state.selection.main.anchor,
+        head: view.state.selection.main.head,
+      };
+      scrollTopRef.current = view.scrollDOM.scrollTop;
       view.destroy();
+      if (viewRef.current === view) viewRef.current = null;
     };
-  }, [detectedLanguage, isDarkTheme]);
+  }, [detectedLanguage, isDarkTheme, frameDocument, rotationFrame]);
 
   useEffect(() => {
     if (viewRef.current && viewRef.current.state.doc.toString() !== value) {
@@ -334,17 +359,61 @@ export function CodeEditor({
 
   return (
     <div className="relative w-full h-full">
-      <div
-        ref={containerRef}
-        style={{
-          height: '100%',
-          width: '100%',
-          border: '1px solid #334155',
-          borderRadius: '4px',
-          overflow: 'auto',
-        }}
-        className={`w-full h-full ${isDarkTheme ? 'bg-slate-900' : 'bg-white'}`}
-      />
+      {rotationFrame ? (
+        <>
+          {/* Isolate CodeMirror's layout viewport from the CSS rotation transform. */}
+          <iframe
+            ref={frameRef}
+            title="Rotated code editor"
+            srcDoc="<!doctype html><html><head></head><body></body></html>"
+            onLoad={() => {
+              const frameDocument = frameRef.current?.contentDocument;
+              if (!frameDocument) return;
+
+              for (const stylesheet of document.head.querySelectorAll('style, link[rel="stylesheet"]')) {
+                frameDocument.head.appendChild(stylesheet.cloneNode(true));
+              }
+              frameDocument.documentElement.style.width = '100%';
+              frameDocument.documentElement.style.height = '100%';
+              frameDocument.documentElement.className = document.documentElement.className;
+              Object.assign(frameDocument.body.style, {
+                margin: '0',
+                width: '100%',
+                height: '100%',
+                overflow: 'hidden',
+              });
+              setFrameDocument(frameDocument);
+            }}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', border: 0 }}
+          />
+          {frameDocument && createPortal(
+            <div
+              ref={containerRef}
+              style={{
+                height: '100%',
+                width: '100%',
+                border: '1px solid #334155',
+                borderRadius: '4px',
+                overflow: 'auto',
+              }}
+              className={`w-full h-full ${isDarkTheme ? 'bg-slate-900' : 'bg-white'}`}
+            />,
+            frameDocument.body,
+          )}
+        </>
+      ) : (
+        <div
+          ref={containerRef}
+          style={{
+            height: '100%',
+            width: '100%',
+            border: '1px solid #334155',
+            borderRadius: '4px',
+            overflow: 'auto',
+          }}
+          className={`w-full h-full ${isDarkTheme ? 'bg-slate-900' : 'bg-white'}`}
+        />
+      )}
 
       <div className="absolute bottom-2 right-2 flex items-center gap-2 text-xs">
         <div className={`px-2 py-1 rounded border ${isDarkTheme ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-100 border-slate-300 text-slate-600'}`}>{getEditorOutsideCopy(appLanguage, 'selectNextOccurrence')}</div>
