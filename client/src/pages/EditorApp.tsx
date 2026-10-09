@@ -2741,6 +2741,7 @@ export default function EditorApp() {
             {/* PREVIEW PANEL */}
             <div
               className="editor-preview-panel bg-white flex flex-col min-h-0 h-full"
+              data-rotated={previewRotated}
               style={{
                 flex: `1 1 0`,
                 overflow: 'hidden',
@@ -2755,7 +2756,6 @@ export default function EditorApp() {
                     {i18nT('refreshPreview')}
                   </Button>
                 </div>
-              data-rotated={previewRotated}
 
                 {/* Center: PerfCheck */}
                 <div className="editor-preview-metrics flex-1 flex justify-center px-4">
