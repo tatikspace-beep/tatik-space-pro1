@@ -2598,6 +2598,7 @@ export default function EditorApp() {
             {/* EDITOR PANEL */}
             <div
               className="editor-code-panel border-r border-slate-700 flex flex-col min-h-0"
+              data-rotated={editorRotated}
               style={{
                 flex: `0 0 ${Math.round(editorWidth)}px`,
                 minWidth: '200px',
@@ -2612,7 +2613,6 @@ export default function EditorApp() {
                   currentFile ? (
                     <button
                       className={`flex items-center gap-2 px-4 py-3 rounded ${currentFile ? 'bg-slate-700' : ''}`}
-              data-rotated={editorRotated}
                       onClick={() => {
                         // keep focus on currentFile
                       }}
