@@ -1,0 +1,16 @@
+{
+  "name": "tatik-python-browser-runner",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/copy-pyodide.mjs && vite build",
+    "check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "pyodide": "314.0.7"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3",
+    "vite": "^7.3.7"
+  }
+}

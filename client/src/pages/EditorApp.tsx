@@ -32,6 +32,9 @@ import { getEditorAppCopy } from '@/lib/editorAppCopy';
 import type { EditorAppCopyKey } from '@/lib/editorAppCopy';
 import { getEditorAppLabelFallback } from '@/lib/editorAppLabelFallbacks';
 import { normalizePreviewPath } from '@/lib/previewFileResolver';
+import { createPreviewAssetDocument, isPreviewBinaryAsset } from '@/lib/previewAssets';
+import { createPreviewDataDocument } from '@/lib/previewDataViewer';
+import { createPreviewRuntimeDocument, getPreviewExecutionSupport, getPreviewRuntimeNotice } from '@/lib/previewRuntime';
 import { Loader2, Save, Play, Bot, FolderOpen, FileCode, Search, Menu, X, LogOut, Download, Upload, FolderUp, FilePlus, FolderPlus, Monitor, Smartphone, RotateCw, ChevronDown, CheckCircle2, AlertCircle, Store, Minus, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu';
@@ -50,13 +53,13 @@ export default function EditorApp() {
   const [currentFile, setCurrentFile] = useState<any>(null);
   const [editorContent, setEditorContent] = useState('');
   const [htmlContent, setHtmlContent] = useState('');
-  const [cssContent, setCssContent] = useState('');
   const [previewNavigationHash, setPreviewNavigationHash] = useState('');
+  const [cssContent, setCssContent] = useState('');
   const [jsContent, setJsContent] = useState('');
   const [externalPreviewUrl, setExternalPreviewUrl] = useState<string | null>(null);
   const [isCheckingDevServer, setIsCheckingDevServer] = useState(false);
   const [detectedViteProject, setDetectedViteProject] = useState(false);
-  const [previewMode, setPreviewMode] = useState<'static' | 'vite-react'>('static');
+  const [previewMode, setPreviewMode] = useState<'static' | 'vite-react' | 'compiled'>('static');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchPanelOpen, setSearchPanelOpen] = useState(true);
   const [jumpToLine, setJumpToLine] = useState<number | null>(null);
@@ -82,12 +85,12 @@ export default function EditorApp() {
   const [previewKey, setPreviewKey] = useState(0);
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('desktop');
   const [editorRotated, setEditorRotated] = useState(false);
-  const [previewRotated, setPreviewRotated] = useState(false);
   const [rotatedEditorExtraHeight, setRotatedEditorExtraHeight] = useState(0);
-  const [savingFilePath, setSavingFilePath] = useState<string | null>(null);
+  const [previewRotated, setPreviewRotated] = useState(false);
   const [rotatedPreviewExtraHeight, setRotatedPreviewExtraHeight] = useState(0);
   const editorRotateAreaRef = useRef<HTMLDivElement>(null);
   const editorRotateContentRef = useRef<HTMLDivElement>(null);
+  const [savingFilePath, setSavingFilePath] = useState<string | null>(null);
   const [savingFileName, setSavingFileName] = useState<string | null>(null);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [customSavePath, setCustomSavePath] = useState('');
@@ -117,7 +120,6 @@ export default function EditorApp() {
   const previewWidthRef = useRef(200);
   const projectSetupAttemptedRef = useRef(false);
 
-  const isBinaryAsset = (fileName: string) => /\.(avif|apng|bmp|gif|heic|jpe?g|png|svg|tiff?|webp|ico|mp3|wav|ogg|mp4|webm|mov|woff2?|ttf|otf)$/i.test(fileName);
   useEffect(() => {
     const area = editorRotateAreaRef.current;
     const content = editorRotateContentRef.current;
@@ -149,6 +151,7 @@ export default function EditorApp() {
     };
   }, [editorRotated]);
 
+  const isBinaryAsset = (fileName: string) => isPreviewBinaryAsset(fileName);
 
   const readProjectFile = (file: File): Promise<string> => new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -661,6 +664,13 @@ export default function EditorApp() {
 
     // Keep the complete project available while allowing local HTML links to change pages.
     if (openedFolderName) {
+      const currentPath = currentFile?.path || currentFile?.name || '';
+      if (currentFile && getPreviewExecutionSupport(currentPath) === 'data') {
+        setHtmlContent(createPreviewDataDocument(currentPath, editorContent, language));
+        setCssContent('');
+        setJsContent('');
+        return;
+      }
       console.log('[Preview Effect] Folder opened - loading complete project');
       const allFiles = previewFiles;
       if (allFiles.length > 0) {
@@ -680,19 +690,6 @@ export default function EditorApp() {
               break;
             }
           }
-        }
-
-        // Collect all CSS and JS files
-        for (const f of allFiles) {
-          const fileName = (f.path || f.name).toLowerCase();
-          if (fileName.endsWith('.css')) {
-            cssContent += (f.content || '') + '\n';
-          } else if ((fileName.endsWith('.js') || fileName.endsWith('.ts')) && !fileName.includes('package.json')) {
-            jsContent += (f.content || '') + '\n';
-          }
-        }
-
-        console.log('[Preview] Loading project - HTML:', indexHtmlContent.length, 'bytes, CSS:', cssContent.length, 'bytes, JS:', jsContent.length, 'bytes');
 
           // If no index.html, use first HTML file
           if (!indexHtmlContent) {
@@ -705,6 +702,19 @@ export default function EditorApp() {
               }
             }
           }
+        }
+
+        // Collect all CSS and JS files
+        for (const f of allFiles) {
+          const fileName = (f.path || f.name).toLowerCase();
+          if (fileName.endsWith('.css')) {
+            cssContent += (f.content || '') + '\n';
+          } else if (fileName.endsWith('.js') && !fileName.includes('package.json')) {
+            jsContent += (f.content || '') + '\n';
+          }
+        }
+
+        console.log('[Preview] Loading project - HTML:', indexHtmlContent.length, 'bytes, CSS:', cssContent.length, 'bytes, JS:', jsContent.length, 'bytes');
 
         // Update preview with project files
         if (indexHtmlContent) {
@@ -728,8 +738,21 @@ export default function EditorApp() {
       const allFiles = previewFiles;
 
       if (isBinaryAsset(fileName) && fileContent.startsWith('data:')) {
-        const escapedSource = fileContent.replace(/"/g, '&quot;');
-        setHtmlContent(`<main style="min-height:100%;display:grid;place-items:center;padding:24px;background:#f8fafc"><img src="${escapedSource}" alt="${currentFile.name}" style="max-width:100%;max-height:100%;object-fit:contain" /></main>`);
+        setHtmlContent(createPreviewAssetDocument(fileName, fileContent, language));
+        setCssContent('');
+        setJsContent('');
+        return;
+      }
+
+      const currentSupport = getPreviewExecutionSupport(fileName);
+      if (currentSupport === 'compiled') {
+        setHtmlContent('<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="root"></div></body></html>');
+        setCssContent('');
+        setJsContent('');
+        return;
+      }
+      if (currentSupport === 'data') {
+        setHtmlContent(createPreviewDataDocument(fileName, fileContent, language));
         setCssContent('');
         setJsContent('');
         return;
@@ -746,7 +769,7 @@ export default function EditorApp() {
           const fname = (f.path || f.name).toLowerCase();
           if (fname.endsWith('.css')) {
             relatedCss += (f.content || '') + '\n';
-          } else if ((fname.endsWith('.js') || fname.endsWith('.ts')) && !fname.includes('package.json')) {
+          } else if (fname.endsWith('.js') && !fname.includes('package.json')) {
             relatedJs += (f.content || '') + '\n';
           }
         }
@@ -789,7 +812,7 @@ export default function EditorApp() {
           const fname = (f.path || f.name).toLowerCase();
           if (fname.endsWith('.css') && fname !== fileName) {
             allCss += (f.content || '') + '\n';
-          } else if ((fname.endsWith('.js') || fname.endsWith('.ts')) && !fname.includes('package.json')) {
+          } else if (fname.endsWith('.js') && !fname.includes('package.json')) {
             allJs += (f.content || '') + '\n';
           }
         }
@@ -800,8 +823,8 @@ export default function EditorApp() {
         return;
       }
       // Show JS in preview with related HTML and CSS
-      else if (fileName.endsWith('.js') || fileName.endsWith('.ts')) {
-        console.log('[Preview] ✅ Showing JS/TS file:', fileName);
+      else if (fileName.endsWith('.js') || fileName.endsWith('.javascript')) {
+        console.log('[Preview] ✅ Showing JavaScript file:', fileName);
 
         // Find HTML file or create basic one
         let htmlContent = '';
@@ -836,7 +859,7 @@ export default function EditorApp() {
           const fname = (f.path || f.name).toLowerCase();
           if (fname.endsWith('.css')) {
             allCss += (f.content || '') + '\n';
-          } else if ((fname.endsWith('.js') || fname.endsWith('.ts')) && fname !== fileName && !fname.includes('package.json')) {
+          } else if (fname.endsWith('.js') && fname !== fileName && !fname.includes('package.json')) {
             allJs += (f.content || '') + '\n';
           }
         }
@@ -844,6 +867,21 @@ export default function EditorApp() {
         setHtmlContent(htmlContent);
         setCssContent(allCss);
         setJsContent(allJs);
+        return;
+      } else if (/\.(?:jsx|ts|tsx)$/i.test(fileName)) {
+        setHtmlContent('<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="root"></div></body></html>');
+        setCssContent('');
+        setJsContent('');
+        return;
+      } else {
+        const previewNotice = getPreviewRuntimeNotice(fileName, language);
+        setHtmlContent(createPreviewRuntimeDocument(
+          previewNotice.heading,
+          previewNotice.explanation,
+          language,
+        ));
+        setCssContent('');
+        setJsContent('');
         return;
       }
     }
@@ -885,7 +923,7 @@ export default function EditorApp() {
         const fileName = (f.path || f.name).toLowerCase();
         if (fileName.endsWith('.css')) {
           cssContent += (f.content || '') + '\n';
-        } else if ((fileName.endsWith('.js') || fileName.endsWith('.ts')) && !fileName.includes('package.json')) {
+        } else if (fileName.endsWith('.js') && !fileName.includes('package.json')) {
           jsContent += (f.content || '') + '\n';
         }
       }
@@ -926,12 +964,14 @@ export default function EditorApp() {
       || /(^|\/)(src\/)?index\.(jsx?|tsx?)$/.test(n),
     );
 
-    const detected = hasViteRuntime || (hasReactRuntime && hasRuntimeEntry);
+    const detectedReactProject = hasReactRuntime && hasRuntimeEntry;
+    const detected = hasViteRuntime || detectedReactProject;
     setDetectedViteProject(detected);
-    setPreviewMode(detected ? 'vite-react' : 'static');
+    setPreviewMode(detectedReactProject ? 'compiled' : detected ? 'vite-react' : 'static');
 
-    if (!detected) {
+    if (!detected || detectedReactProject) {
       setExternalPreviewUrl(null);
+      setIsCheckingDevServer(false);
       return;
     }
 
@@ -1200,6 +1240,7 @@ export default function EditorApp() {
     console.log('[openFile] Setting currentFile and editorContent:', { name: file.name, contentLength: (file.content || '').length });
     setCurrentFile(file);
     setEditorContent(file.content || '');
+    setPreviewNavigationHash('');
   };
 
   const handleEditorChange = (val: string) => {
@@ -1213,7 +1254,6 @@ export default function EditorApp() {
         setDetectedLanguageLabel(detected);
         const extension = getExtensionByLanguage(detected);
         const newFileName = `nuovo-file.${extension}`;
-    setPreviewNavigationHash('');
         const newPath = newFileName;
 
         const newFile = {
@@ -2022,14 +2062,34 @@ export default function EditorApp() {
   };
 
   const handleRunCode = () => {
-    if (selectedLanguage === 'html') {
+    const languageToRun = selectedLanguage === 'plaintext' ? detectLanguage(editorContent) : selectedLanguage;
+    const currentFileName = currentFile?.name || currentFile?.path || '';
+    const executionSupport = getPreviewExecutionSupport(currentFileName);
+    if (executionSupport === 'compiled') {
+      setHtmlContent('<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="root"></div></body></html>');
+      setJsContent('');
+      setCssContent('');
+    } else if (executionSupport === 'data') {
+      setHtmlContent(createPreviewDataDocument(currentFileName, editorContent, language));
+      setJsContent('');
+      setCssContent('');
+    } else if (languageToRun === 'html') {
       setHtmlContent(editorContent);
       setJsContent('');
       setCssContent('');
-    } else if (selectedLanguage === 'css') {
+    } else if (languageToRun === 'css') {
       setCssContent(editorContent);
-    } else if (selectedLanguage === 'javascript') {
+    } else if (/\.(?:jsx|tsx?)$/i.test(currentFileName)) {
+      setHtmlContent('<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="root"></div></body></html>');
+      setCssContent('');
+      setJsContent('');
+    } else if (languageToRun === 'javascript') {
       setJsContent(editorContent);
+    } else {
+      const fileName = currentFileName || `file.${getExtensionByLanguage(languageToRun)}`;
+      const previewNotice = getPreviewRuntimeNotice(fileName, language);
+      toast.error(previewNotice.explanation);
+      return;
     }
     toast.success(editorText('codeExecuted'));
   };
@@ -2857,13 +2917,23 @@ export default function EditorApp() {
                         htmlContent={htmlContent}
                         cssContent={cssContent}
                         jsContent={jsContent}
+                        pythonFileName={
+                          currentFile && /\.py$/i.test(currentFile.path || currentFile.name || '')
+                            ? currentFile.path || currentFile.name
+                            : undefined
+                        }
+                        pythonSource={
+                          currentFile && /\.py$/i.test(currentFile.path || currentFile.name || '')
+                            ? editorContent
+                            : undefined
+                        }
                         externalUrl={externalPreviewUrl}
                         localFiles={previewFiles}
                         openedFolderName={openedFolderName}
                         entryPath={
-                          currentFile && /\.html$/i.test(currentFile.path || currentFile.name || '')
-                            ? currentFile.path
-                            : previewFiles.find(file => file.content === htmlContent && /\.html$/i.test(file.path || file.name || ''))?.path
+                          currentFile && /\.(?:html?|jsx|tsx?|m?js|vue|svelte)$/i.test(currentFile.path || currentFile.name || '')
+                            ? currentFile.path || currentFile.name
+                            : previewFiles.find(file => file.content === htmlContent && /\.html?$/i.test(file.path || file.name || ''))?.path
                         }
                         navigationHash={previewNavigationHash}
                         onLinkClick={handleLinkClick}

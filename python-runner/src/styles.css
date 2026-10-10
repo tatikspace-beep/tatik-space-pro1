@@ -1,0 +1,107 @@
+:root {
+  color-scheme: light;
+  font: 14px/1.5 system-ui, sans-serif;
+  color: #e2e8f0;
+  background: #0f172a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  padding: 14px;
+}
+
+main {
+  display: flex;
+  min-height: calc(100vh - 28px);
+  flex-direction: column;
+  gap: 10px;
+}
+
+header,
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+header {
+  justify-content: space-between;
+}
+
+h1 {
+  margin: 0;
+  font-size: 16px;
+}
+
+#file-name,
+#status {
+  color: #cbd5e1;
+  overflow-wrap: anywhere;
+}
+
+label {
+  font-weight: 600;
+}
+
+textarea,
+pre {
+  width: 100%;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  background: #020617;
+  color: #e2e8f0;
+  font: 13px/1.5 ui-monospace, monospace;
+}
+
+textarea {
+  min-height: 64px;
+  padding: 8px;
+  resize: vertical;
+}
+
+button {
+  border: 1px solid #475569;
+  border-radius: 6px;
+  padding: 7px 12px;
+  color: #fff;
+  background: #334155;
+  font: inherit;
+  cursor: pointer;
+}
+
+button:first-child {
+  border-color: #2563eb;
+  background: #2563eb;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+#output {
+  flex: 1;
+  min-height: 140px;
+  margin: 0;
+  padding: 10px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+#plots {
+  display: grid;
+  gap: 10px;
+}
+
+#plots img {
+  width: 100%;
+  height: auto;
+  border-radius: 6px;
+  background: #fff;
+}

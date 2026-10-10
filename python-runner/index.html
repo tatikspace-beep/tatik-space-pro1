@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Python browser runner</title>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1 id="title">Esecuzione Python</h1>
+        <span id="file-name" aria-live="polite">In attesa del file Python</span>
+      </header>
+      <label for="stdin" id="stdin-label">Input standard (opzionale)</label>
+      <textarea id="stdin" rows="3" spellcheck="false"></textarea>
+      <div class="actions">
+        <button id="run" type="button" disabled>Esegui</button>
+        <button id="stop" type="button" disabled>Interrompi</button>
+        <span id="status" role="status" aria-live="polite">In attesa dell'Editor</span>
+      </div>
+      <pre id="output" aria-label="Output Python" aria-live="polite"></pre>
+      <div id="plots" aria-label="Grafici generati da Python"></div>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
