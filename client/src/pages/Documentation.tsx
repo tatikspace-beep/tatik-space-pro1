@@ -63,9 +63,11 @@ export default function Documentation() {
                   <div key={group} className="p-4 bg-secondary rounded-lg">
                     <h4 className="font-semibold mb-2">{group}</h4>
                     <p className="text-muted-foreground">{supportedExtensions[index]}</p>
+                    <p className="text-muted-foreground mt-3">{copy.formatDetails[index]}</p>
                   </div>
                 ))}
               </div>
+              <p className="text-muted-foreground mt-4">{copy.formatsRoadmap}</p>
             </section>
 
             <section className="mb-8">
