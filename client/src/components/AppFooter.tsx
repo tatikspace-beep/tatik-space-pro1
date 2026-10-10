@@ -10,8 +10,8 @@ export function AppFooter({ variant = 'light' }: { variant?: 'light' | 'dark' })
   return (
     <footer className={`py-6 border-t ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'border-border'}`}>
       <div className="container mx-auto w-full max-w-7xl px-4 sm:px-6">
-        <div className="grid grid-cols-1 items-center gap-4 text-center xl:grid-cols-[auto_minmax(0,1fr)_auto] xl:text-left">
-          <Link href="/" aria-label={copy.navbar.home} className="mx-auto flex shrink-0 items-center gap-2 font-bold hover:opacity-80 transition-opacity xl:mx-0">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <Link href="/" aria-label={copy.navbar.home} className="flex shrink-0 items-center gap-2 font-bold hover:opacity-80 transition-opacity">
             <img src="/logo.png" alt={copy.navbar.logo} className="h-8 w-8 object-contain" />
             <span>Tatik.space Pro</span>
           </Link>
@@ -34,7 +34,7 @@ export function AppFooter({ variant = 'light' }: { variant?: 'light' | 'dark' })
             </Link>
           </nav>
 
-          <div className="flex flex-col items-center gap-1 xl:items-end xl:text-right">
+          <div className="flex flex-col items-center gap-1">
             <p className={`text-sm ${isDark ? 'text-slate-400' : 'text-muted-foreground'}`}>
               © 2026 Tatik.space. {copy.footer.copyright}
             </p>
