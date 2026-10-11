@@ -49,10 +49,10 @@ describe("generateAssistantResponse", () => {
     expect(fetchMock.mock.calls[1][0]).toContain("openrouter.ai");
   });
 
-  it("uses Hugging Face as a fallback when only HF_API_KEY is configured", async () => {
+  it("uses Hugging Face as the fallback for a Gemini selection when only HF_API_KEY is configured", async () => {
     process.env.HF_API_KEY = "test-hf-key";
 
-    const result = await generateAssistantResponse("qwen", [
+    const result = await generateAssistantResponse("gemini", [
       { role: "user", content: "Ciao" },
     ]);
 

@@ -174,20 +174,21 @@ export async function generateAssistantResponse(
     addGemini();
   }
 
-  if (process.env.HF_API_KEY && selectedModel !== "gemini") {
+  if (process.env.HF_API_KEY) {
     providers.push({
       name: "Hugging Face",
       run: async () => {
         const { invokeLLM } = await import("./llm");
+        const model = HF_MODELS[selectedModel === "gemini" ? "qwen" : selectedModel];
         const result = await invokeLLM({
-          model: HF_MODELS[selectedModel],
+          model,
           messages,
           maxTokens: 2048,
           temperature: 0.3,
         });
         const content = result.choices[0]?.message.content.trim();
         if (!content) throw new Error("Hugging Face ha restituito una risposta vuota");
-        return { content, provider: "Hugging Face", model: HF_MODELS[selectedModel] };
+        return { content, provider: "Hugging Face", model };
       },
     });
   }
