@@ -174,8 +174,7 @@ export async function generateAssistantResponse(
     addGemini();
   }
 
-  const allowPaidHuggingFace = process.env.HF_ENABLE_PAID_FALLBACK === "true";
-  if (allowPaidHuggingFace && process.env.HF_API_KEY && selectedModel !== "gemini") {
+  if (process.env.HF_API_KEY && selectedModel !== "gemini") {
     providers.push({
       name: "Hugging Face",
       run: async () => {
@@ -194,7 +193,7 @@ export async function generateAssistantResponse(
   }
 
   if (providers.length === 0) {
-    throw new Error("Nessun provider AI configurato. Imposta GEMINI_API_KEY, GROQ_API_KEY o OPENROUTER_API_KEY.");
+    throw new Error("Nessun provider AI configurato. Imposta GEMINI_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY o HF_API_KEY.");
   }
 
   const failures: string[] = [];

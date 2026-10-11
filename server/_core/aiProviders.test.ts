@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { invokeLLM } from "./llm";
 import { generateAssistantResponse } from "./aiProviders";
+
+vi.mock("./llm", () => ({
+  invokeLLM: vi.fn().mockResolvedValue({
+    choices: [{ message: { content: "Risposta Hugging Face" } }],
+  }),
+}));
 
 describe("generateAssistantResponse", () => {
   const originalEnv = { ...process.env };
@@ -9,8 +16,8 @@ describe("generateAssistantResponse", () => {
     delete process.env.GROQ_API_KEY;
     delete process.env.OPENROUTER_API_KEY;
     delete process.env.HF_API_KEY;
-    delete process.env.HF_ENABLE_PAID_FALLBACK;
     delete process.env.GROQ_MODEL;
+    vi.clearAllMocks();
   });
 
   afterEach(() => {
@@ -42,16 +49,21 @@ describe("generateAssistantResponse", () => {
     expect(fetchMock.mock.calls[1][0]).toContain("openrouter.ai");
   });
 
-  it("does not call Hugging Face unless its potentially paid fallback is explicitly enabled", async () => {
+  it("uses Hugging Face as a fallback when only HF_API_KEY is configured", async () => {
     process.env.HF_API_KEY = "test-hf-key";
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
 
-    await expect(generateAssistantResponse("qwen", [
+    const result = await generateAssistantResponse("qwen", [
       { role: "user", content: "Ciao" },
-    ])).rejects.toThrow("Nessun provider AI configurato");
+    ]);
 
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      content: "Risposta Hugging Face",
+      provider: "Hugging Face",
+      model: "Qwen/Qwen2.5-Coder-32B-Instruct",
+    });
+    expect(invokeLLM).toHaveBeenCalledWith(expect.objectContaining({
+      model: "Qwen/Qwen2.5-Coder-32B-Instruct",
+    }));
   });
 
   it("uses the currently documented Gemini Flash model when selected", async () => {
