@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatCopy, getComponentCopy, getModelCopy } from '@/lib/assistantUiCopy';
+import { AITransparencyNotice } from '@/components/AITransparencySection';
 
 // ---------------------------------------------------------------------------
 // Constants & Configuration
@@ -432,6 +433,8 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
               </button>
             </div>
           </DialogHeader>
+
+          <AITransparencyNotice />
 
           {/* Model info strip */}
           <div className="flex items-center gap-2 px-5 py-2 bg-muted/30 border-b shrink-0 flex-wrap">

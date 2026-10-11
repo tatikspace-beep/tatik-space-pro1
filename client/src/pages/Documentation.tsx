@@ -2,6 +2,7 @@ import { Link } from 'wouter';
 import { Button } from '@/components/ui/button';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { documentationPageCopy, supportedExtensions } from '@/lib/documentationPageCopy';
+import { AITransparencySection } from '@/components/AITransparencySection';
 
 export default function Documentation() {
   const { language } = useLanguage();
@@ -29,6 +30,8 @@ export default function Documentation() {
               <h3 className="text-xl font-semibold mb-4">{copy.introHeading}</h3>
               <p className="text-muted-foreground">{copy.intro}</p>
             </section>
+
+            <AITransparencySection />
 
             <section className="mb-8">
               <h3 className="text-xl font-semibold mb-4">{copy.editorHeading}</h3>

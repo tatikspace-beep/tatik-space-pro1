@@ -8,6 +8,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { AITranslationWrapper } from '@/components/AITranslationWrapper';
 import { contactPageFallbacks, contactPageTitles } from '@/lib/contactFormTranslations';
 import { legalSupplementalCopy } from '@/lib/legalSupplementalCopy';
+import { AITransparencySection } from '@/components/AITransparencySection';
 
 function LegalLayout({ children, title }: { children: React.ReactNode; title: string }) {
   const { t } = useLanguage();
@@ -139,6 +140,8 @@ export function PrivacyPolicy() {
             indirizzi e delle autorizzazioni necessarie per invitare gli studenti.
           </p>
         </section>
+
+        <AITransparencySection />
       </div>
     </LegalLayout>
   );
