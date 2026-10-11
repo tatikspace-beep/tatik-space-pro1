@@ -6,11 +6,10 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import {
-  Bot, Send, Loader2, User, Sparkles, Zap, Crown,
-  Lock, ChevronRight, AlertCircle, Copy, Check, Bug, ArrowLeft, Flame
+  Bot, Send, Loader2, User, Sparkles, Zap,
+  AlertCircle, Copy, Check, Bug, ArrowLeft, Flame
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useAuth } from '@/_core/hooks/useAuth';
 import { trpc } from '@/lib/trpc';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { formatCopy, getComponentCopy, getModelCopy } from '@/lib/assistantUiCopy';
@@ -29,7 +28,6 @@ const MODELS = [
     label: '32B',
     badgeColor: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
     dotColor: 'bg-blue-400',
-    tier: 'free' as const,
     hfModel: 'Qwen/Qwen2.5-Coder-32B-Instruct',
   },
   {
@@ -38,25 +36,14 @@ const MODELS = [
     label: 'V2',
     badgeColor: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
     dotColor: 'bg-emerald-400',
-    tier: 'free' as const,
     hfModel: 'deepseek-ai/DeepSeek-Coder-V2-Instruct',
   },
   {
     id: 'gemini',
     name: 'Gemini Flash',
-    label: '2.0',
+    label: '2.5',
     badgeColor: 'bg-violet-500/10 text-violet-400 border-violet-500/20',
     dotColor: 'bg-violet-400',
-    tier: 'free' as const,
-    hfModel: null as null,
-  },
-  {
-    id: 'gpt4',
-    name: 'GPT-4o',
-    label: 'Pro',
-    badgeColor: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-    dotColor: 'bg-amber-400',
-    tier: 'pro' as const,
     hfModel: null as null,
   },
 ] as const;
@@ -69,6 +56,8 @@ interface Message {
   content: string;
   timestamp: Date;
   modelId?: ModelId;
+  provider?: string;
+  providerModel?: string;
   error?: boolean;
 }
 
@@ -129,86 +118,13 @@ function extractCodeBlock(text: string): string | null {
 }
 
 // ---------------------------------------------------------------------------
-// API callers
-// ---------------------------------------------------------------------------
-
-const SYSTEM_PROMPT = `You are an expert web developer, UI/UX designer, and SEO specialist integrated into Tatik.space Pro code editor.
-Your expertise: HTML5, CSS3, JavaScript ES2024, React, TypeScript, Tailwind CSS, SEO, accessibility (WCAG), Core Web Vitals, performance optimization.
-Rules:
-- Respond in the same language as the user (Italian or English)
-- Always wrap code in triple backtick fences with language identifier
-- Be direct and practical — skip unnecessary preambles
-- For layouts: provide complete, copy-paste ready code with comments
-- For bugs: identify root cause, then provide the fix
-- For SEO/UX: give concrete, measurable improvements (e.g., "Improves LCP by 20%")
-- Suggest accessibility improvements automatically (alt text, ARIA, semantic HTML)
-- For performance: mention Lighthouse scores and Web Vitals impact`;
-
-async function callHuggingFace(
-  model: string,
-  history: { role: string; content: string }[],
-  apiKey: string
-): Promise<string> {
-  const res = await fetch(
-    `https://api-inference.huggingface.co/models/${model}/v1/chat/completions`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...history],
-        max_tokens: 2048,
-        temperature: 0.3,
-        stream: false,
-      }),
-    }
-  );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as any)?.error ?? `HuggingFace error ${res.status}`);
-  }
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content ?? '(no response)';
-}
-
-async function callGemini(
-  history: { role: string; content: string }[],
-  apiKey: string
-): Promise<string> {
-  const contents = history.map((m) => ({
-    role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }],
-  }));
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents,
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        generationConfig: { maxOutputTokens: 2048, temperature: 0.3 },
-      }),
-    }
-  );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as any)?.error?.message ?? `Gemini error ${res.status}`);
-  }
-  const data = await res.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? '(no response)';
-}
-
-// ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
 
 export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
-  const { user } = useAuth();
   const { language } = useLanguage();
   const copy = getComponentCopy(language);
   const modelCopy = getModelCopy(language);
-  const isPro = Boolean(user?.hasProAccess || user?.role === 'admin' || user?.subscriptionType === 'pro');
   const chatMutation = trpc.ai.chat.useMutation();
 
   const [isOpen, setIsOpen] = useState(false);
@@ -217,7 +133,6 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [dailyUsage, setDailyUsage] = useState<DailyUsage>(getDailyUsage);
-  const [showProBanner, setShowProBanner] = useState(false);
 
   // Bug fix mode states
   const [bugFixMode, setBugFixMode] = useState(false);
@@ -283,7 +198,7 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
 
   const currentModel = MODELS.find((m) => m.id === selectedModel)!;
   const remainingMessages = FREE_DAILY_LIMIT - dailyUsage.count;
-  const isLimitReached = !isPro && remainingMessages <= 0;
+  const isLimitReached = remainingMessages <= 0;
 
   // ---------------------------------------------------------------------------
   // Scroll to bottom
@@ -321,7 +236,6 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
   // ---------------------------------------------------------------------------
   const handleModelChange = (id: ModelId) => {
     const model = MODELS.find((m) => m.id === id)!;
-    if (model.tier === 'pro' && !isPro) { setShowProBanner(true); return; }
     setSelectedModel(id);
     const modelIndex = MODELS.indexOf(model);
     setMessages((prev) => [
@@ -346,7 +260,7 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
   const handleSend = useCallback(async () => {
     const trimmed = input.trim();
     if (!trimmed || isLoading) return;
-    if (isLimitReached) { setShowProBanner(true); return; }
+    if (isLimitReached) return;
 
     const userMsg: Message = {
       id: Date.now().toString(),
@@ -373,14 +287,14 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
         model: selectedModel === 'gemini' ? 'gemini' : selectedModel === 'deepseek' ? 'deepseek' : 'qwen',
         messages: apiHistory,
       });
-      const reply = response.content;
-
       setMessages((prev) => [...prev, {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: reply,
+        content: response.content,
         timestamp: new Date(),
         modelId: selectedModel,
+        provider: response.provider,
+        providerModel: response.model,
       }]);
     } catch (err: any) {
       const failedUsage = { ...dailyUsage, count: Math.max(0, dailyUsage.count) };
@@ -439,7 +353,7 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
       <Button onClick={() => setIsOpen(true)} size="sm" className="gap-1 px-2 py-1" variant="outline">
         <Bot className="h-4 w-4" />
         {copy.ai.button}
-        {!isPro && remainingMessages <= 3 && remainingMessages > 0 && (
+        {remainingMessages <= 3 && remainingMessages > 0 && (
           <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4 ml-1">{remainingMessages}</Badge>
         )}
       </Button>
@@ -455,14 +369,8 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
                   <Sparkles className="h-3.5 w-3.5 text-primary" />
                 </div>
                 {copy.ai.title}
-                {isPro && (
-                  <Badge className="bg-amber-500/10 text-amber-500 border border-amber-500/20 text-[10px] gap-1">
-                    <Crown className="h-2.5 w-2.5" /> PRO
-                  </Badge>
-                )}
               </DialogTitle>
-              {!isPro && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <div className="h-1.5 w-16 rounded-full bg-muted overflow-hidden">
                     <div
                       className="h-full rounded-full bg-primary transition-all duration-300"
@@ -470,15 +378,13 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
                     />
                   </div>
                   <span>{Math.max(remainingMessages, 0)}/{FREE_DAILY_LIMIT}</span>
-                </div>
-              )}
+              </div>
             </div>
 
             {/* Model tabs */}
             <div className="flex gap-0.5 border-b">
               {MODELS.map((model) => {
                 const isActive = selectedModel === model.id;
-                const isLocked = model.tier === 'pro' && !isPro;
                 return (
                   <button
                     key={model.id}
@@ -487,14 +393,12 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
                       'relative flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-md transition-all border-b-2 -mb-px',
                       isActive && !bugFixMode
                         ? 'border-primary text-foreground bg-background'
-                        : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50',
-                      isLocked && 'opacity-60'
+                        : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
                     )}
                   >
                     <span className={cn('h-1.5 w-1.5 rounded-full', isActive && !bugFixMode ? model.dotColor : 'bg-muted-foreground/40')} />
                     {model.name}
                     <span className="text-[9px] opacity-60">{model.label}</span>
-                    {isLocked && <Lock className="h-2.5 w-2.5 ml-0.5" />}
                   </button>
                 );
               })}
@@ -562,25 +466,6 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
               </>
             )}
           </div>
-
-          {/* Pro banner */}
-          {showProBanner && !isPro && (
-            <div className="mx-4 mt-3 shrink-0 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 flex items-start gap-3">
-              <Crown className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-amber-500">{copy.ai.proTitle}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {copy.ai.proBenefits}
-                </p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <Button size="sm" className="h-7 text-xs bg-amber-500 hover:bg-amber-600 text-white gap-1">
-                  {copy.promo.upgrade} <ChevronRight className="h-3 w-3" />
-                </Button>
-                <button onClick={() => setShowProBanner(false)} className="text-muted-foreground hover:text-foreground text-lg leading-none">×</button>
-              </div>
-            </div>
-          )}
 
           {/* Messages / Bug Fix Form */}
           <div ref={scrollAreaRef} className="flex-1 overflow-hidden min-h-0">
@@ -800,9 +685,6 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
                       <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-xs text-destructive">
                         <AlertCircle className="h-4 w-4 shrink-0" />
                         <span>{copy.ai.dailyLimit}</span>
-                        <Button size="sm" variant="destructive" className="ml-auto h-6 text-[11px]" onClick={() => setShowProBanner(true)}>
-                          {copy.promo.upgrade}
-                        </Button>
                       </div>
                     )}
                   </>
@@ -999,6 +881,11 @@ function MessageBubble({ message, model, onInsertCode }: MessageBubbleProps) {
           </span>
           {model && !isUser && (
             <span className="text-[10px] text-muted-foreground">· {model.name}</span>
+          )}
+          {message.provider && !isUser && (
+            <span className="text-[10px] text-muted-foreground">
+              · {message.provider}{message.providerModel ? ` (${message.providerModel})` : ''}
+            </span>
           )}
           {!isUser && (
             <button onClick={handleCopy} className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-0.5 transition-colors">

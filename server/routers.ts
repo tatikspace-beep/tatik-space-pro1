@@ -36,6 +36,7 @@ import QRCode from "qrcode";
 import { createSignedEmailAccessToken, verifySignedEmailAccessToken } from "./email-access-token";
 import { scanMarketplaceTemplate } from "./marketplace-scan";
 import { hasActiveSchoolAccess } from "./school-access";
+import { generateAssistantResponse } from "./_core/aiProviders";
 
 async function sendAuthEmail(to: string, subject: string, text: string) {
   const apiKey = process.env.RESEND_API_KEY;
@@ -68,6 +69,32 @@ const SCHOOL_INVITE_DAYS = 7;
 
 function hashSchoolInviteToken(token: string) {
   return crypto.createHash("sha256").update(token).digest("hex");
+}
+
+const AI_DAILY_LIMIT = 10;
+const aiDailyUsage = new Map<string, { date: string; count: number }>();
+
+function checkAiDailyLimit(userId: string) {
+  const date = new Date().toISOString().slice(0, 10);
+  const current = aiDailyUsage.get(userId);
+  const usage = current?.date === date ? current : { date, count: 0 };
+  if (usage.count >= AI_DAILY_LIMIT) {
+    throw new TRPCError({
+      code: "TOO_MANY_REQUESTS",
+      message: `Limite giornaliero AI raggiunto (${AI_DAILY_LIMIT} richieste). Riprova domani.`,
+    });
+  }
+  usage.count += 1;
+  aiDailyUsage.set(userId, usage);
+  return { used: usage.count, limit: AI_DAILY_LIMIT };
+}
+
+function releaseAiDailyUsage(userId: string) {
+  const date = new Date().toISOString().slice(0, 10);
+  const current = aiDailyUsage.get(userId);
+  if (current?.date === date && current.count > 0) {
+    current.count -= 1;
+  }
 }
 
 
@@ -818,6 +845,28 @@ export const appRouter = router({
   }),
 
   ai: router({
+    chat: protectedProcedure
+      .input(z.object({
+        model: z.enum(["qwen", "deepseek", "gemini"]),
+        messages: z.array(z.object({
+          role: z.enum(["user", "assistant"]),
+          content: z.string().min(1).max(20000),
+        })).min(1).max(50),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const usage = checkAiDailyLimit(String(ctx.user.id));
+        try {
+          const result = await generateAssistantResponse(input.model, input.messages);
+          return { ...result, usage };
+        } catch (error) {
+          releaseAiDailyUsage(String(ctx.user.id));
+          console.error("[AI chat] Provider error:", error);
+          throw new TRPCError({
+            code: "BAD_GATEWAY",
+            message: error instanceof Error ? error.message : "Servizio AI temporaneamente non disponibile",
+          });
+        }
+      }),
     generateCode: publicProcedure
       .input(z.object({
         prompt: z.string(),
