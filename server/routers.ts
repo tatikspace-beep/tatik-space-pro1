@@ -34,6 +34,7 @@ import { hashPassword, isAdminEmail, isStaffUser, normalizeEmail, verifyPassword
 import speakeasy from "speakeasy";
 import QRCode from "qrcode";
 import { createSignedEmailAccessToken, verifySignedEmailAccessToken } from "./email-access-token";
+import { authBaseUrl } from "./auth-url";
 import { scanMarketplaceTemplate } from "./marketplace-scan";
 import { hasActiveSchoolAccess } from "./school-access";
 
@@ -56,9 +57,6 @@ async function sendAuthEmail(to: string, subject: string, text: string) {
   if (!response.ok) throw new Error(`Email delivery failed (${response.status})`);
 }
 
-function authBaseUrl() {
-  return process.env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
-}
 const MARKETPLACE_COMMISSION_RATE = 0.15;
 const MAX_MARKETPLACE_UPLOAD_BYTES = 2 * 1024 * 1024;
 const MARKETPLACE_SELLER_TERMS_VERSION = "2026-09-30-screening-v1";
