@@ -24,6 +24,7 @@ export default function Pricing() {
     });
 
     const startSubMutation = trpc.pricing.startProSubscription.useMutation();
+    const paypalStartMutation = trpc.payments.createProPayPalSubscription.useMutation();
 
     const [, setLocation] = useLocation();
 
@@ -41,6 +42,16 @@ export default function Pricing() {
         } catch (e) {
             console.error('Error starting subscription:', e);
             alert('Errore nell\'attivazione dell\'abbonamento');
+        }
+    };
+
+    const handleStartPayPal = async () => {
+        try {
+            const result = await paypalStartMutation.mutateAsync();
+            window.location.assign(result.approvalUrl);
+        } catch (error) {
+            console.error('Error starting PayPal subscription:', error);
+            alert(pageCopy.paymentError);
         }
     };
 
@@ -139,13 +150,23 @@ export default function Pricing() {
                             {!isLoading && (
                                 <>
                                     {pricingStatus?.inTrial ? (
-                                        <Button
-                                            className="w-full"
-                                            onClick={handleStartPro}
-                                            disabled={startSubMutation.isPending}
-                                        >
-                                            {startSubMutation.isPending ? labels.loading : labels.stripeButton}
-                                        </Button>
+                                        <>
+                                            <Button
+                                                className="w-full"
+                                                onClick={handleStartPro}
+                                                disabled={startSubMutation.isPending || paypalStartMutation.isPending}
+                                            >
+                                                {startSubMutation.isPending ? labels.loading : labels.stripeButton}
+                                            </Button>
+                                            <Button
+                                                className="w-full mt-2"
+                                                variant="outline"
+                                                onClick={handleStartPayPal}
+                                                disabled={startSubMutation.isPending || paypalStartMutation.isPending}
+                                            >
+                                                {paypalStartMutation.isPending ? labels.loading : "Continue with PayPal"}
+                                            </Button>
+                                        </>
                                     ) : pricingStatus?.status === 'school_access' ? (
                                         <Link href="/schools">
                                             <Button className="w-full" variant="outline">{pageCopy.schoolStatus}</Button>

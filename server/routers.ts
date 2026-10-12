@@ -1306,6 +1306,46 @@ Analizza e suggerisci ottimizzazioni.`,
   }),
 
   payments: router({
+    createProPayPalSubscription: protectedProcedure
+      .mutation(async ({ ctx }) => {
+        const planId = process.env.PAYPAL_PRO_PLAN_ID;
+        if (!planId) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "PayPal Pro plan non configurato." });
+        }
+        const customId = JSON.stringify({ userId: ctx.user.id, kind: "subscription" });
+        const { createPayPalSubscription } = await import("./_core/paypal");
+        const baseUrl = process.env.VERCEL_ENV === "preview" && process.env.VERCEL_URL
+          ? `https://${process.env.VERCEL_URL}`
+          : authBaseUrl();
+        const subscription = await createPayPalSubscription({
+          planId,
+          customId,
+          returnUrl: `${baseUrl}/pricing?paypal=success`,
+          cancelUrl: `${baseUrl}/pricing?paypal=cancelled`,
+        });
+        const approvalUrl = subscription.links?.find((link: any) => link.rel === "approve")?.href;
+        if (!subscription.id || !approvalUrl) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "PayPal non ha restituito il link di approvazione.",
+          });
+        }
+        const record = await db.createPaymentRecord({
+          userId: ctx.user.id,
+          provider: "paypal",
+          kind: "subscription",
+          status: "pending",
+          providerOrderId: subscription.id,
+          amount: 599,
+          currency: "eur",
+          metadata: customId,
+        });
+        if (!record) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+        }
+        return { subscriptionId: subscription.id, approvalUrl };
+      }),
+
     createCustomer: protectedProcedure
       .input(z.object({
         email: z.string().email(),
