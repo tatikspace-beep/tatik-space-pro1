@@ -166,10 +166,13 @@ export const subscriptions = pgTable("subscriptions", {
   endsAt: timestamp("endsAt"),
   renewsAt: timestamp("renewsAt"),
   stripeSubscriptionId: varchar("stripeSubscriptionId", { length: 255 }),
+  paypalSubscriptionId: varchar("paypalSubscriptionId", { length: 255 }),
   appliedDiscountId: integer("appliedDiscountId"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
-});
+}, (table) => ({
+  paypalSubscriptionIdx: uniqueIndex("subscriptions_paypal_subscription_idx").on(table.paypalSubscriptionId),
+}));
 
 export type Subscription = typeof subscriptions.$inferSelect;
 export type InsertSubscription = typeof subscriptions.$inferInsert;

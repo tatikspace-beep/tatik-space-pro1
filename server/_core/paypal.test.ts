@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createPayPalSubscription } from "./paypal";
+import { cancelPayPalSubscription, createPayPalSubscription, getPayPalSubscription } from "./paypal";
 
 const fetchMock = vi.fn();
 
@@ -54,6 +54,43 @@ describe("PayPal API diagnostics", () => {
         field: "plan_id",
         description: "Plan for [redacted-email] not found; [redacted-credential]",
       }],
+    });
+  });
+
+  it("retrieves a subscription from the configured PayPal environment", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ access_token: "sandbox-token" }))
+      .mockResolvedValueOnce(jsonResponse({
+        id: "I-TEST123",
+        plan_id: "P-TEST",
+        status: "ACTIVE",
+      }));
+
+    await expect(getPayPalSubscription("I-TEST123")).resolves.toMatchObject({
+      id: "I-TEST123",
+      plan_id: "P-TEST",
+      status: "ACTIVE",
+    });
+
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      "https://api-m.sandbox.paypal.com/v1/billing/subscriptions/I-TEST123",
+    );
+  });
+
+  it("cancels a subscription through the configured PayPal environment", async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ access_token: "sandbox-token" }))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+    await expect(cancelPayPalSubscription("I-TEST123", "User requested cancellation"))
+      .resolves.toEqual({});
+
+    expect(fetchMock.mock.calls[1][0]).toBe(
+      "https://api-m.sandbox.paypal.com/v1/billing/subscriptions/I-TEST123/cancel",
+    );
+    expect(fetchMock.mock.calls[1][1]).toMatchObject({
+      method: "POST",
+      body: JSON.stringify({ reason: "User requested cancellation" }),
     });
   });
 });

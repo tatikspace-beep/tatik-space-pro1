@@ -116,3 +116,14 @@ export async function createPayPalSubscription(input: {
     }),
   });
 }
+
+export async function getPayPalSubscription(subscriptionId: string) {
+  return paypalRequest(`/v1/billing/subscriptions/${encodeURIComponent(subscriptionId)}`);
+}
+
+export async function cancelPayPalSubscription(subscriptionId: string, reason: string) {
+  return paypalRequest(`/v1/billing/subscriptions/${encodeURIComponent(subscriptionId)}/cancel`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
