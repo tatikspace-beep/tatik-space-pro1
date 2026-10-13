@@ -54,7 +54,7 @@ export default function Pricing() {
         paypalVerifyMutation.mutate({ subscriptionId }, {
             onSuccess: (verification) => {
                 if (verification.activated) {
-                    setLocation('/account');
+                    setLocation('/profile');
                     return;
                 }
                 setPaypalReturnMessage('L’approvazione PayPal è ancora in sospeso. Riprova tra poco.');
@@ -70,8 +70,7 @@ export default function Pricing() {
         try {
             const res = await startSubMutation.mutateAsync();
             if (res?.success) {
-                // Redirect user to account/billing page (or refresh)
-                setLocation('/account');
+                setLocation('/profile');
             } else {
                 console.error('Failed to start subscription:', res?.reason);
                 // fallback: notify user
