@@ -1315,9 +1315,7 @@ Analizza e suggerisci ottimizzazioni.`,
         }
         const customId = JSON.stringify({ userId: ctx.user.id, kind: "subscription" });
         const { createPayPalSubscription } = await import("./_core/paypal");
-        const baseUrl = process.env.VERCEL_ENV === "preview" && process.env.VERCEL_URL
-          ? `https://${process.env.VERCEL_URL}`
-          : authBaseUrl();
+        const baseUrl = authBaseUrl();
         const subscription = await createPayPalSubscription({
           planId,
           customId,
