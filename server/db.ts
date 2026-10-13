@@ -11,12 +11,26 @@ let _memoryUserCounter = 1;
 // In-memory fallback store for banner additions when no DB is configured
 const _inMemoryBannerStore: Map<number, Array<{ bannerId: string; projectId?: string; createdAt: Date }>> = new Map();
 
+const PAYPAL_DIAGNOSTICS_PREVIEW_BRANCH = "preview/paypal-diagnostics-20261012";
+
+export function resolveDatabaseConnectionString(env: NodeJS.ProcessEnv): string | undefined {
+  const isIsolatedPayPalPreview =
+    env.VERCEL_ENV === "preview" &&
+    env.VERCEL_GIT_COMMIT_REF === PAYPAL_DIAGNOSTICS_PREVIEW_BRANCH;
+
+  if (isIsolatedPayPalPreview && env.DATABASE_URL) {
+    return env.DATABASE_URL;
+  }
+
+  return env.POSTGRES_URL
+    || env.POSTGRES_PRISMA_URL
+    || env.POSTGRES_URL_NON_POOLING
+    || env.DATABASE_URL;
+}
+
 // Lazily create the drizzle instance so local tooling can run without a DB.
 export async function getDb() {
-  const connectionString = process.env.POSTGRES_URL
-    || process.env.POSTGRES_PRISMA_URL
-    || process.env.POSTGRES_URL_NON_POOLING
-    || process.env.DATABASE_URL;
+  const connectionString = resolveDatabaseConnectionString(process.env);
   if (!_db && connectionString) {
     try {
       // Supabase pooler URLs may include sslmode=verify-ca, while the
