@@ -12,6 +12,7 @@ import {
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuth } from '@/_core/hooks/useAuth';
 import { formatCopy, getComponentCopy, getModelCopy } from '@/lib/assistantUiCopy';
 import { AITransparencyNotice } from '@/components/AITransparencySection';
 
@@ -123,9 +124,15 @@ function extractCodeBlock(text: string): string | null {
 // ---------------------------------------------------------------------------
 
 export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
+  const { user } = useAuth({ redirectOnUnauthenticated: false });
   const { language } = useLanguage();
   const copy = getComponentCopy(language);
   const modelCopy = getModelCopy(language);
+  const { data: pricingStatus } = trpc.pricing.getPricingStatus.useQuery(undefined, {
+    enabled: Boolean(user),
+    refetchInterval: 60000,
+  });
+  const isPro = pricingStatus?.featureAccess.aiAssistant === true;
   const chatMutation = trpc.ai.chat.useMutation();
 
   const [isOpen, setIsOpen] = useState(false);
@@ -348,6 +355,8 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
+  if (pricingStatus?.featureAccess.aiAssistant !== true) return null;
+
   return (
     <>
       {/* Trigger button */}

@@ -11,6 +11,7 @@ import { TeamManagement } from '@/components/collaboration/TeamManagement';
 import { CollabChat } from '@/components/collaboration/CollabChat';
 import { ProjectShare } from '@/components/collaboration/ProjectShare';
 import { useCollaboration } from '@/hooks/useCollaboration';
+import { trpc } from '@/lib/trpc';
 
 const DEMO_PROJECT_ID = 'proj_demo';
 const DEMO_USER_ID = `user_${Math.random().toString(36).slice(2, 8)}`;
@@ -19,6 +20,9 @@ type Tab = 'team' | 'chat' | 'share' | 'security';
 export default function Collaboration() {
   const { language } = useLanguage();
   const copy = collaborationPageCopy[language] ?? collaborationPageCopy.en;
+  const { data: pricingStatus } = trpc.pricing.getPricingStatus.useQuery(undefined, {
+    refetchInterval: 60000,
+  });
   const [useOffline, setUseOffline] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>('team');
   const {
@@ -28,7 +32,7 @@ export default function Collaboration() {
     projectId: DEMO_PROJECT_ID,
     userId: DEMO_USER_ID,
     userName: copy.demoTitle,
-    offline: useOffline,
+    offline: useOffline || pricingStatus?.featureAccess.collaboration !== true,
     offlineProjectName: copy.offlineProjectName,
     offlineSystemMessage: copy.offlineSystemMessage,
   });

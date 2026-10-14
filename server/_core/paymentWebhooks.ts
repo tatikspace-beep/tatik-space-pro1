@@ -43,6 +43,7 @@ async function processCheckoutSession(
   const existingEvent = await db.getPaymentRecordByProviderEvent("stripe", eventId);
   if (existingEvent) return existingEvent;
 
+  if (metadata.kind === "subscription" && session.payment_status !== "paid") return null;
   const isPaid = session.payment_status === "paid" || session.amount_total === 0;
   if (!isPaid) return null;
 
@@ -206,44 +207,27 @@ async function processCheckoutSession(
 
 async function processSubscriptionEvent(subscription: Stripe.Subscription) {
   const existing = await db.getSubscriptionByStripeId(subscription.id);
-  const metadata = (subscription.metadata || {}) as Record<string, string | undefined>;
-  const userId = getUserId(metadata);
+  if (!existing) return;
+
   const status = subscription.status === "active" || subscription.status === "trialing"
     ? "active"
     : subscription.status === "canceled" ? "cancelled" : subscription.status;
 
-  if (process.env.STRIPE_PRO_PRICE_ID) {
+  if (
+    process.env.STRIPE_PRO_PRICE_ID &&
+    (subscription.status === "active" || subscription.status === "trialing")
+  ) {
     await moveSubscriptionToPrice(subscription.id, process.env.STRIPE_PRO_PRICE_ID);
   }
 
-  if (existing) {
-    await db.updateSubscription(existing.id, {
-      status,
-      endsAt: subscription.ended_at ? new Date(subscription.ended_at * 1000) : null,
-      renewsAt: subscription.current_period_end
-        ? new Date(subscription.current_period_end * 1000)
-        : null,
-    });
-    await updateUserTier(existing.userId, status === "active" ? "pro" : "free");
-    return;
-  }
-  if (userId) {
-    const amount = subscription.items.data[0]?.price?.unit_amount;
-    await db.createSubscription({
-      userId,
-      tier: "pro",
-      status,
-      currentPrice: ((amount || 599) / 100).toFixed(2),
-      isFirstMonth: 1,
-      startedAt: new Date((subscription.start_date || Math.floor(Date.now() / 1000)) * 1000),
-      endsAt: subscription.ended_at ? new Date(subscription.ended_at * 1000) : null,
-      renewsAt: subscription.current_period_end
-        ? new Date(subscription.current_period_end * 1000)
-        : null,
-      stripeSubscriptionId: subscription.id,
-    });
-    await updateUserTier(userId, status === "active" ? "pro" : "free");
-  }
+  await db.updateSubscription(existing.id, {
+    status,
+    endsAt: subscription.ended_at ? new Date(subscription.ended_at * 1000) : null,
+    renewsAt: subscription.current_period_end
+      ? new Date(subscription.current_period_end * 1000)
+      : null,
+  });
+  await updateUserTier(existing.userId, status === "active" ? "pro" : "free");
 }
 
 export async function handleStripeEvent(event: Stripe.Event) {
