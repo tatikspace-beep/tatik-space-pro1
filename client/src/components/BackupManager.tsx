@@ -42,7 +42,13 @@ export function BackupManager({ projectId, currentFiles, onRestore }: BackupMana
   const [localBackups, setLocalBackups] = useState<LocalBackup[]>([]);
 
   const utils = trpc.useUtils();
-  const { data: serverBackups = [], isLoading } = trpc.backups.list.useQuery();
+  const { data: pricingStatus } = trpc.pricing.getPricingStatus.useQuery(undefined, {
+    refetchInterval: 60000,
+  });
+  const canUseOnlineBackups = pricingStatus?.featureAccess.backupOnline === true;
+  const { data: serverBackups = [], isLoading } = trpc.backups.list.useQuery(undefined, {
+    enabled: pricingStatus !== undefined,
+  });
 
   // Load local backups from localStorage on mount
   useEffect(() => {
@@ -78,6 +84,10 @@ export function BackupManager({ projectId, currentFiles, onRestore }: BackupMana
       setBackupDescription('');
     },
     onError: (error) => {
+      if (error.data?.code === 'FORBIDDEN') {
+        toast.error(copy('createError', { error: error.message }));
+        return;
+      }
       // Fallback: create local backup if online backup fails or DB is offline
       if (backupTypeSelection === 'online' || error.message.includes('Database unavailable')) {
         toast.warning(copy('savingLocal'));
@@ -204,7 +214,7 @@ export function BackupManager({ projectId, currentFiles, onRestore }: BackupMana
   const legacyBackups = serverBackups.filter(b => !b.backupType || b.backupType === 'local');
 
   const canCreateLocal = localOnlyBackups.length < 10;
-  const canCreateOnline = onlineBackups.length < 2;
+  const canCreateOnline = canUseOnlineBackups && onlineBackups.length < 2;
 
   return (
     <Card className="w-full">
@@ -297,15 +307,17 @@ export function BackupManager({ projectId, currentFiles, onRestore }: BackupMana
       </CardHeader>
       <CardContent>
         <Tabs defaultValue="local" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className={`grid w-full ${canUseOnlineBackups ? 'grid-cols-2' : 'grid-cols-1'}`}>
             <TabsTrigger value="local" className="gap-2">
               <HardDrive className="h-4 w-4" />
               {copy('localBackups')} ({localOnlyBackups.length}/10)
             </TabsTrigger>
-            <TabsTrigger value="online" className="gap-2">
-              <Cloud className="h-4 w-4" />
-              {copy('onlineBackups')} ({onlineBackups.length}/2)
-            </TabsTrigger>
+            {canUseOnlineBackups && (
+              <TabsTrigger value="online" className="gap-2">
+                <Cloud className="h-4 w-4" />
+                {copy('onlineBackups')} ({onlineBackups.length}/2)
+              </TabsTrigger>
+            )}
           </TabsList>
 
           {/* Local backups tab */}
@@ -336,7 +348,7 @@ export function BackupManager({ projectId, currentFiles, onRestore }: BackupMana
           </TabsContent>
 
           {/* Online backups tab */}
-          <TabsContent value="online" className="space-y-3 mt-4">
+          {canUseOnlineBackups && <TabsContent value="online" className="space-y-3 mt-4">
             {isLoading && onlineBackups.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground">
                 {copy('loadingOnline')}
@@ -360,7 +372,7 @@ export function BackupManager({ projectId, currentFiles, onRestore }: BackupMana
                 />
               ))
             )}
-          </TabsContent>
+          </TabsContent>}
         </Tabs>
 
         {/* Show legacy backups if any */}

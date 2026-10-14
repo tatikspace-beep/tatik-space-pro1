@@ -18,10 +18,11 @@ export default function Pricing() {
     const details = pricingDetailsCopy[language] ?? pricingDetailsCopy.en;
     const formatEuro = (amount: number) =>
         new Intl.NumberFormat(language, { style: 'currency', currency: 'EUR' }).format(amount);
-    const { data: pricingStatus, isLoading } = trpc.pricing.getPricingStatus.useQuery(undefined, {
+    const pricingStatusQuery = trpc.pricing.getPricingStatus.useQuery(undefined, {
         retry: 1,
         refetchInterval: 60000,
     });
+    const { data: pricingStatus, isLoading } = pricingStatusQuery;
 
     const startSubMutation = trpc.pricing.startProSubscription.useMutation();
     const paypalStartMutation = trpc.payments.createProPayPalSubscription.useMutation();
@@ -29,7 +30,9 @@ export default function Pricing() {
 
     const [, setLocation] = useLocation();
     const [paypalReturnMessage, setPaypalReturnMessage] = React.useState<string | null>(null);
+    const [stripeReturnMessage, setStripeReturnMessage] = React.useState<string | null>(null);
     const paypalReturnHandled = React.useRef(false);
+    const stripeReturnHandled = React.useRef(false);
 
     React.useEffect(() => {
         if (paypalReturnHandled.current) return;
@@ -66,14 +69,41 @@ export default function Pricing() {
         });
     }, [paypalVerifyMutation.mutate, setLocation]);
 
+    React.useEffect(() => {
+        if (stripeReturnHandled.current) return;
+        const params = new URLSearchParams(window.location.search);
+        const result = params.get('subscription');
+        if (!result) return;
+
+        stripeReturnHandled.current = true;
+        params.delete('subscription');
+        params.delete('session_id');
+        const query = params.toString();
+        window.history.replaceState(
+            {},
+            '',
+            `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`,
+        );
+
+        if (result === 'cancelled') {
+            setStripeReturnMessage('Il checkout Stripe è stato annullato.');
+            return;
+        }
+        if (result === 'success') {
+            setStripeReturnMessage('Checkout completato. Stripe sta verificando il pagamento; il piano Pro si attiverà dopo la conferma del webhook.');
+            void pricingStatusQuery.refetch();
+            return;
+        }
+        setStripeReturnMessage('Stripe ha restituito un esito non riconosciuto. Verifica lo stato del tuo piano prima di riprovare.');
+    }, [pricingStatusQuery.refetch]);
+
     const handleStartPro = async () => {
         try {
             const res = await startSubMutation.mutateAsync();
-            if (res?.success) {
-                setLocation('/profile');
+            if (res?.success && res.checkoutUrl) {
+                window.location.assign(res.checkoutUrl);
             } else {
                 console.error('Failed to start subscription:', res?.reason);
-                // fallback: notify user
                 alert(pageCopy.paymentError);
             }
         } catch (e) {
@@ -110,6 +140,11 @@ export default function Pricing() {
                     {paypalReturnMessage && (
                         <div role="status" className="mb-6 rounded border border-primary/30 bg-primary/10 p-3 text-sm">
                             {paypalReturnMessage}
+                        </div>
+                    )}
+                    {stripeReturnMessage && (
+                        <div role="status" className="mb-6 rounded border border-primary/30 bg-primary/10 p-3 text-sm">
+                            {stripeReturnMessage}
                         </div>
                     )}
                     <h2 className="text-3xl font-bold text-center mb-2">{copy.pricingHeading}</h2>
@@ -149,9 +184,11 @@ export default function Pricing() {
                                 ))}
                             </ul>
                             <p className="text-xs text-muted-foreground">{pageCopy.trialDetails}</p>
-                            <Button className="w-full mt-4" variant="outline" disabled>
-                                {labels.startFree}
-                            </Button>
+                            <Link href="/editor">
+                                <Button className="w-full mt-4" variant="outline">
+                                    {labels.startFree}
+                                </Button>
+                            </Link>
                         </Card>
 
                         {/* Pro - €5.99 primo mese, poi €7.99 */}

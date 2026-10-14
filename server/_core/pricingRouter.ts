@@ -7,12 +7,13 @@ import { hasActiveSchoolAccess } from "../school-access";
 import { z } from "zod";
 import {
     getSubscriptionByUserIdAndStatus,
-    createSubscription,
     updateSubscription,
     getMonetizationEarnings,
     getSubscriptionDiscounts,
     createSubscriptionDiscount,
+    upsertUser,
 } from "../db";
+import { createCheckoutSession, createCustomer, getStripeReturnBaseUrl } from "./stripe";
 import {
     PRICING,
     isUserInFreeTrial,
@@ -22,6 +23,7 @@ import {
     canApplyDiscount,
     getDiscountWindowBounds,
     getUserPricingStatus,
+    getFeatureVisibility,
 } from "./pricing";
 
 export const pricingRouter = router({
@@ -43,6 +45,7 @@ export const pricingRouter = router({
                     currentMonthlyPrice: 0,
                     discountsApplied: 0,
                     status: hasSchoolAccess && !isStaffUser(user) ? "school_access" : "staff_pro",
+                    featureAccess: getFeatureVisibility("pro", false),
                 };
             }
             const userId = user.id;
@@ -79,6 +82,10 @@ export const pricingRouter = router({
                 currentMonthlyPrice: currentPrice,
                 discountsApplied,
                 status,
+                featureAccess: getFeatureVisibility(
+                    subscriptionTier === "pro" ? "pro" : "free",
+                    inTrial,
+                ),
             };
         } catch (error) {
             console.error("[pricingRouter] Error in getPricingStatus", error);
@@ -191,46 +198,61 @@ export const pricingRouter = router({
         }
     }),
 
-    /**
-     * Crea/attiva un abbonamento Pro per l'utente
-     * Automaticamente applica il prezzo del primo mese se è il primo abbonamento
-     */
+    /** Avvia Stripe Checkout; Pro viene attivato solo dopo il webhook verificato. */
     startProSubscription: protectedProcedure.mutation(async ({ ctx }) => {
         try {
             const userId = ctx.user.id;
-            const now = new Date();
-
-            // Verifica che non abbia già un abbonamento attivo
             const existingSub = await getSubscriptionByUserIdAndStatus(userId, "active");
-
-            if (existingSub) {
+            if (existingSub?.stripeSubscriptionId || existingSub?.paypalSubscriptionId) {
                 return { success: false, reason: "Hai già un abbonamento attivo" };
             }
 
-            // Crea il nuovo abbonamento (primo mese a prezzo scontato)
-            const subscription = await createSubscription({
-                userId,
-                tier: "pro",
-                status: "active",
-                currentPrice: PRICING.FIRST_MONTH_PRICE.toString(),
-                isFirstMonth: 1,
-                startedAt: now,
-                renewsAt: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000),
-            });
-
-            // Se il DB non è disponibile o la creazione fallisce, restituisci un errore gestito
-            if (!subscription) {
-                return { success: false, reason: "Impossibile creare l'abbonamento al momento. Riprova più tardi." };
+            if (existingSub) {
+                const cancelledSub = await updateSubscription(existingSub.id, {
+                    status: "cancelled",
+                    endsAt: new Date(),
+                });
+                const updatedUser = await upsertUser({
+                    openId: ctx.user.openId,
+                    subscriptionType: "free",
+                });
+                if (!cancelledSub || !updatedUser) {
+                    throw new Error("Unable to clear an unverified local Pro subscription");
+                }
             }
 
-            // Nota: Aggiorna l'utente tramite altre API se necessario
+            const firstMonthPriceId = process.env.STRIPE_PRO_FIRST_MONTH_PRICE_ID;
+            const renewalPriceId = process.env.STRIPE_PRO_PRICE_ID;
+            if (!firstMonthPriceId || !renewalPriceId || firstMonthPriceId === renewalPriceId) {
+                throw new Error("Distinct first-month and renewal Stripe Price IDs must be configured");
+            }
 
-            return {
-                success: true,
-                subscriptionId: subscription.id,
-                monthlyPrice: PRICING.FIRST_MONTH_PRICE,
-                message: `Abbonamento attivato a ${PRICING.FIRST_MONTH_PRICE}€/mese per il primo mese`,
-            };
+            let customerId = ctx.user.stripeCustomerId;
+            if (!customerId) {
+                const customer = await createCustomer({
+                    email: ctx.user.email || `user${userId}@example.com`,
+                    name: ctx.user.name || `User ${userId}`,
+                });
+                const savedUser = await upsertUser({
+                    openId: ctx.user.openId,
+                    stripeCustomerId: customer.id,
+                });
+                if (!savedUser) throw new Error("Unable to persist Stripe customer");
+                customerId = customer.id;
+            }
+
+            const baseUrl = getStripeReturnBaseUrl();
+            const session = await createCheckoutSession({
+                customerId,
+                priceId: firstMonthPriceId,
+                mode: "subscription",
+                successUrl: `${baseUrl}/pricing?subscription=success&session_id={CHECKOUT_SESSION_ID}`,
+                cancelUrl: `${baseUrl}/pricing?subscription=cancelled`,
+                metadata: { userId: String(userId), kind: "subscription" },
+            });
+            if (!session.url) throw new Error("Stripe did not return a Checkout URL");
+
+            return { success: true, checkoutUrl: session.url };
         } catch (error) {
             console.error("[pricingRouter] Error in startProSubscription", error);
             throw error;
@@ -254,6 +276,10 @@ export const pricingRouter = router({
                 const { cancelPayPalSubscription } = await import("./paypal");
                 await cancelPayPalSubscription(subscription.paypalSubscriptionId, "User requested cancellation");
             }
+            if (subscription.stripeSubscriptionId) {
+                const { cancelSubscription } = await import("./stripe");
+                await cancelSubscription(subscription.stripeSubscriptionId, true);
+            }
 
             const updatedSubscription = await updateSubscription(subscription.id, {
                 status: "cancelled",
@@ -262,6 +288,11 @@ export const pricingRouter = router({
             if (!updatedSubscription) {
                 throw new Error("Unable to persist cancelled subscription status");
             }
+            const updatedUser = await upsertUser({
+                openId: ctx.user.openId,
+                subscriptionType: "free",
+            });
+            if (!updatedUser) throw new Error("Unable to update user subscription tier");
 
             // Nota: Aggiorna l'utente tramite altre API se necessario
 

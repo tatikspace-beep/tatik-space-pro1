@@ -37,7 +37,6 @@ export default function TemplateMarketplace() {
     const [checkingAccess, setCheckingAccess] = useState(false);
     const [detailView, setDetailView] = useState<'preview' | 'code'>('preview');
     const [previewZoom, setPreviewZoom] = useState(100);
-    const [couponCode, setCouponCode] = useState<string>('');
     const allTemplates: MarketplaceTemplate[] = [
         ...FREE_TEMPLATES,
         ...(premiumCatalogQuery.data ?? []),
@@ -758,8 +757,6 @@ export default function TemplateMarketplace() {
                                             onClick={() => {
                                                 createCheckoutMutation.mutate({
                                                     templateId: selectedTemplate.id,
-                                                    templateName: selectedTemplate.name,
-                                                    price: selectedTemplate.price,
                                                 }, {
                                                     onSuccess: (data) => {
                                                         if (data?.checkoutUrl) window.location.href = data.checkoutUrl;

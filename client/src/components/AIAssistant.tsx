@@ -204,11 +204,15 @@ async function callGemini(
 // ---------------------------------------------------------------------------
 
 export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
-  const { user } = useAuth();
+  const { user } = useAuth({ redirectOnUnauthenticated: false });
   const { language } = useLanguage();
   const copy = getComponentCopy(language);
   const modelCopy = getModelCopy(language);
-  const isPro = Boolean(user?.hasProAccess || user?.role === 'admin' || user?.subscriptionType === 'pro');
+  const { data: pricingStatus } = trpc.pricing.getPricingStatus.useQuery(undefined, {
+    enabled: Boolean(user),
+    refetchInterval: 60000,
+  });
+  const isPro = pricingStatus?.featureAccess.aiAssistant === true;
   const chatMutation = trpc.ai.chat.useMutation();
 
   const [isOpen, setIsOpen] = useState(false);
@@ -433,6 +437,8 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
+  if (pricingStatus?.featureAccess.aiAssistant !== true) return null;
+
   return (
     <>
       {/* Trigger button */}

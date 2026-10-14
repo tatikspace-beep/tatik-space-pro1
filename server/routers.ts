@@ -37,6 +37,10 @@ import { createSignedEmailAccessToken, verifySignedEmailAccessToken } from "./em
 import { authBaseUrl } from "./auth-url";
 import { scanMarketplaceTemplate } from "./marketplace-scan";
 import { hasActiveSchoolAccess } from "./school-access";
+import { generateAssistantResponse } from "./_core/aiProviders";
+import { getUserFeatureAccess, requireFeatureAccess } from "./_core/featureAccess";
+import { PREMIUM_TEMPLATE_CATALOG } from "./_core/premiumTemplateCatalog";
+import { PREMIUM_TEMPLATES } from "../client/src/data/templates";
 
 async function sendAuthEmail(to: string, subject: string, text: string) {
   const apiKey = process.env.RESEND_API_KEY;
@@ -568,7 +572,11 @@ export const appRouter = router({
         return [];
       }
       try {
-        return await db.getUserBackups(userId);
+        const userBackups = await db.getUserBackups(userId);
+        const featureAccess = await getUserFeatureAccess(ctx.user);
+        return featureAccess.backupOnline
+          ? userBackups
+          : userBackups.filter(backup => backup.backupType !== "online");
       } catch (err) {
         console.warn('[Backups] Failed to list backups:', err);
         return [];
@@ -583,6 +591,9 @@ export const appRouter = router({
         backupType: z.enum(['local', 'online']).default('local').optional(),
       }))
       .mutation(async ({ ctx, input }) => {
+        if (input.backupType === "online") {
+          await requireFeatureAccess(ctx.user, "backupOnline");
+        }
         // Resolve numeric userId similar to list
         let userId: number | undefined = undefined;
         if (typeof ctx.user.id === 'number') {
@@ -623,8 +634,15 @@ export const appRouter = router({
       }),
     get: protectedProcedure
       .input(z.object({ backupId: z.number() }))
-      .query(async ({ input }) => {
-        return db.getBackupById(input.backupId);
+      .query(async ({ ctx, input }) => {
+        const backup = await db.getBackupById(input.backupId);
+        if (!backup || backup.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Backup non trovato." });
+        }
+        if (backup.backupType === "online") {
+          await requireFeatureAccess(ctx.user, "backupOnline");
+        }
+        return backup;
       }),
     delete: protectedProcedure
       .input(z.object({ backupId: z.number() }))
@@ -652,6 +670,13 @@ export const appRouter = router({
         }
         if (!userId) throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'User id not available for backups' });
         try {
+          const backup = await db.getBackupById(input.backupId);
+          if (!backup || backup.userId !== userId) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "Backup non trovato." });
+          }
+          if (backup.backupType === "online") {
+            await requireFeatureAccess(ctx.user, "backupOnline");
+          }
           await db.deleteBackup(input.backupId, userId);
           return { success: true };
         } catch (err) {
@@ -687,6 +712,9 @@ export const appRouter = router({
           }
           if (!backup || !userId || backup.userId !== userId) {
             throw new TRPCError({ code: 'UNAUTHORIZED', message: "Backup not found or unauthorized" });
+          }
+          if (backup.backupType === "online") {
+            await requireFeatureAccess(ctx.user, "backupOnline");
           }
           // Return snapshot for client-side restoration
           return { snapshot: backup.snapshot };
@@ -816,11 +844,35 @@ export const appRouter = router({
   }),
 
   ai: router({
-    generateCode: publicProcedure
+    chat: protectedProcedure
+      .input(z.object({
+        model: z.enum(["qwen", "deepseek", "gemini"]),
+        messages: z.array(z.object({
+          role: z.enum(["user", "assistant"]),
+          content: z.string().min(1).max(20000),
+        })).min(1).max(50),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        await requireFeatureAccess(ctx.user, "aiAssistant");
+        const usage = checkAiDailyLimit(String(ctx.user.id));
+        try {
+          const result = await generateAssistantResponse(input.model, input.messages);
+          return { ...result, usage };
+        } catch (error) {
+          releaseAiDailyUsage(String(ctx.user.id));
+          console.error("[AI chat] Provider error:", error);
+          throw new TRPCError({
+            code: "BAD_GATEWAY",
+            message: error instanceof Error ? error.message : "Servizio AI temporaneamente non disponibile",
+          });
+        }
+      }),
+    generateCode: protectedProcedure
       .input(z.object({
         prompt: z.string(),
       }))
-      .query(async ({ input }) => {
+      .query(async ({ ctx, input }) => {
+        await requireFeatureAccess(ctx.user, "aiAssistant");
         try {
           // Import LLM helper
           const { invokeLLM } = await import('./_core/llm');
@@ -847,13 +899,14 @@ export const appRouter = router({
         }
       }),
 
-    analyzeBugAndSuggestFix: publicProcedure
+    analyzeBugAndSuggestFix: protectedProcedure
       .input(z.object({
         code: z.string(),
         error: z.string(),
         language: z.string(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ ctx, input }) => {
+        await requireFeatureAccess(ctx.user, "aiAssistant");
         try {
           const { invokeLLM } = await import('./_core/llm');
 
@@ -902,12 +955,13 @@ ${input.code}
         }
       }),
 
-    optimizeCode: publicProcedure
+    optimizeCode: protectedProcedure
       .input(z.object({
         code: z.string(),
         language: z.string(),
       }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ ctx, input }) => {
+        await requireFeatureAccess(ctx.user, "aiAssistant");
         try {
           const { invokeLLM } = await import('./_core/llm');
 
@@ -2160,8 +2214,8 @@ Analizza e suggerisci ottimizzazioni.`,
           throw new TRPCError({ code: "CONFLICT", message: "Hai gi? acquistato questo template." });
         }
         const commissionCents = Math.round(listing.priceCents * MARKETPLACE_COMMISSION_RATE);
-        const baseUrl = process.env.APP_URL || "http://localhost:3000";
-        const { createCheckoutSession, createCustomer } = await import("./_core/stripe");
+        const { createCheckoutSession, createCustomer, getStripeReturnBaseUrl } = await import("./_core/stripe");
+        const baseUrl = getStripeReturnBaseUrl();
         let customerId = ctx.user.stripeCustomerId;
         if (!customerId) {
           customerId = (await createCustomer({ email: ctx.user.email || `user${ctx.user.id}@example.com`, name: ctx.user.name || `User ${ctx.user.id}` })).id;
@@ -2180,7 +2234,7 @@ Analizza e suggerisci ottimizzazioni.`,
           customerId,
           mode: "payment",
           lineItems: [{ name: listing.title, description: "Marketplace developer listing", amount: listing.priceCents, currency: "eur" }],
-          successUrl: `${baseUrl}/marketplace?purchase=success&orderId=${order.id}`,
+          successUrl: `${baseUrl}/marketplace?purchase=success&orderId=${order.id}&session_id={CHECKOUT_SESSION_ID}`,
           cancelUrl: `${baseUrl}/marketplace?purchase=cancelled`,
           metadata: { userId: String(ctx.user.id), kind: "marketplace", listingId: String(listing.id), orderId: String(order.id) },
         });
@@ -2403,6 +2457,18 @@ Analizza e suggerisci ottimizzazioni.`,
 
   // Template purchases
   templatePurchases: router({
+    catalog: publicProcedure.query(() => PREMIUM_TEMPLATES.flatMap(template => {
+      const pricing = PREMIUM_TEMPLATE_CATALOG[template.id];
+      if (!pricing) return [];
+      const { code: _code, ...metadata } = template;
+      return [{
+        ...metadata,
+        name: pricing.name,
+        price: pricing.priceEuro,
+        isPremium: true,
+      }];
+    })),
+
     checkAccess: protectedProcedure
       .input(z.object({ templateId: z.string() }))
       .query(async ({ input, ctx }) => {
@@ -2440,14 +2506,52 @@ Analizza e suggerisci ottimizzazioni.`,
         }
       }),
 
+    getCode: protectedProcedure
+      .input(z.object({ templateId: z.string() }))
+      .mutation(async ({ input, ctx }) => {
+        const template = PREMIUM_TEMPLATES.find(item => item.id === input.templateId);
+        if (!template || !PREMIUM_TEMPLATE_CATALOG[input.templateId]) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Template premium non valido" });
+        }
+
+        let userId: number | undefined;
+        if (typeof ctx.user.id === "number") {
+          userId = ctx.user.id;
+        } else if (ctx.user.openId) {
+          const user = await db.getUserByOpenId(ctx.user.openId);
+          if (user) userId = user.id as number;
+        }
+        if (!userId) throw new TRPCError({ code: "UNAUTHORIZED", message: "User not found" });
+
+        if (!isStaffUser(ctx.user) && !(await hasActiveSchoolAccess(userId))) {
+          const database = await db.getDb();
+          if (!database) {
+            throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+          }
+          const purchase = (await database.select().from(templatePurchases).where(and(
+            eq(templatePurchases.userId, userId),
+            eq(templatePurchases.templateId, input.templateId),
+            gt(templatePurchases.expiresAt, new Date()),
+          )).limit(1))[0];
+          if (!purchase) {
+            throw new TRPCError({ code: "FORBIDDEN", message: "Acquista il template per accedere al codice" });
+          }
+        }
+
+        return { code: template.code };
+      }),
+
     createCheckoutSession: protectedProcedure
       .input(z.object({
         templateId: z.string(),
-        templateName: z.string(),
-        price: z.number().positive(),
-        couponCode: z.string().optional(),
+        couponCode: z.string().max(100).optional(),
       }))
       .mutation(async ({ input, ctx }) => {
+        const template = PREMIUM_TEMPLATE_CATALOG[input.templateId];
+        if (!template) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Template premium non valido" });
+        }
+
         try {
           // Get numeric userId and user email
           let userId: number | undefined = undefined;
@@ -2468,7 +2572,7 @@ Analizza e suggerisci ottimizzazioni.`,
           }
 
           // Check for special discount code for tati01sp@gmail.com
-          let discountPriceEuro = input.price;
+          let discountPriceEuro = template.priceEuro;
           let discountPercentage = 0;
           let couponUsedCode = input.couponCode || null;
 
@@ -2498,41 +2602,36 @@ Analizza e suggerisci ottimizzazioni.`,
           }
 
           // Use Stripe to create checkout session
-          const stripeModule = await import('./_core/stripe');
-          const stripeClient: any = (stripeModule as any).stripe;
-          if (!stripeClient) {
-            throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Payment system not available' });
-          }
-
-          const successUrl = `${process.env.VITE_BASE_URL || process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'}/profile?tab=files&purchase=success`;
-          const cancelUrl = `${process.env.VITE_BASE_URL || process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'}/templates`;
-
-          // Use the mock Stripe client directly; its API is dynamic in dev, so cast to `any`.
-          const session: any = await (stripeClient as any).createCheckoutSession({
-            // The mock client accepts a dynamic payload in development.
-            customerEmail: ctx.user.email || undefined,
+          const { createCheckoutSession, getStripeReturnBaseUrl } = await import("./_core/stripe");
+          const baseUrl = getStripeReturnBaseUrl();
+          const session = await createCheckoutSession({
+            mode: "payment",
+            customerEmail: userEmail || undefined,
             lineItems: [{
-              name: `${input.templateName} - 30 days access`,
+              name: `${template.name} - 30 days access`,
               description: `Premium template access valid for 30 days`,
-              amount: Math.round(discountPriceEuro * 100), // Convert to cents (may be 0 if discount applied)
+              amount: Math.round(discountPriceEuro * 100),
               currency: 'eur',
               quantity: 1,
             }],
             metadata: {
               userId: String(userId),
+              kind: "template",
               templateId: input.templateId,
-              templateName: input.templateName,
-              originalPrice: String(input.price),
+              templateName: template.name,
+              originalPrice: String(template.priceEuro),
               discountPercentage: String(discountPercentage),
               couponCode: couponUsedCode || 'none',
             },
-            successUrl,
-            cancelUrl,
+            successUrl: `${baseUrl}/profile?tab=files&purchase=success&session_id={CHECKOUT_SESSION_ID}`,
+            cancelUrl: `${baseUrl}/templates?purchase=cancelled`,
           });
 
+          if (!session.url) throw new Error("Stripe did not return a Checkout URL");
           return { checkoutUrl: session.url };
         } catch (err) {
           console.error('[templatePurchases.createCheckoutSession] Error:', err);
+          if (err instanceof TRPCError) throw err;
           throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'Failed to create checkout session' });
         }
       }),

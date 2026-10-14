@@ -4,6 +4,8 @@
 
 import { randomUUID } from 'crypto';
 import { IncomingMessage } from 'http';
+import { getUserFeatureAccess } from './featureAccess';
+import { sdk } from './sdk';
 
 export type Role = 'owner' | 'editor' | 'viewer';
 
@@ -137,8 +139,22 @@ export async function attachCollaborationWS(server: any) {
 
     wss.on('connection', (ws: any, req: IncomingMessage) => {
         const clientId = randomUUID();
+        const hasAccess = sdk.authenticateRequest(req)
+            .then(getUserFeatureAccess)
+            .then((featureAccess) => featureAccess.collaboration)
+            .catch(() => {
+                console.warn('[WS] Collaboration connection rejected: authentication or plan access required');
+                return false;
+            });
 
-        ws.on('message', (raw: any) => {
+        ws.on('message', async (raw: any) => {
+            if (!(await hasAccess)) {
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({ type: 'error', error: 'Collaboration requires an active Pro plan or trial.' }));
+                    ws.close(1008, 'Plan access required');
+                }
+                return;
+            }
             let msg: WSMessage;
             try { msg = JSON.parse(raw.toString()); }
             catch { return; }

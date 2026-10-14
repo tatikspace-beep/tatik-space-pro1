@@ -15,6 +15,49 @@ export function requireStripe(): Stripe {
   return stripe;
 }
 
+type StripeUrlEnvironment = {
+  APP_URL?: string;
+  NODE_ENV?: string;
+  VERCEL_ENV?: string;
+  VERCEL_URL?: string;
+};
+
+function normalizeStripeBaseUrl(value: string, allowHttp: boolean) {
+  const url = new URL(value);
+  if (
+    (url.protocol !== "https:" && !(allowHttp && url.protocol === "http:")) ||
+    !url.hostname ||
+    url.username ||
+    url.password
+  ) {
+    throw new Error("Stripe return URL must be an absolute HTTPS URL");
+  }
+  return url.origin;
+}
+
+export function getStripeReturnBaseUrl(env: StripeUrlEnvironment = {
+  APP_URL: process.env.APP_URL,
+  NODE_ENV: process.env.NODE_ENV,
+  VERCEL_ENV: process.env.VERCEL_ENV,
+  VERCEL_URL: process.env.VERCEL_URL,
+}) {
+  if (env.VERCEL_ENV === "preview") {
+    if (!env.VERCEL_URL) {
+      throw new Error("VERCEL_URL is required to create Stripe Checkout URLs in Preview");
+    }
+    return normalizeStripeBaseUrl(`https://${env.VERCEL_URL}`, false);
+  }
+
+  if (env.APP_URL) {
+    return normalizeStripeBaseUrl(env.APP_URL, env.NODE_ENV !== "production");
+  }
+
+  if (env.NODE_ENV === "production") {
+    throw new Error("APP_URL is required to create Stripe Checkout URLs in Production");
+  }
+  return "http://localhost:3000";
+}
+
 export async function createCustomer(input: { email: string; name: string }) {
   return requireStripe().customers.create({
     email: input.email,

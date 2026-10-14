@@ -685,8 +685,6 @@ export default function ProfilePage() {
                                                                     setPurchasingTemplateId(template.id);
                                                                     checkoutMutation.mutate({
                                                                         templateId: template.id,
-                                                                        templateName: template.name,
-                                                                        price: parseFloat(String(template.price ?? '0')),
                                                                     });
                                                                 }}
                                                                 title={purchasedTemplateIds.includes(template.id) ? "Accesso già acquistato" : "Acquista template premium"}

@@ -4,7 +4,7 @@ import type { TrpcContext } from "./_core/context";
 
 type AuthenticatedUser = NonNullable<TrpcContext["user"]>;
 
-function createAuthContext(): { ctx: TrpcContext } {
+function createAuthContext(createdAt = new Date()): { ctx: TrpcContext } {
   const user: AuthenticatedUser = {
     id: 1,
     openId: "test-user",
@@ -12,7 +12,7 @@ function createAuthContext(): { ctx: TrpcContext } {
     name: "Test User",
     loginMethod: "email",
     role: "user",
-    createdAt: new Date(),
+    createdAt,
     updatedAt: new Date(),
     lastSignedIn: new Date(),
   };
@@ -66,6 +66,42 @@ describe("backups", () => {
     // The actual enforcement happens in db.createBackup()
     const backups = await caller.backups.list();
     expect(backups.length).toBeLessThanOrEqual(10);
+  });
+
+  it("should retain local backups after the free trial ends", async () => {
+    const trialExpiredAt = new Date(Date.now() - 61 * 24 * 60 * 60 * 1000);
+    const { ctx } = createAuthContext(trialExpiredAt);
+    const caller = appRouter.createCaller(ctx);
+
+    const backups = await caller.backups.list();
+    expect(Array.isArray(backups)).toBe(true);
+    expect(backups.every(backup => backup.backupType !== "online")).toBe(true);
+  });
+
+  it("should deny online backup creation after the free trial ends", async () => {
+    const trialExpiredAt = new Date(Date.now() - 61 * 24 * 60 * 60 * 1000);
+    const { ctx } = createAuthContext(trialExpiredAt);
+    const caller = appRouter.createCaller(ctx);
+
+    await expect(caller.backups.create({
+      projectId: 1,
+      name: "Online backup",
+      snapshot: "[]",
+      backupType: "online",
+    })).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+});
+
+describe("free-tier AI access", () => {
+  it("should deny AI requests after the free trial ends", async () => {
+    const trialExpiredAt = new Date(Date.now() - 61 * 24 * 60 * 60 * 1000);
+    const { ctx } = createAuthContext(trialExpiredAt);
+    const caller = appRouter.createCaller(ctx);
+
+    await expect(caller.ai.chat({
+      model: "qwen",
+      messages: [{ role: "user", content: "Write a test" }],
+    })).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 });
 
