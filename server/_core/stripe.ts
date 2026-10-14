@@ -168,7 +168,6 @@ export async function createCheckoutSession(input: {
       metadata: input.metadata,
       ...(mode === "subscription" ? { subscription_data: { metadata: input.metadata } } : {}),
     } : {}),
-    ...(mode === "payment" ? { payment_method_collection: "if_required" } : {}),
   });
 }
 
