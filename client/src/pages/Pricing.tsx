@@ -24,15 +24,53 @@ export default function Pricing() {
     });
 
     const startSubMutation = trpc.pricing.startProSubscription.useMutation();
+    const paypalStartMutation = trpc.payments.createProPayPalSubscription.useMutation();
+    const paypalVerifyMutation = trpc.payments.verifyProPayPalSubscription.useMutation();
 
     const [, setLocation] = useLocation();
+    const [paypalReturnMessage, setPaypalReturnMessage] = React.useState<string | null>(null);
+    const paypalReturnHandled = React.useRef(false);
+
+    React.useEffect(() => {
+        if (paypalReturnHandled.current) return;
+        const params = new URLSearchParams(window.location.search);
+        const result = params.get('paypal');
+        if (!result) return;
+
+        paypalReturnHandled.current = true;
+        const subscriptionId = params.get('subscription_id');
+        window.history.replaceState({}, '', window.location.pathname);
+
+        if (result === 'cancelled') {
+            setPaypalReturnMessage('Il checkout PayPal è stato annullato.');
+            return;
+        }
+        if (result !== 'success' || !subscriptionId) {
+            setPaypalReturnMessage('PayPal non ha restituito i dati necessari per verificare l’abbonamento.');
+            return;
+        }
+
+        setPaypalReturnMessage('Verifica dell’abbonamento PayPal in corso…');
+        paypalVerifyMutation.mutate({ subscriptionId }, {
+            onSuccess: (verification) => {
+                if (verification.activated) {
+                    setLocation('/profile');
+                    return;
+                }
+                setPaypalReturnMessage('L’approvazione PayPal è ancora in sospeso. Riprova tra poco.');
+            },
+            onError: (error) => {
+                console.error('Error verifying PayPal subscription:', error);
+                setPaypalReturnMessage('Non è stato possibile verificare l’abbonamento PayPal. Contatta il supporto prima di riprovare.');
+            },
+        });
+    }, [paypalVerifyMutation.mutate, setLocation]);
 
     const handleStartPro = async () => {
         try {
             const res = await startSubMutation.mutateAsync();
             if (res?.success) {
-                // Redirect user to account/billing page (or refresh)
-                setLocation('/account');
+                setLocation('/profile');
             } else {
                 console.error('Failed to start subscription:', res?.reason);
                 // fallback: notify user
@@ -41,6 +79,16 @@ export default function Pricing() {
         } catch (e) {
             console.error('Error starting subscription:', e);
             alert('Errore nell\'attivazione dell\'abbonamento');
+        }
+    };
+
+    const handleStartPayPal = async () => {
+        try {
+            const result = await paypalStartMutation.mutateAsync();
+            window.location.assign(result.approvalUrl);
+        } catch (error) {
+            console.error('Error starting PayPal subscription:', error);
+            alert(pageCopy.paymentError);
         }
     };
 
@@ -59,6 +107,11 @@ export default function Pricing() {
 
             <div className="container px-4 py-8">
                 <div className="max-w-6xl mx-auto">
+                    {paypalReturnMessage && (
+                        <div role="status" className="mb-6 rounded border border-primary/30 bg-primary/10 p-3 text-sm">
+                            {paypalReturnMessage}
+                        </div>
+                    )}
                     <h2 className="text-3xl font-bold text-center mb-2">{copy.pricingHeading}</h2>
                     <p className="text-muted-foreground text-center mb-12">
                         {copy.pricingIntro}
@@ -139,13 +192,23 @@ export default function Pricing() {
                             {!isLoading && (
                                 <>
                                     {pricingStatus?.inTrial ? (
-                                        <Button
-                                            className="w-full"
-                                            onClick={handleStartPro}
-                                            disabled={startSubMutation.isPending}
-                                        >
-                                            {startSubMutation.isPending ? labels.loading : labels.stripeButton}
-                                        </Button>
+                                        <>
+                                            <Button
+                                                className="w-full"
+                                                onClick={handleStartPro}
+                                                disabled={startSubMutation.isPending || paypalStartMutation.isPending}
+                                            >
+                                                {startSubMutation.isPending ? labels.loading : labels.stripeButton}
+                                            </Button>
+                                            <Button
+                                                className="w-full mt-2"
+                                                variant="outline"
+                                                onClick={handleStartPayPal}
+                                                disabled={startSubMutation.isPending || paypalStartMutation.isPending}
+                                            >
+                                                {paypalStartMutation.isPending ? labels.loading : "Continue with PayPal"}
+                                            </Button>
+                                        </>
                                     ) : pricingStatus?.status === 'school_access' ? (
                                         <Link href="/schools">
                                             <Button className="w-full" variant="outline">{pageCopy.schoolStatus}</Button>
@@ -155,13 +218,23 @@ export default function Pricing() {
                                             Già abbonato
                                         </Button>
                                     ) : (
-                                        <Button
-                                            className="w-full"
-                                            onClick={handleStartPro}
-                                            disabled={startSubMutation.isPending}
-                                        >
-                                            {startSubMutation.isPending ? labels.loading : labels.stripeButton}
-                                        </Button>
+                                        <>
+                                            <Button
+                                                className="w-full"
+                                                onClick={handleStartPro}
+                                                disabled={startSubMutation.isPending || paypalStartMutation.isPending}
+                                            >
+                                                {startSubMutation.isPending ? labels.loading : labels.stripeButton}
+                                            </Button>
+                                            <Button
+                                                className="w-full mt-2"
+                                                variant="outline"
+                                                onClick={handleStartPayPal}
+                                                disabled={startSubMutation.isPending || paypalStartMutation.isPending}
+                                            >
+                                                {paypalStartMutation.isPending ? labels.loading : "Continue with PayPal"}
+                                            </Button>
+                                        </>
                                     )}
                                 </>
                             )}

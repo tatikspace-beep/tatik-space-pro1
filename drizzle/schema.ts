@@ -166,10 +166,13 @@ export const subscriptions = pgTable("subscriptions", {
   endsAt: timestamp("endsAt"),
   renewsAt: timestamp("renewsAt"),
   stripeSubscriptionId: varchar("stripeSubscriptionId", { length: 255 }),
+  paypalSubscriptionId: varchar("paypalSubscriptionId", { length: 255 }),
   appliedDiscountId: integer("appliedDiscountId"),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
-});
+}, (table) => ({
+  paypalSubscriptionIdx: uniqueIndex("subscriptions_paypal_subscription_idx").on(table.paypalSubscriptionId),
+}));
 
 export type Subscription = typeof subscriptions.$inferSelect;
 export type InsertSubscription = typeof subscriptions.$inferInsert;
@@ -182,6 +185,8 @@ export const subscriptionDiscounts = pgTable("subscription_discounts", {
   userId: integer("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   discountAmount: text("discountAmount").notNull().default("2.00"),
   reason: varchar("reason", { length: 255 }).notNull(), // 'monetization_100_percent'
+  paypalPlanId: varchar("paypalPlanId", { length: 255 }),
+  paypalApprovalUrl: text("paypalApprovalUrl"),
   earnedAt: timestamp("earnedAt").notNull().defaultNow(),
   appliedAt: timestamp("appliedAt"),
   applicableUntil: timestamp("applicableUntil"),

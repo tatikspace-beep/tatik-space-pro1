@@ -601,6 +601,15 @@ export async function getSubscriptionByStripeId(stripeSubscriptionId: string) {
   return result[0] || null;
 }
 
+export async function getSubscriptionByPayPalId(paypalSubscriptionId: string) {
+  const db = await getDb();
+  if (!db) return null;
+  const result = await db.select().from(subscriptions)
+    .where(eq(subscriptions.paypalSubscriptionId, paypalSubscriptionId))
+    .limit(1);
+  return result[0] || null;
+}
+
 export async function grantTemplateAccess(input: {
   userId: number;
   templateId: string;

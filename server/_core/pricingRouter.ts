@@ -250,10 +250,18 @@ export const pricingRouter = router({
                 return { success: false, reason: "Nessun abbonamento attivo" };
             }
 
-            await updateSubscription(subscription.id, {
+            if (subscription.paypalSubscriptionId) {
+                const { cancelPayPalSubscription } = await import("./paypal");
+                await cancelPayPalSubscription(subscription.paypalSubscriptionId, "User requested cancellation");
+            }
+
+            const updatedSubscription = await updateSubscription(subscription.id, {
                 status: "cancelled",
                 endsAt: new Date(),
             });
+            if (!updatedSubscription) {
+                throw new Error("Unable to persist cancelled subscription status");
+            }
 
             // Nota: Aggiorna l'utente tramite altre API se necessario
 

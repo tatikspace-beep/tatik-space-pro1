@@ -1355,6 +1355,145 @@ Analizza e suggerisci ottimizzazioni.`,
   }),
 
   payments: router({
+    createProPayPalSubscription: protectedProcedure
+      .mutation(async ({ ctx }) => {
+        const planId = process.env.PAYPAL_PRO_PLAN_ID;
+        if (!planId) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "PayPal Pro plan non configurato." });
+        }
+        if (!(await db.getDb())) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Database non disponibile; checkout PayPal non avviato." });
+        }
+        const customId = JSON.stringify({ userId: ctx.user.id, kind: "subscription" });
+        const { createPayPalSubscription } = await import("./_core/paypal");
+        const baseUrl = process.env.VERCEL_ENV === "preview" && process.env.VERCEL_URL
+          ? `https://${process.env.VERCEL_URL}`
+          : authBaseUrl();
+        const subscription = await createPayPalSubscription({
+          planId,
+          customId,
+          returnUrl: `${baseUrl}/pricing?paypal=success`,
+          cancelUrl: `${baseUrl}/pricing?paypal=cancelled`,
+        });
+        const approvalUrl = subscription.links?.find((link: any) => link.rel === "approve")?.href;
+        if (!subscription.id || !approvalUrl) {
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: "PayPal non ha restituito il link di approvazione.",
+          });
+        }
+        const record = await db.createPaymentRecord({
+          userId: ctx.user.id,
+          provider: "paypal",
+          kind: "subscription",
+          status: "pending",
+          providerOrderId: subscription.id,
+          amount: 599,
+          currency: "eur",
+          metadata: customId,
+        });
+        if (!record) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Database non disponibile" });
+        }
+        return { subscriptionId: subscription.id, approvalUrl };
+      }),
+
+    verifyProPayPalSubscription: protectedProcedure
+      .input(z.object({
+        subscriptionId: z.string().regex(/^I-[A-Z0-9]+$/),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const payment = await db.getPaymentRecordByProviderOrder("paypal", input.subscriptionId);
+        if (
+          !payment ||
+          payment.userId !== ctx.user.id ||
+          payment.kind !== "subscription" ||
+          !["pending", "paid"].includes(payment.status)
+        ) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Abbonamento PayPal non trovato." });
+        }
+
+        const planId = process.env.PAYPAL_PRO_PLAN_ID;
+        if (!planId) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "PayPal Pro plan non configurato." });
+        }
+
+        const { getPayPalSubscription } = await import("./_core/paypal");
+        const paypalSubscription = await getPayPalSubscription(input.subscriptionId);
+        if (
+          paypalSubscription.id !== input.subscriptionId ||
+          paypalSubscription.plan_id !== planId ||
+          typeof paypalSubscription.custom_id !== "string"
+        ) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "La subscription PayPal non corrisponde all'acquisto atteso.",
+          });
+        }
+
+        let customId: unknown;
+        try {
+          customId = JSON.parse(paypalSubscription.custom_id);
+        } catch {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Metadati subscription PayPal non validi." });
+        }
+        if (
+          typeof customId !== "object" ||
+          customId === null ||
+          !("userId" in customId) ||
+          customId.userId !== ctx.user.id ||
+          !("kind" in customId) ||
+          customId.kind !== "subscription"
+        ) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "La subscription PayPal non appartiene all'utente." });
+        }
+
+        const status = typeof paypalSubscription.status === "string"
+          ? paypalSubscription.status
+          : "UNKNOWN";
+        if (status !== "ACTIVE") {
+          return { activated: false, status };
+        }
+
+        let localSubscription = await db.getSubscriptionByPayPalId(input.subscriptionId);
+        if (localSubscription && localSubscription.userId !== ctx.user.id) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Subscription PayPal già associata a un altro utente." });
+        }
+        if (!localSubscription) {
+          const existingActiveSubscription = await db.getSubscriptionByUserIdAndStatus(ctx.user.id, "active");
+          if (existingActiveSubscription) {
+            throw new TRPCError({ code: "CONFLICT", message: "L'utente ha già un abbonamento attivo." });
+          }
+
+          localSubscription = await db.createSubscription({
+            userId: ctx.user.id,
+            tier: "pro",
+            status: "active",
+            currentPrice: "5.99",
+            isFirstMonth: 1,
+            startedAt: new Date(),
+            paypalSubscriptionId: input.subscriptionId,
+          });
+          if (!localSubscription) {
+            throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Impossibile salvare l'abbonamento PayPal." });
+          }
+        } else if (localSubscription.status !== "active") {
+          const existingActiveSubscription = await db.getSubscriptionByUserIdAndStatus(ctx.user.id, "active");
+          if (existingActiveSubscription && existingActiveSubscription.id !== localSubscription.id) {
+            throw new TRPCError({ code: "CONFLICT", message: "L'utente ha già un abbonamento attivo." });
+          }
+          const restoredSubscription = await db.updateSubscription(localSubscription.id, {
+            status: "active",
+            endsAt: null,
+          });
+          if (!restoredSubscription) {
+            throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Impossibile aggiornare l'abbonamento PayPal." });
+          }
+        }
+
+        return { activated: true, status, paymentStatus: payment.status };
+      }),
+
     createCustomer: protectedProcedure
       .input(z.object({
         email: z.string().email(),
