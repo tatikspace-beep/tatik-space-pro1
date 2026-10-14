@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS "marketplace_reviews" (
   "updatedAt" timestamptz NOT NULL DEFAULT now()
 );
 
+ALTER TABLE "marketplace_reviews" ENABLE ROW LEVEL SECURITY;
+
 CREATE INDEX IF NOT EXISTS "marketplace_reviews_listing_idx"
   ON "marketplace_reviews" ("listingId");
 
