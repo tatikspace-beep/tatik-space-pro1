@@ -188,17 +188,8 @@ export default function ProfilePage() {
         console.log('[ProfilePage] applyTheme called with:', theme);
 
         if (theme === 'system') {
-            // Determina il tema base dal sistema
-            const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-            if (isDark) {
-                html.classList.add('dark');
-                localStorage.setItem('theme', 'dark');
-                console.log('[ProfilePage] System theme resolved to DARK');
-            } else {
-                html.classList.remove('dark');
-                localStorage.setItem('theme', 'light');
-                console.log('[ProfilePage] System theme resolved to LIGHT');
-            }
+            html.classList.add('dark');
+            localStorage.setItem('theme', 'dark');
         } else if (theme === 'dark') {
             html.classList.add('dark');
             localStorage.setItem('theme', 'dark');
