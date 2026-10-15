@@ -39,6 +39,7 @@ import { hasActiveSchoolAccess } from "./school-access";
 import { generateAssistantResponse } from "./_core/aiProviders";
 import { getUserFeatureAccess, requireFeatureAccess } from "./_core/featureAccess";
 import { PREMIUM_TEMPLATE_CATALOG } from "./_core/premiumTemplateCatalog";
+import { getAuthBaseUrl } from "./_core/authUrls";
 import { PREMIUM_TEMPLATES } from "../client/src/data/templates";
 
 async function sendAuthEmail(to: string, subject: string, text: string) {
@@ -60,9 +61,6 @@ async function sendAuthEmail(to: string, subject: string, text: string) {
   if (!response.ok) throw new Error(`Email delivery failed (${response.status})`);
 }
 
-function authBaseUrl() {
-  return process.env.APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
-}
 const MARKETPLACE_COMMISSION_RATE = 0.15;
 const MAX_MARKETPLACE_UPLOAD_BYTES = 2 * 1024 * 1024;
 const MARKETPLACE_SELLER_TERMS_VERSION = "2026-09-30-screening-v1";
@@ -351,7 +349,7 @@ export const appRouter = router({
           registrationTokens.set(token, { userId: user?.id, email: normalizedEmail, name: input.name, purpose: 'registration', expires: Date.now() + 1000 * 60 * 10 });
 
           const returnTo = safeReturnPath(input.redirectTo);
-          const link = `${authBaseUrl()}/complete-registration?token=${encodeURIComponent(token)}&next=${encodeURIComponent(returnTo)}`;
+          const link = `${getAuthBaseUrl()}/complete-registration?token=${encodeURIComponent(token)}&next=${encodeURIComponent(returnTo)}`;
           await sendAuthEmail(
             normalizedEmail,
             'Complete your Tatik Space registration',
@@ -393,7 +391,7 @@ export const appRouter = router({
         if (user) {
           const token = await createSignedEmailAccessToken(normalizedEmail);
           const returnTo = safeReturnPath(input.redirectTo);
-          const link = `${authBaseUrl()}/access?token=${encodeURIComponent(token)}&next=${encodeURIComponent(returnTo)}`;
+          const link = `${getAuthBaseUrl()}/access?token=${encodeURIComponent(token)}&next=${encodeURIComponent(returnTo)}`;
           await sendAuthEmail(normalizedEmail, 'Your Tatik Space access link', `Open this link within 10 minutes to access your account:\n${link}`);
         }
         return { success: true };
