@@ -40,8 +40,7 @@ import { trpc } from '@/lib/trpc';
 import BannerMonetizationWidget from '@/components/BannerMonetizationWidget';
 import BannerMonetizationDetails from '@/components/BannerMonetizationDetails';
 
-// Import templates from centralized data layer
-import { FREE_TEMPLATES, PREMIUM_TEMPLATES } from '@/data/templates';
+import { FREE_TEMPLATES } from '@/data/templates';
 
 export default function ProfilePage() {
     // determine reset token from query prior to auth hook
@@ -74,6 +73,16 @@ export default function ProfilePage() {
     const purchasesQuery = trpc.templatePurchases.list.useQuery(undefined, {
         enabled: !!user,
     });
+    const premiumCatalogQuery = trpc.templatePurchases.catalog.useQuery();
+    const templateCatalog = [...FREE_TEMPLATES, ...(premiumCatalogQuery.data ?? [])];
+    const getTemplateCodeMutation = trpc.templatePurchases.getCode.useMutation();
+    const resolveTemplateCode = async (template: (typeof templateCatalog)[number]) => {
+        if ('code' in template && typeof template.code === 'string') return template.code;
+        if (template.isPremium) {
+            return (await getTemplateCodeMutation.mutateAsync({ templateId: template.id })).code;
+        }
+        throw new Error('Il codice del template non è disponibile.');
+    };
 
     useEffect(() => {
         if (purchasesQuery.data) {
@@ -517,8 +526,7 @@ export default function ProfilePage() {
                             <CardContent>
                                 <div className="space-y-3">
                                     {purchasesQuery.data?.map((purchase: any) => {
-                                        const ALL_TEMPLATES = [...FREE_TEMPLATES, ...PREMIUM_TEMPLATES];
-                                        const template = ALL_TEMPLATES.find(t => t.id === purchase.templateId);
+                                        const template = templateCatalog.find(t => t.id === purchase.templateId);
                                         if (!template) return null;
 
                                         const daysLeft = Math.ceil(
@@ -552,14 +560,19 @@ export default function ProfilePage() {
                                                         <Button
                                                             size="sm"
                                                             className="text-xs h-8 gap-1"
-                                                            onClick={() => {
-                                                                // Store the template data for the editor to use
-                                                                const content = template.code;
-                                                                localStorage.setItem('template_to_open', JSON.stringify({
-                                                                    name: template.name,
-                                                                    code: content,
-                                                                    fileName: `${template.name.replace(/\s+/g, '_')}.html`
-                                                                }));
+                                                            onClick={async (event) => {
+                                                                event.preventDefault();
+                                                                try {
+                                                                    const code = await resolveTemplateCode(template);
+                                                                    localStorage.setItem('template_to_open', JSON.stringify({
+                                                                        name: template.name,
+                                                                        code,
+                                                                        fileName: `${template.name.replace(/\s+/g, '_')}.html`
+                                                                    }));
+                                                                    window.location.href = '/editor';
+                                                                } catch (error) {
+                                                                    toast.error(error instanceof Error ? error.message : 'Impossibile aprire il template.');
+                                                                }
                                                             }}
                                                         >
                                                             <Zap size={14} />
@@ -610,8 +623,7 @@ export default function ProfilePage() {
                                     </div>
                                     <div className="grid gap-3">
                                         {savedTemplateIds.map(templateId => {
-                                            const ALL_TEMPLATES = [...FREE_TEMPLATES, ...PREMIUM_TEMPLATES];
-                                            const template = ALL_TEMPLATES.find(t => t.id === templateId);
+                                            const template = templateCatalog.find(t => t.id === templateId);
                                             if (!template) return null;
 
                                             return (
@@ -644,12 +656,17 @@ export default function ProfilePage() {
                                                             variant="outline"
                                                             className="text-xs h-8 gap-1"
                                                             onClick={async () => {
-                                                                const attributionComment = '<!-- This template is from tatik.space - https://tatik.space -->\n';
-                                                                const codeWithAttribution = attributionComment + template.code;
+                                                                try {
+                                                                    const code = await resolveTemplateCode(template);
+                                                                    const attributionComment = '<!-- This template is from tatik.space - https://tatik.space -->\n';
+                                                                    const codeWithAttribution = attributionComment + code;
 
-                                                                await navigator.clipboard.writeText(codeWithAttribution);
-                                                                localStorage.setItem('copied_template', JSON.stringify({ code: codeWithAttribution, name: template.name }));
-                                                                toast.success(i18nT('copied'));
+                                                                    await navigator.clipboard.writeText(codeWithAttribution);
+                                                                    localStorage.setItem('copied_template', JSON.stringify({ code: codeWithAttribution, name: template.name }));
+                                                                    toast.success(i18nT('copied'));
+                                                                } catch (error) {
+                                                                    toast.error(error instanceof Error ? error.message : 'Impossibile copiare il template.');
+                                                                }
                                                             }}
                                                             title={i18nT('copyCode')}
                                                         >
@@ -660,15 +677,20 @@ export default function ProfilePage() {
                                                             size="sm"
                                                             variant="outline"
                                                             className="text-xs h-8 gap-1"
-                                                            onClick={() => {
-                                                                const elem = document.createElement('a');
-                                                                elem.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(template.code));
-                                                                elem.setAttribute('download', `${template.id}.html`);
-                                                                elem.style.display = 'none';
-                                                                document.body.appendChild(elem);
-                                                                elem.click();
-                                                                document.body.removeChild(elem);
-                                                                toast.success(i18nT('fileDownloaded'));
+                                                            onClick={async () => {
+                                                                try {
+                                                                    const code = await resolveTemplateCode(template);
+                                                                    const elem = document.createElement('a');
+                                                                    elem.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(code));
+                                                                    elem.setAttribute('download', `${template.id}.html`);
+                                                                    elem.style.display = 'none';
+                                                                    document.body.appendChild(elem);
+                                                                    elem.click();
+                                                                    document.body.removeChild(elem);
+                                                                    toast.success(i18nT('fileDownloaded'));
+                                                                } catch (error) {
+                                                                    toast.error(error instanceof Error ? error.message : 'Impossibile scaricare il template.');
+                                                                }
                                                             }}
                                                             title="Scarica il template"
                                                         >

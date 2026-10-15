@@ -411,7 +411,7 @@ export default function TemplateMarketplace() {
                                             <img
                                                 src={`/template-previews/${template.id}.jpg`}
                                                 alt={`${ui.previewAlt} ${template.name}`}
-                                                className="pointer-events-none h-full w-full object-contain"
+                                                className="pointer-events-none h-full w-full object-cover object-top"
                                             />
                                         ) : (
                                             <iframe
