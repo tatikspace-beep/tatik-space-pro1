@@ -13,7 +13,7 @@ import { useLocation } from 'wouter';
 import { DeveloperTemplateListings } from '@/components/DeveloperTemplateListings';
 import { commercialSeoCopy } from '@/lib/commercialSeoCopy';
 import { templateMarketplaceUiCopy } from '@/lib/templateMarketplaceUiCopy';
-import { getLocalizedTemplateDescription } from '@/lib/templateMarketplaceContentCopy';
+import { getLocalizedTemplateDescription, getLocalizedTemplateName } from '@/lib/templateMarketplaceContentCopy';
 
 type MarketplaceTemplate = TemplateMetadata & { code?: string };
 
@@ -104,10 +104,11 @@ export default function TemplateMarketplace() {
 
     const filtered = useMemo(() => {
         return allTemplates.filter(t => {
+            const localizedName = getLocalizedTemplateName(t.id, t.name, language);
+            const localizedDescription = getLocalizedTemplateDescription(t.id, t.description, language);
             const matchSearch = !searchQuery ||
-                t.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                t.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                t.tech.some(tech => tech.toLowerCase().includes(searchQuery.toLowerCase()));
+                [t.name, localizedName, t.description, localizedDescription, ...t.tech]
+                    .some(value => value.toLowerCase().includes(searchQuery.toLowerCase()));
 
             const matchCat = selectedCategory === 'all' ||
                 (selectedCategory === 'business' && (t.category === 'business' || t.category === 'saas')) ||
@@ -130,7 +131,7 @@ export default function TemplateMarketplace() {
             if (sortBy === 'recent') return b.id.localeCompare(a.id);
             return 0;
         });
-    }, [allTemplates, searchQuery, selectedCategory, selectedTech, priceFilter, sortBy]);
+    }, [allTemplates, language, searchQuery, selectedCategory, selectedTech, priceFilter, sortBy]);
 
     // Load purchases list to determine access locally
     const purchasesQuery = trpc.templatePurchases.list.useQuery(undefined, { enabled: !!user });
@@ -410,7 +411,7 @@ export default function TemplateMarketplace() {
                                         {template.isPremium ? (
                                             <img
                                                 src={`/template-previews/${template.id}.jpg`}
-                                                alt={`${ui.previewAlt} ${template.name}`}
+                                                alt={`${ui.previewAlt} ${getLocalizedTemplateName(template.id, template.name, language)}`}
                                                 className="pointer-events-none h-full w-full object-cover object-top"
                                             />
                                         ) : (
@@ -418,14 +419,14 @@ export default function TemplateMarketplace() {
                                                 srcDoc={previewCode}
                                                 style={{ width: '400%', height: '400%', transform: 'scale(0.25)', transformOrigin: 'top left' }}
                                                 className="border-0 pointer-events-none"
-                                                title={`${ui.previewAlt}: ${template.name}`}
+                                                title={`${ui.previewAlt}: ${getLocalizedTemplateName(template.id, template.name, language)}`}
                                                 scrolling="no"
                                                 sandbox="allow-scripts"
                                             />
                                         )}
                                         <button
                                             type="button"
-                                            aria-label={`${ui.openFullPreview} ${template.name}`}
+                                            aria-label={`${ui.openFullPreview} ${getLocalizedTemplateName(template.id, template.name, language)}`}
                                             onClick={() => handleViewTemplate(template)}
                                             className="absolute inset-0 z-[1] w-full cursor-zoom-in"
                                         />
@@ -478,7 +479,7 @@ export default function TemplateMarketplace() {
                                         <div className="flex items-start justify-between gap-2 mb-2">
                                             <div>
                                                 <h3 className="text-sm font-bold leading-snug text-foreground line-clamp-2">
-                                                    {template.name}
+                                                    {getLocalizedTemplateName(template.id, template.name, language)}
                                                 </h3>
                                             </div>
                                             {template.isPremium && (
@@ -588,7 +589,7 @@ export default function TemplateMarketplace() {
                                 <div className="flex items-start justify-between">
                                     <div className="flex-1">
                                         <DialogTitle className="text-2xl font-bold text-foreground">
-                                            {selectedTemplate.name}
+                                            {getLocalizedTemplateName(selectedTemplate.id, selectedTemplate.name, language)}
                                         </DialogTitle>
                                         <DialogDescription className="text-sm mt-2">
                                             {getLocalizedTemplateDescription(selectedTemplate.id, selectedTemplate.description, language)}
@@ -701,14 +702,14 @@ export default function TemplateMarketplace() {
                                             {selectedTemplate.isPremium ? (
                                                 <img
                                                     src={`/template-previews/${selectedTemplate.id}.jpg`}
-                                                    alt={`${ui.previewAlt} ${selectedTemplate.name}`}
+                                                    alt={`${ui.previewAlt} ${getLocalizedTemplateName(selectedTemplate.id, selectedTemplate.name, language)}`}
                                                     className="block h-auto max-w-none origin-top-left transition-[width] duration-150"
                                                     style={{ width: `${previewZoom}%` }}
                                                 />
                                             ) : (
                                                 <iframe
                                                     srcDoc={selectedTemplate.code}
-                                                    title={`${ui.previewAlt}: ${selectedTemplate.name}`}
+                                                    title={`${ui.previewAlt}: ${getLocalizedTemplateName(selectedTemplate.id, selectedTemplate.name, language)}`}
                                                     sandbox="allow-scripts"
                                                     className="block border-0"
                                                     style={{
