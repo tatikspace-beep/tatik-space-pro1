@@ -35,14 +35,16 @@ import {
     Download,
     ShoppingCart,
 } from 'lucide-react';
-import { Link } from 'wouter';
+import { Link, useLocation } from 'wouter';
 import { trpc } from '@/lib/trpc';
 import BannerMonetizationWidget from '@/components/BannerMonetizationWidget';
 import BannerMonetizationDetails from '@/components/BannerMonetizationDetails';
+import { setPendingTemplateTransfer } from '@/lib/pendingTemplateTransfer';
 
 import { FREE_TEMPLATES } from '@/data/templates';
 
 export default function ProfilePage() {
+    const [, setLocation] = useLocation();
     // determine reset token from query prior to auth hook
     const initialParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
     const initialToken = initialParams.get('reset');
@@ -554,13 +556,14 @@ export default function ProfilePage() {
                                                             onClick={async (event) => {
                                                                 event.preventDefault();
                                                                 try {
+                                                                    if (!user) throw new Error('Sessione utente non disponibile.');
                                                                     const code = await resolveTemplateCode(template);
-                                                                    localStorage.setItem('template_to_open', JSON.stringify({
+                                                                    setPendingTemplateTransfer(user.id, {
                                                                         name: template.name,
                                                                         code,
                                                                         fileName: `${template.name.replace(/\s+/g, '_')}.html`
-                                                                    }));
-                                                                    window.location.href = '/editor';
+                                                                    });
+                                                                    setLocation('/editor');
                                                                 } catch (error) {
                                                                     toast.error(error instanceof Error ? error.message : 'Impossibile aprire il template.');
                                                                 }
@@ -653,7 +656,13 @@ export default function ProfilePage() {
                                                                     const codeWithAttribution = attributionComment + code;
 
                                                                     await navigator.clipboard.writeText(codeWithAttribution);
-                                                                    localStorage.setItem('copied_template', JSON.stringify({ code: codeWithAttribution, name: template.name }));
+                                                                    if (!template.isPremium) {
+                                                                        localStorage.setItem('copied_template', JSON.stringify({
+                                                                            code: codeWithAttribution,
+                                                                            name: template.name,
+                                                                            isPremium: false,
+                                                                        }));
+                                                                    }
                                                                     toast.success(i18nT('copied'));
                                                                 } catch (error) {
                                                                     toast.error(error instanceof Error ? error.message : 'Impossibile copiare il template.');

@@ -40,7 +40,7 @@ import { generateAssistantResponse } from "./_core/aiProviders";
 import { getUserFeatureAccess, requireFeatureAccess } from "./_core/featureAccess";
 import { PREMIUM_TEMPLATE_CATALOG } from "./_core/premiumTemplateCatalog";
 import { getAuthBaseUrl } from "./_core/authUrls";
-import { PREMIUM_TEMPLATES } from "../client/src/data/templates";
+import { PREMIUM_TEMPLATES } from "./data/premiumTemplates";
 
 async function sendAuthEmail(to: string, subject: string, text: string) {
   const apiKey = process.env.RESEND_API_KEY;

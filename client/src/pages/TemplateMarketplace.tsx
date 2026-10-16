@@ -33,7 +33,7 @@ export default function TemplateMarketplace() {
     const [copiedId, setCopiedId] = useState<string | null>(null);
     const [savedTemplateIds, setSavedTemplateIds] = useState<string[]>([]);
     const [userProjectId, setUserProjectId] = useState<number | null>(null);
-    const [templateAccess, setTemplateAccess] = useState<{ hasAccess: boolean; expiresAt: Date | null } | null>(null);
+    const [templateAccess, setTemplateAccess] = useState<{ userId: string; hasAccess: boolean; expiresAt: Date | null } | null>(null);
     const [checkingAccess, setCheckingAccess] = useState(false);
     const [detailView, setDetailView] = useState<'preview' | 'code'>('preview');
     const [previewZoom, setPreviewZoom] = useState(100);
@@ -145,7 +145,16 @@ export default function TemplateMarketplace() {
         },
     });
     const getCodeMutation = trpc.templatePurchases.getCode.useMutation();
-    const [authorizedCode, setAuthorizedCode] = useState<{ templateId: string; code: string } | null>(null);
+    const [authorizedCode, setAuthorizedCode] = useState<{ userId: string; templateId: string; code: string } | null>(null);
+    const currentUserId = user ? String(user.id) : null;
+    const currentAuthorizedCode = authorizedCode?.userId === currentUserId ? authorizedCode : null;
+    const currentTemplateAccess = templateAccess?.userId === currentUserId ? templateAccess : null;
+
+    useEffect(() => {
+        setAuthorizedCode(null);
+        setTemplateAccess(null);
+        setSelectedTemplate(null);
+    }, [currentUserId]);
 
     // Handle copy template to clipboard
     const handleCopy = async (template: MarketplaceTemplate) => {
@@ -157,12 +166,20 @@ export default function TemplateMarketplace() {
                 toast.error(ui.codeUnavailable);
                 return;
             }
-            if (template.isPremium) setAuthorizedCode({ templateId: template.id, code });
+            if (template.isPremium && currentUserId) {
+                setAuthorizedCode({ userId: currentUserId, templateId: template.id, code });
+            }
             const attributionComment = '<!-- This template is from tatik.space - https://tatik.space -->\n';
             const codeWithAttribution = attributionComment + code;
 
             await navigator.clipboard.writeText(codeWithAttribution);
-            localStorage.setItem('copied_template', JSON.stringify({ code: codeWithAttribution, name: template.name }));
+            if (!template.isPremium) {
+                localStorage.setItem('copied_template', JSON.stringify({
+                    code: codeWithAttribution,
+                    name: getLocalizedTemplateName(template.id, template.name, language),
+                    isPremium: false,
+                }));
+            }
             setCopiedId(template.id);
             toast.success(ui.copySuccess);
             setTimeout(() => setCopiedId(null), 2000);
@@ -193,22 +210,22 @@ export default function TemplateMarketplace() {
             setCheckingAccess(true);
             try {
                 const result = await utils.templatePurchases.checkAccess.fetch({ templateId: template.id });
-                setTemplateAccess(result);
+                setTemplateAccess({ ...result, userId: String(user.id) });
                 if (result.hasAccess) {
                     const response = await getCodeMutation.mutateAsync({ templateId: template.id });
-                    setAuthorizedCode({ templateId: template.id, code: response.code });
+                    setAuthorizedCode({ userId: String(user.id), templateId: template.id, code: response.code });
                 }
             } catch (error) {
                 console.error('Error checking access:', error);
-                setTemplateAccess({ hasAccess: false, expiresAt: null });
+                setTemplateAccess({ userId: String(user.id), hasAccess: false, expiresAt: null });
                 toast.error(error instanceof Error ? error.message : ui.codeUnavailable);
             } finally {
                 setCheckingAccess(false);
             }
         } else if (template.isPremium) {
-            setTemplateAccess({ hasAccess: false, expiresAt: null });
+            setTemplateAccess(null);
         } else {
-            setTemplateAccess({ hasAccess: true, expiresAt: null });
+            setTemplateAccess(null);
         }
     };
 
@@ -394,11 +411,11 @@ export default function TemplateMarketplace() {
                     ) : (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
                             {filtered.map(template => {
-                                const hasAuthorizedCode = authorizedCode?.templateId === template.id;
+                                const hasAuthorizedCode = currentAuthorizedCode?.templateId === template.id;
                                 const previewLocked = template.isPremium && !hasAuthorizedCode;
                                 const previewCode = template.isPremium
                                     ? hasAuthorizedCode
-                                        ? authorizedCode?.code ?? ''
+                                        ? currentAuthorizedCode?.code ?? ''
                                         : `<div style="font:16px sans-serif;padding:24px;text-align:center">${ui.buyForPreview}</div>`
                                     : template.code ?? `<div style="font:16px sans-serif;padding:24px;text-align:center">${ui.previewUnavailable}</div>`;
                                 return (
@@ -721,7 +738,7 @@ export default function TemplateMarketplace() {
                                                 />
                                             )}
                                         </div>
-                                    ) : selectedTemplate.isPremium && !isAdmin && !templateAccess?.hasAccess ? (
+                                    ) : selectedTemplate.isPremium && !isAdmin && !currentTemplateAccess?.hasAccess ? (
                                         <div className="flex h-full items-center justify-center bg-gradient-to-br from-slate-950 to-slate-900 p-6">
                                             <div className="max-w-sm space-y-3 text-center">
                                                 <Lock className="mx-auto h-8 w-8 text-amber-400" />
@@ -736,7 +753,7 @@ export default function TemplateMarketplace() {
                                     ) : (
                                         <ScrollArea className="h-full">
                                             <pre className="p-4 text-xs text-slate-300 whitespace-pre-wrap break-words font-mono">
-                                                <code>{authorizedCode?.templateId === selectedTemplate.id ? (authorizedCode.code ?? '') : (selectedTemplate.code ?? '')}</code>
+                                                <code>{currentAuthorizedCode?.templateId === selectedTemplate.id ? (currentAuthorizedCode.code ?? '') : (selectedTemplate.code ?? '')}</code>
                                             </pre>
                                         </ScrollArea>
                                     )}
@@ -752,7 +769,7 @@ export default function TemplateMarketplace() {
                                         <Heart className={`mr-2 h-4 w-4 ${savedTemplateIds.includes(selectedTemplate.id) ? 'fill-red-500 text-red-500' : ''}`} />
                                         {savedTemplateIds.includes(selectedTemplate.id) ? ui.saved : ui.save}
                                     </Button>
-                                    {selectedTemplate.isPremium && !isAdmin && !templateAccess?.hasAccess ? (
+                                    {selectedTemplate.isPremium && !isAdmin && !currentTemplateAccess?.hasAccess ? (
                                         <Button
                                             className="bg-amber-500 font-semibold text-white hover:bg-amber-600"
                                             onClick={() => {

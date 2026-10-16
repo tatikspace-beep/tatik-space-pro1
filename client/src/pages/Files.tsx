@@ -78,15 +78,21 @@ export default function Files() {
   // Load copied template from localStorage
   const [copiedTemplate, setCopiedTemplate] = React.useState<any>(null);
   React.useEffect(() => {
+    setCopiedTemplate(null);
     const saved = localStorage.getItem('copied_template');
     if (saved) {
       try {
-        setCopiedTemplate(JSON.parse(saved));
-      } catch (e) {
-        console.error('Error parsing copied template:', e);
+        const template = JSON.parse(saved);
+        if (template?.isPremium === false) {
+          setCopiedTemplate(template);
+        } else {
+          localStorage.removeItem('copied_template');
+        }
+      } catch {
+        localStorage.removeItem('copied_template');
       }
     }
-  }, []);
+  }, [user?.id]);
 
   // Update stats every 25 seconds to match GreenBoxHybrid rotation frequency
   React.useEffect(() => {
@@ -578,7 +584,12 @@ export default function Files() {
                                     ? (await getTemplateCodeMutation.mutateAsync({ templateId: template.id })).code
                                     : template.code ?? '';
                                   const purchasedTemplate = { ...template, code };
-                                  localStorage.setItem('copied_template', JSON.stringify(purchasedTemplate));
+                                  if (!template.isPremium) {
+                                    localStorage.setItem('copied_template', JSON.stringify({
+                                      ...purchasedTemplate,
+                                      isPremium: false,
+                                    }));
+                                  }
                                   setCopiedTemplate(purchasedTemplate);
                                   toast.success(toastCopy('copiedTemplateVisible'));
                                 } catch (error) {

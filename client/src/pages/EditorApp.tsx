@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useAuth } from '@/_core/hooks/useAuth';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useTranslation } from 'react-i18next';
@@ -30,6 +30,7 @@ import { useAutosave } from '@/hooks/useAutosave';
 import { getLoginUrl } from '@/const';
 import { getEditorAppCopy } from '@/lib/editorAppCopy';
 import type { EditorAppCopyKey } from '@/lib/editorAppCopy';
+import { clearPendingTemplateTransfer, takePendingTemplateTransfer } from '@/lib/pendingTemplateTransfer';
 import { getEditorAppLabelFallback } from '@/lib/editorAppLabelFallbacks';
 import { normalizePreviewPath } from '@/lib/previewFileResolver';
 import { createPreviewAssetDocument, isPreviewBinaryAsset } from '@/lib/previewAssets';
@@ -46,6 +47,9 @@ export default function EditorApp() {
   const { t: i18nT } = useTranslation();
   const editorText = (key: EditorAppCopyKey, values: Record<string, string | number> = {}) =>
     getEditorAppCopy(language, key, values);
+  const handleClipboardExportBlocked = useCallback(() => {
+    toast.warning(editorText('clipboardExportDisabled'));
+  }, [language]);
   const editorLabel = (key: string) =>
     getEditorAppLabelFallback(language, key as Parameters<typeof getEditorAppLabelFallback>[1]) ?? i18nT(key);
   const { setCurrentProject: setContextProject } = useProject();
@@ -335,31 +339,42 @@ export default function EditorApp() {
   const openAttemptedRef = useRef(false);
 
   useEffect(() => {
+    if (authLoading) return;
+
+    setCopiedTemplate(null);
+    setTemplateToOpen(null);
+    const pendingTransfer = user ? takePendingTemplateTransfer(user.id) : null;
+    if (!user) clearPendingTemplateTransfer();
+    if (pendingTransfer) {
+      setTemplateToOpen({
+        code: pendingTransfer.code,
+        name: pendingTransfer.name,
+        fileName: pendingTransfer.fileName,
+      });
+    }
+
     const stored = localStorage.getItem('copied_template');
     if (stored) {
       try {
-        setCopiedTemplate(JSON.parse(stored));
-      } catch { }
-    }
-
-    // Check if we need to open a template from localStorage
-    const storedTemplate = localStorage.getItem('template_to_open');
-    if (storedTemplate) {
-      try {
-        const templateData = JSON.parse(storedTemplate);
-        console.log('[EditorApp] Found template_to_open in localStorage:', templateData.fileName);
-        setTemplateToOpen(templateData);
-      } catch (err) {
-        console.error('[EditorApp] Failed to parse template_to_open:', err);
+        const savedTemplate = JSON.parse(stored);
+        if (savedTemplate?.isPremium === false) {
+          setCopiedTemplate(savedTemplate);
+        } else {
+          localStorage.removeItem('copied_template');
+        }
+      } catch {
+        localStorage.removeItem('copied_template');
       }
     }
+
+    localStorage.removeItem('template_to_open');
 
     // Check if we need to open a file from localStorage
     const fileId = localStorage.getItem('to_open_file_id');
     if (fileId) {
       setFileToOpenId(fileId);
     }
-  }, []);
+  }, [authLoading, user?.id]);
 
   // Auto-open file when navigating from Files page
   useEffect(() => {
@@ -2768,6 +2783,8 @@ export default function EditorApp() {
                     jumpToLine={jumpToLine}
                     autoDetectLanguage={selectedLanguage === 'plaintext'}
                     rotationFrame={editorRotated}
+                    preventClipboardExport
+                    onClipboardExportBlocked={handleClipboardExportBlocked}
                   />
                 </div>
                 </div>

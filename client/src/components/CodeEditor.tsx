@@ -167,6 +167,8 @@ interface CodeEditorProps {
   jumpToLine?: number | null;
   autoDetectLanguage?: boolean;
   rotationFrame?: boolean;
+  preventClipboardExport?: boolean;
+  onClipboardExportBlocked?: () => void;
 }
 
 const languageMap: Record<string, () => any> = {
@@ -203,6 +205,8 @@ export function CodeEditor({
   jumpToLine = null,
   autoDetectLanguage = false,
   rotationFrame = false,
+  preventClipboardExport = false,
+  onClipboardExportBlocked,
 }: CodeEditorProps) {
   const { language: appLanguage } = useLanguage();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -274,6 +278,20 @@ export function CodeEditor({
         languageExtension,
         highlightField,
         autocompletion(),
+        preventClipboardExport
+          ? EditorView.domEventHandlers({
+              copy(event) {
+                event.preventDefault();
+                onClipboardExportBlocked?.();
+                return true;
+              },
+              cut(event) {
+                event.preventDefault();
+                onClipboardExportBlocked?.();
+                return true;
+              },
+            })
+          : [],
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             onChange(update.state.doc.toString());
@@ -326,7 +344,7 @@ export function CodeEditor({
       view.destroy();
       if (viewRef.current === view) viewRef.current = null;
     };
-  }, [detectedLanguage, isDarkTheme, frameDocument, rotationFrame]);
+  }, [detectedLanguage, isDarkTheme, frameDocument, rotationFrame, preventClipboardExport, onClipboardExportBlocked]);
 
   useEffect(() => {
     if (viewRef.current && viewRef.current.state.doc.toString() !== value) {
