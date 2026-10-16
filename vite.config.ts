@@ -130,7 +130,12 @@ export default defineConfig({
   build: {
     outDir: "../dist",
     emptyOutDir: false,
-    minify: "esbuild",
+    minify: "terser",
+    terserOptions: {
+      compress: { passes: 2 },
+      mangle: true,
+      format: { comments: false },
+    },
     sourcemap: false,
   },
   server: {
