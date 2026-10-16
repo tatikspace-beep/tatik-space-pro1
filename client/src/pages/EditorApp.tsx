@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useAuth } from '@/_core/hooks/useAuth';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useTranslation } from 'react-i18next';
@@ -47,9 +47,6 @@ export default function EditorApp() {
   const { t: i18nT } = useTranslation();
   const editorText = (key: EditorAppCopyKey, values: Record<string, string | number> = {}) =>
     getEditorAppCopy(language, key, values);
-  const handleClipboardExportBlocked = useCallback(() => {
-    toast.warning(editorText('clipboardExportDisabled'));
-  }, [language]);
   const editorLabel = (key: string) =>
     getEditorAppLabelFallback(language, key as Parameters<typeof getEditorAppLabelFallback>[1]) ?? i18nT(key);
   const { setCurrentProject: setContextProject } = useProject();
@@ -2783,8 +2780,6 @@ export default function EditorApp() {
                     jumpToLine={jumpToLine}
                     autoDetectLanguage={selectedLanguage === 'plaintext'}
                     rotationFrame={editorRotated}
-                    preventClipboardExport
-                    onClipboardExportBlocked={handleClipboardExportBlocked}
                   />
                 </div>
                 </div>

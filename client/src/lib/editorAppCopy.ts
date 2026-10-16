@@ -122,7 +122,6 @@ export const editorAppCopy = {
     versionHistoryTitle: 'Version history',
     viewRestorePreviousVersions: 'View and restore previous versions of your code',
     versions: 'Versions',
-    clipboardExportDisabled: 'Copying code from the editor is disabled.',
   },
   it: {
     accessRequired: 'Accesso richiesto', searchResults: 'Risultati della ricerca', hide: 'Nascondi', discover: 'Scopri',
@@ -178,7 +177,6 @@ export const editorAppCopy = {
     getInfiniteHistory: 'Ottieni cronologia illimitata', restoreVersion: 'Ripristina versione',
     versionHistoryTitle: 'Cronologia versioni', viewRestorePreviousVersions: 'Visualizza e ripristina le versioni precedenti del codice',
     versions: 'Versioni',
-    clipboardExportDisabled: 'La copia del codice dall’Editor è disabilitata.',
   },
   es: {
     accessRequired: 'Acceso requerido', searchResults: 'Resultados de búsqueda', hide: 'Ocultar', discover: 'Descubrir',
@@ -234,7 +232,6 @@ export const editorAppCopy = {
     getInfiniteHistory: 'Obtén historial ilimitado', restoreVersion: 'Restaurar versión',
     versionHistoryTitle: 'Historial de versiones', viewRestorePreviousVersions: 'Ver y restaurar versiones anteriores del código',
     versions: 'Versiones',
-    clipboardExportDisabled: 'La copia de código desde el editor está desactivada.',
   },
   fr: {
     accessRequired: 'Accès requis', searchResults: 'Résultats de recherche', hide: 'Masquer', discover: 'Découvrir',
@@ -290,7 +287,6 @@ export const editorAppCopy = {
     getInfiniteHistory: 'Obtenir un historique illimité', restoreVersion: 'Restaurer la version',
     versionHistoryTitle: 'Historique des versions', viewRestorePreviousVersions: 'Afficher et restaurer les versions précédentes de votre code',
     versions: 'Versions',
-    clipboardExportDisabled: 'La copie du code depuis l’éditeur est désactivée.',
   },
   de: {
     accessRequired: 'Zugriff erforderlich', searchResults: 'Suchergebnisse', hide: 'Ausblenden', discover: 'Entdecken',
@@ -346,7 +342,6 @@ export const editorAppCopy = {
     getInfiniteHistory: 'Unbegrenzten Verlauf erhalten', restoreVersion: 'Version wiederherstellen',
     versionHistoryTitle: 'Versionsverlauf', viewRestorePreviousVersions: 'Frühere Versionen deines Codes anzeigen und wiederherstellen',
     versions: 'Versionen',
-    clipboardExportDisabled: 'Das Kopieren von Code aus dem Editor ist deaktiviert.',
   },
   pt: {
     accessRequired: 'Acesso necessário', searchResults: 'Resultados da pesquisa', hide: 'Ocultar', discover: 'Descobrir',
@@ -402,7 +397,6 @@ export const editorAppCopy = {
     getInfiniteHistory: 'Obter histórico ilimitado', restoreVersion: 'Restaurar versão',
     versionHistoryTitle: 'Histórico de versões', viewRestorePreviousVersions: 'Ver e restaurar versões anteriores do seu código',
     versions: 'Versões',
-    clipboardExportDisabled: 'A cópia de código do editor está desativada.',
   },
   ru: {
     accessRequired: 'Требуется доступ', searchResults: 'Результаты поиска', hide: 'Скрыть', discover: 'Подробнее',
@@ -458,7 +452,6 @@ export const editorAppCopy = {
     getInfiniteHistory: 'Получить неограниченную историю', restoreVersion: 'Восстановить версию',
     versionHistoryTitle: 'История версий', viewRestorePreviousVersions: 'Просмотр и восстановление предыдущих версий кода',
     versions: 'Версии',
-    clipboardExportDisabled: 'Копирование кода из редактора отключено.',
   },
   zh: {
     accessRequired: '需要访问权限', searchResults: '搜索结果', hide: '隐藏', discover: '了解详情',
@@ -514,7 +507,6 @@ export const editorAppCopy = {
     getInfiniteHistory: '获取无限历史记录', restoreVersion: '恢复版本',
     versionHistoryTitle: '版本历史记录', viewRestorePreviousVersions: '查看并恢复代码的先前版本',
     versions: '个版本',
-    clipboardExportDisabled: '已禁用从编辑器复制代码。',
   },
   ja: {
     accessRequired: 'アクセスが必要です', searchResults: '検索結果', hide: '非表示', discover: '詳細を見る',
@@ -570,7 +562,6 @@ export const editorAppCopy = {
     getInfiniteHistory: '無制限の履歴を利用する', restoreVersion: 'バージョンを復元',
     versionHistoryTitle: 'バージョン履歴', viewRestorePreviousVersions: 'コードの以前のバージョンを表示・復元します',
     versions: 'バージョン',
-    clipboardExportDisabled: 'エディターからのコードのコピーは無効です。',
   },
   ko: {
     accessRequired: '접근 권한 필요', searchResults: '검색 결과', hide: '숨기기', discover: '자세히 보기',
@@ -626,7 +617,6 @@ export const editorAppCopy = {
     getInfiniteHistory: '무제한 기록 이용하기', restoreVersion: '버전 복원',
     versionHistoryTitle: '버전 기록', viewRestorePreviousVersions: '이전 코드 버전을 보고 복원합니다',
     versions: '버전',
-    clipboardExportDisabled: '편집기에서 코드 복사가 비활성화되어 있습니다.',
   },
   ar: {
     accessRequired: 'الوصول مطلوب', searchResults: 'نتائج البحث', hide: 'إخفاء', discover: 'اكتشف',
@@ -682,7 +672,6 @@ export const editorAppCopy = {
     getInfiniteHistory: 'الحصول على سجل غير محدود', restoreVersion: 'استعادة الإصدار',
     versionHistoryTitle: 'سجل الإصدارات', viewRestorePreviousVersions: 'عرض الإصدارات السابقة من التعليمات البرمجية واستعادتها',
     versions: 'الإصدارات',
-    clipboardExportDisabled: 'تم تعطيل نسخ التعليمات البرمجية من المحرر.',
   },
   hi: {
     accessRequired: 'पहुँच आवश्यक', searchResults: 'खोज परिणाम', hide: 'छिपाएँ', discover: 'जानें',
@@ -738,7 +727,6 @@ export const editorAppCopy = {
     getInfiniteHistory: 'असीमित इतिहास पाएँ', restoreVersion: 'संस्करण पुनर्स्थापित करें',
     versionHistoryTitle: 'संस्करण इतिहास', viewRestorePreviousVersions: 'अपने कोड के पिछले संस्करण देखें और पुनर्स्थापित करें',
     versions: 'संस्करण',
-    clipboardExportDisabled: 'एडिटर से कोड कॉपी करना अक्षम है।',
   },
   pl: {
     accessRequired: 'Wymagany dostęp', searchResults: 'Wyniki wyszukiwania', hide: 'Ukryj', discover: 'Odkryj',
@@ -794,7 +782,6 @@ export const editorAppCopy = {
     getInfiniteHistory: 'Uzyskaj nieograniczoną historię', restoreVersion: 'Przywróć wersję',
     versionHistoryTitle: 'Historia wersji', viewRestorePreviousVersions: 'Wyświetl i przywróć poprzednie wersje kodu',
     versions: 'Wersje',
-    clipboardExportDisabled: 'Kopiowanie kodu z edytora jest wyłączone.',
   },
   nl: {
     accessRequired: 'Toegang vereist', searchResults: 'Zoekresultaten', hide: 'Verbergen', discover: 'Ontdekken',
@@ -850,7 +837,6 @@ export const editorAppCopy = {
     getInfiniteHistory: 'Onbeperkte geschiedenis verkrijgen', restoreVersion: 'Versie herstellen',
     versionHistoryTitle: 'Versiegeschiedenis', viewRestorePreviousVersions: 'Eerdere versies van je code bekijken en herstellen',
     versions: 'Versies',
-    clipboardExportDisabled: 'Het kopiëren van code uit de editor is uitgeschakeld.',
   },
   tr: {
     accessRequired: 'Erişim gerekli', searchResults: 'Arama sonuçları', hide: 'Gizle', discover: 'Keşfet',
@@ -906,7 +892,6 @@ export const editorAppCopy = {
     getInfiniteHistory: 'Sınırsız geçmişe erişin', restoreVersion: 'Sürümü geri yükle',
     versionHistoryTitle: 'Sürüm geçmişi', viewRestorePreviousVersions: 'Kodunuzun önceki sürümlerini görüntüleyin ve geri yükleyin',
     versions: 'Sürümler',
-    clipboardExportDisabled: 'Düzenleyiciden kod kopyalama devre dışı.',
   },
   sv: {
     accessRequired: 'Åtkomst krävs', searchResults: 'Sökresultat', hide: 'Dölj', discover: 'Upptäck',
@@ -962,7 +947,6 @@ export const editorAppCopy = {
     getInfiniteHistory: 'Få obegränsad historik', restoreVersion: 'Återställ version',
     versionHistoryTitle: 'Versionshistorik', viewRestorePreviousVersions: 'Visa och återställ tidigare versioner av koden',
     versions: 'Versioner',
-    clipboardExportDisabled: 'Kopiering av kod från editorn är inaktiverad.',
   },
   da: {
     accessRequired: 'Adgang påkrævet', searchResults: 'Søgeresultater', hide: 'Skjul', discover: 'Udforsk',
@@ -1018,7 +1002,6 @@ export const editorAppCopy = {
     getInfiniteHistory: 'Få ubegrænset historik', restoreVersion: 'Gendan version',
     versionHistoryTitle: 'Versionshistorik', viewRestorePreviousVersions: 'Se og gendan tidligere versioner af din kode',
     versions: 'Versioner',
-    clipboardExportDisabled: 'Kopiering af kode fra editoren er deaktiveret.',
   },
   no: {
     accessRequired: 'Tilgang kreves', searchResults: 'Søkeresultater', hide: 'Skjul', discover: 'Utforsk',
@@ -1074,7 +1057,6 @@ export const editorAppCopy = {
     getInfiniteHistory: 'Få ubegrenset historikk', restoreVersion: 'Gjenopprett versjon',
     versionHistoryTitle: 'Versjonshistorikk', viewRestorePreviousVersions: 'Vis og gjenopprett tidligere versjoner av koden',
     versions: 'Versjoner',
-    clipboardExportDisabled: 'Kopiering av kode fra redigeringsprogrammet er deaktivert.',
   },
   fi: {
     accessRequired: 'Käyttöoikeus vaaditaan', searchResults: 'Hakutulokset', hide: 'Piilota', discover: 'Tutustu',
@@ -1130,7 +1112,6 @@ export const editorAppCopy = {
     getInfiniteHistory: 'Hanki rajaton historia', restoreVersion: 'Palauta versio',
     versionHistoryTitle: 'Versiohistoria', viewRestorePreviousVersions: 'Tarkastele ja palauta koodin aiempia versioita',
     versions: 'Versiot',
-    clipboardExportDisabled: 'Koodin kopiointi editorista on poistettu käytöstä.',
   },
   uk: {
     accessRequired: 'Потрібен доступ', searchResults: 'Результати пошуку', hide: 'Приховати', discover: 'Дізнатися більше',
@@ -1186,7 +1167,6 @@ export const editorAppCopy = {
     getInfiniteHistory: 'Отримати необмежену історію', restoreVersion: 'Відновити версію',
     versionHistoryTitle: 'Історія версій', viewRestorePreviousVersions: 'Переглядайте та відновлюйте попередні версії коду',
     versions: 'Версії',
-    clipboardExportDisabled: 'Копіювання коду з редактора вимкнено.',
   },
   cs: {
     accessRequired: 'Vyžadován přístup', searchResults: 'Výsledky hledání', hide: 'Skrýt', discover: 'Zjistit více',
@@ -1242,7 +1222,6 @@ export const editorAppCopy = {
     getInfiniteHistory: 'Získat neomezenou historii', restoreVersion: 'Obnovit verzi',
     versionHistoryTitle: 'Historie verzí', viewRestorePreviousVersions: 'Zobrazte a obnovte předchozí verze kódu',
     versions: 'Verze',
-    clipboardExportDisabled: 'Kopírování kódu z editoru je zakázáno.',
   },
 } as const;
 
