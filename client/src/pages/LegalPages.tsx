@@ -148,19 +148,8 @@ export function PrivacyPolicy() {
 
         <section>
           <h2 className="text-xl font-semibold mb-3">{supplementalCopy.privacyTitle}</h2>
-          <p className="text-sm text-muted-foreground">{supplementalCopy.italianTextNotice}</p>
-          <p>
-            Per il marketplace vengono trattati i dati necessari al profilo venditore, alla pubblicazione dei listing,
-            alla revisione, agli acquisti, ai rimborsi, alle contestazioni e alla contabilizzazione del saldo.
-            I file dei venditori sono conservati in storage privato e non vengono resi disponibili prima
-            dell&apos;autorizzazione prevista dal flusso di acquisto.
-          </p>
-          <p className="mt-3">
-            Per il programma scuole vengono trattati i dati dell&apos;istituto, del referente, degli inviti e dei membri
-            necessari a controllare approvazione, durata, limite di 30 studenti per corso, revoche e audit. Gli inviti usano token
-            temporanei associati all&apos;email indicata dalla scuola. La scuola è responsabile della correttezza degli
-            indirizzi e delle autorizzazioni necessarie per invitare gli studenti.
-          </p>
+          <p>{supplementalCopy.privacyMarketplace}</p>
+          <p className="mt-3">{supplementalCopy.privacySchools}</p>
         </section>
 
         <AITransparencySection />
@@ -309,24 +298,8 @@ export function TermsOfService() {
 
         <section>
           <h2 className="text-xl font-semibold mb-3">{supplementalCopy.termsTitle}</h2>
-          <p className="text-sm text-muted-foreground">{supplementalCopy.italianTextNotice}</p>
-          <p>
-            Il venditore è responsabile del template e dei materiali caricati, dei diritti di utilizzo, della descrizione,
-            della qualità e sicurezza del prodotto, delle licenze e degli obblighi verso gli acquirenti previsti dalla legge.
-            Deve caricare esclusivamente contenuti leciti, sicuri e di cui possiede i diritti. Tatik può rifiutare,
-            sospendere o rimuovere un listing durante la revisione o in presenza di violazioni; la revisione non equivale
-            a una garanzia o certificazione del prodotto.
-            La commissione applicata alle vendite è pari al 15%; il saldo può restare sospeso per verifiche,
-            periodo anti-frode, rimborsi o contestazioni. Il venditore riceve l'85% del prezzo prima delle commissioni
-            del provider di pagamento. I payout richiedono Stripe Connect e la verifica KYC. Le recensioni sono
-            consentite agli acquirenti con un ordine pagato e non rimborsato.
-          </p>
-          <p className="mt-3">
-            La registrazione di un istituto scolastico diventa attiva solo dopo l&apos;approvazione di admin o collaboratori
-            Tatik. Gli inviti agli studenti sono creati e approvati dalla scuola, sono temporanei e non trasferibili.
-            L&apos;accesso dura 30 giorni dall&apos;approvazione dell&apos;istituto, è limitato a 30 studenti per corso e può essere revocato
-            in caso di abuso, violazione o dati non verificabili.
-          </p>
+          <p>{supplementalCopy.termsMarketplace}</p>
+          <p className="mt-3">{supplementalCopy.termsSchools}</p>
         </section>
 
         <section id="ai-use" className="scroll-mt-6 text-left">

@@ -130,6 +130,8 @@ export default defineConfig({
   build: {
     outDir: "../dist",
     emptyOutDir: false,
+    minify: "esbuild",
+    sourcemap: false,
   },
   server: {
     port: process.env.VITE_PORT ? parseInt(process.env.VITE_PORT) : 5173,
