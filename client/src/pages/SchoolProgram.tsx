@@ -7,12 +7,14 @@ import { getLoginUrl } from "@/const";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { commercialSeoCopy } from "@/lib/commercialSeoCopy";
 import { schoolProgramCopy } from "@/lib/schoolProgramCopy";
+import { schoolProgramTermsCopy } from "@/lib/schoolProgramTermsCopy";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
 export default function SchoolProgram() {
   const { language } = useLanguage();
   const copy = schoolProgramCopy[language] ?? schoolProgramCopy.en;
+  const termsCopy = schoolProgramTermsCopy[language] ?? schoolProgramTermsCopy.en;
   const marketingCopy = commercialSeoCopy[language] ?? commercialSeoCopy.en;
   const { user, loading } = useAuth({
     redirectOnUnauthenticated: true,
@@ -25,6 +27,8 @@ export default function SchoolProgram() {
   const [approvedInviteToken, setApprovedInviteToken] = useState("");
   const utils = trpc.useUtils();
   const terms = trpc.schools.terms.useQuery();
+  const hasTermsTranslation = terms.data?.version === termsCopy.version
+    && terms.data.terms.length === termsCopy.translatedTerms.length;
   const isStaff = trpc.schools.isStaff.useQuery(undefined, { enabled: Boolean(user) });
   const mySchool = trpc.schools.mySchool.useQuery(undefined, { enabled: Boolean(user) });
   const myMembership = trpc.schools.myMembership.useQuery(undefined, { enabled: Boolean(user) });
@@ -134,8 +138,25 @@ export default function SchoolProgram() {
               <div className="rounded border p-3 space-y-2">
                 {terms.data
                   ? <>
-                    <p className="text-sm">{terms.data.terms.join(" ")}</p>
-                    <p className="text-xs text-muted-foreground">{copy.officialTermsNote}</p>
+                    <ul className="list-disc space-y-1 pl-5 text-sm">
+                      {(language !== "it" && hasTermsTranslation ? termsCopy.translatedTerms : terms.data.terms)
+                        .map((term, index) => <li key={index}>{term}</li>)}
+                    </ul>
+                    {language !== "it" && (
+                      <>
+                        <p className="text-xs text-muted-foreground">
+                          {hasTermsTranslation ? copy.officialTermsNote : termsCopy.translationUnavailable}
+                        </p>
+                        {hasTermsTranslation && (
+                          <details className="text-xs">
+                            <summary className="cursor-pointer font-medium">{termsCopy.italianOriginal}</summary>
+                            <ul className="mt-2 list-disc space-y-1 pl-5">
+                              {terms.data.terms.map((term, index) => <li key={index}>{term}</li>)}
+                            </ul>
+                          </details>
+                        )}
+                      </>
+                    )}
                   </>
                   : <p role="alert" className="text-sm text-destructive">
                     {terms.error ? copy.termsError : copy.loadingTerms}

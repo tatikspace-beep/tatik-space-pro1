@@ -55,7 +55,7 @@ type SchoolProgramCopy = {
 export const schoolProgramCopy: Record<string, SchoolProgramCopy> = {
   en: {
     institutionName: "Institution name", institutionEmail: "Institutional email", loadingTerms: "Loading program terms…", termsError: "Could not load program terms",
-    officialTermsNote: "The official program terms are displayed in Italian as provided by Tatik. Please review them before accepting.",
+    officialTermsNote: "This translation is provided for convenience. The official Italian text supplied by Tatik is available below; please review it before accepting.",
     acceptTerms: "I have read and accept the school program terms", registerInstitution: "Register institution and accept terms", submitting: "Submitting request…",
     schoolStatus: "Institution status", accessUntil: "Access through", activeStudentAccess: "Your student access at",
     redeemTitle: "Redeem an invitation", redeemDescription: "Sign in with the email address the invitation was created for, then enter the token approved by the institution.",
@@ -78,7 +78,7 @@ export const schoolProgramCopy: Record<string, SchoolProgramCopy> = {
   },
   it: {
     institutionName: "Nome dell’istituto", institutionEmail: "Email istituzionale", loadingTerms: "Caricamento dei termini del programma…", termsError: "Impossibile caricare i termini del programma",
-    officialTermsNote: "I termini ufficiali del programma sono mostrati in italiano, nella versione fornita da Tatik. Consultali prima di accettarli.",
+    officialTermsNote: "Questa traduzione è fornita per comodità. Il testo ufficiale in italiano fornito da Tatik è disponibile qui sotto; consultalo prima di accettare.",
     acceptTerms: "Ho letto e accetto i termini del programma scuole", registerInstitution: "Registra l’istituto e accetta i termini", submitting: "Invio della richiesta…",
     schoolStatus: "Stato dell’istituto", accessUntil: "Accesso fino al", activeStudentAccess: "Il tuo accesso studente presso",
     redeemTitle: "Riscatta un invito", redeemDescription: "Accedi con l’indirizzo email per cui è stato creato l’invito, quindi inserisci il token approvato dall’istituto.",
@@ -101,7 +101,7 @@ export const schoolProgramCopy: Record<string, SchoolProgramCopy> = {
   },
   es: {
     institutionName: "Nombre de la institución", institutionEmail: "Correo institucional", loadingTerms: "Cargando las condiciones del programa…", termsError: "No se pudieron cargar las condiciones del programa",
-    officialTermsNote: "Las condiciones oficiales se muestran en italiano, tal como las proporciona Tatik. Revísalas antes de aceptarlas.",
+    officialTermsNote: "Esta traducción se ofrece como referencia. El texto oficial en italiano proporcionado por Tatik está disponible a continuación; revísalo antes de aceptar.",
     acceptTerms: "He leído y acepto las condiciones del programa escolar", registerInstitution: "Registrar institución y aceptar las condiciones", submitting: "Enviando solicitud…",
     schoolStatus: "Estado de la institución", accessUntil: "Acceso hasta", activeStudentAccess: "Tu acceso de estudiante en",
     redeemTitle: "Canjear una invitación", redeemDescription: "Inicia sesión con el correo para el que se creó la invitación e introduce el token aprobado por la institución.",
@@ -123,7 +123,7 @@ export const schoolProgramCopy: Record<string, SchoolProgramCopy> = {
   },
   fr: {
     institutionName: "Nom de l’établissement", institutionEmail: "E-mail institutionnel", loadingTerms: "Chargement des conditions du programme…", termsError: "Impossible de charger les conditions du programme",
-    officialTermsNote: "Les conditions officielles sont affichées en italien, telles que fournies par Tatik. Veuillez les consulter avant de les accepter.",
+    officialTermsNote: "Cette traduction est fournie à titre indicatif. Le texte officiel en italien fourni par Tatik est disponible ci-dessous ; veuillez le consulter avant d’accepter.",
     acceptTerms: "J’ai lu et j’accepte les conditions du programme scolaire", registerInstitution: "Inscrire l’établissement et accepter les conditions", submitting: "Envoi de la demande…",
     schoolStatus: "Statut de l’établissement", accessUntil: "Accès jusqu’au", activeStudentAccess: "Votre accès étudiant auprès de",
     redeemTitle: "Utiliser une invitation", redeemDescription: "Connectez-vous avec l’adresse e-mail pour laquelle l’invitation a été créée, puis saisissez le jeton approuvé par l’établissement.",
@@ -145,7 +145,7 @@ export const schoolProgramCopy: Record<string, SchoolProgramCopy> = {
   },
   de: {
     institutionName: "Name der Einrichtung", institutionEmail: "Institutionelle E-Mail-Adresse", loadingTerms: "Programmregeln werden geladen…", termsError: "Programmregeln konnten nicht geladen werden",
-    officialTermsNote: "Die offiziellen Programmregeln werden auf Italienisch und unverändert so angezeigt, wie Tatik sie bereitstellt. Bitte lies sie vor der Zustimmung.",
+    officialTermsNote: "Diese Übersetzung dient der Verständlichkeit. Der von Tatik bereitgestellte offizielle italienische Text steht unten; lies ihn bitte vor deiner Zustimmung.",
     acceptTerms: "Ich habe die Regeln des Schulprogramms gelesen und akzeptiere sie", registerInstitution: "Einrichtung registrieren und Regeln akzeptieren", submitting: "Anfrage wird gesendet…",
     schoolStatus: "Status der Einrichtung", accessUntil: "Zugang bis", activeStudentAccess: "Dein Schülerzugang bei",
     redeemTitle: "Einladung einlösen", redeemDescription: "Melde dich mit der E-Mail-Adresse an, für die die Einladung erstellt wurde, und gib anschließend das von der Einrichtung genehmigte Token ein.",
@@ -167,7 +167,7 @@ export const schoolProgramCopy: Record<string, SchoolProgramCopy> = {
   },
   pt: {
     institutionName: "Nome da instituição", institutionEmail: "Email institucional", loadingTerms: "A carregar os termos do programa…", termsError: "Não foi possível carregar os termos do programa",
-    officialTermsNote: "Os termos oficiais são apresentados em italiano, tal como fornecidos pela Tatik. Leia-os antes de aceitar.",
+    officialTermsNote: "Esta tradução é fornecida apenas para facilitar a leitura. O texto oficial em italiano fornecido pela Tatik está disponível abaixo; leia-o antes de aceitar.",
     acceptTerms: "Li e aceito os termos do programa escolar", registerInstitution: "Registar instituição e aceitar os termos", submitting: "A enviar o pedido…",
     schoolStatus: "Estado da instituição", accessUntil: "Acesso até", activeStudentAccess: "O seu acesso de estudante em",
     redeemTitle: "Resgatar um convite", redeemDescription: "Inicie sessão com o endereço de email para o qual o convite foi criado e introduza o token aprovado pela instituição.",
@@ -189,7 +189,7 @@ export const schoolProgramCopy: Record<string, SchoolProgramCopy> = {
   },
   ru: {
     institutionName: "Название учреждения", institutionEmail: "Корпоративная почта учреждения", loadingTerms: "Загрузка условий программы…", termsError: "Не удалось загрузить условия программы",
-    officialTermsNote: "Официальные условия отображаются на итальянском языке в исходном виде, предоставленном Tatik. Ознакомьтесь с ними перед принятием.",
+    officialTermsNote: "Этот перевод предоставлен для удобства. Официальный текст на итальянском языке, предоставленный Tatik, приведён ниже; ознакомьтесь с ним перед принятием условий.",
     acceptTerms: "Я прочитал(а) и принимаю условия школьной программы", registerInstitution: "Зарегистрировать учреждение и принять условия", submitting: "Отправка заявки…",
     schoolStatus: "Статус учреждения", accessUntil: "Доступ до", activeStudentAccess: "Ваш ученический доступ в учреждении",
     redeemTitle: "Активировать приглашение", redeemDescription: "Войдите с адресом электронной почты, на который создано приглашение, затем введите токен, одобренный учреждением.",
@@ -211,7 +211,7 @@ export const schoolProgramCopy: Record<string, SchoolProgramCopy> = {
   },
   zh: {
     institutionName: "机构名称", institutionEmail: "机构邮箱", loadingTerms: "正在加载计划条款…", termsError: "无法加载计划条款",
-    officialTermsNote: "官方计划条款以 Tatik 提供的意大利语原文显示，请在接受前仔细阅读。",
+    officialTermsNote: "此译文仅供参考。下方提供了 Tatik 提供的意大利语官方原文，请在接受前阅读。",
     acceptTerms: "我已阅读并接受学校计划条款", registerInstitution: "注册机构并接受条款", submitting: "正在提交申请…",
     schoolStatus: "机构状态", accessUntil: "访问有效期至", activeStudentAccess: "你在该机构的学生访问权限",
     redeemTitle: "兑换邀请", redeemDescription: "使用收到邀请时对应的邮箱登录，然后输入机构批准的令牌。",
@@ -233,7 +233,7 @@ export const schoolProgramCopy: Record<string, SchoolProgramCopy> = {
   },
   ja: {
     institutionName: "学校・機関名", institutionEmail: "学校・機関のメールアドレス", loadingTerms: "プログラム規約を読み込み中…", termsError: "プログラム規約を読み込めませんでした",
-    officialTermsNote: "公式規約は Tatik が提供するイタリア語の原文のまま表示されます。承諾する前にご確認ください。",
+    officialTermsNote: "この翻訳は参考用です。Tatikが提供するイタリア語の公式原文を以下に掲載しています。承諾する前にご確認ください。",
     acceptTerms: "学校向けプログラムの規約を読み、同意します", registerInstitution: "機関を登録して規約に同意", submitting: "申請を送信中…",
     schoolStatus: "機関のステータス", accessUntil: "アクセス期限", activeStudentAccess: "学生アクセス先",
     redeemTitle: "招待を利用する", redeemDescription: "招待の送信先メールアドレスでログインし、機関が承認したトークンを入力してください。",
@@ -255,7 +255,7 @@ export const schoolProgramCopy: Record<string, SchoolProgramCopy> = {
   },
   ko: {
     institutionName: "기관명", institutionEmail: "기관 이메일", loadingTerms: "프로그램 약관을 불러오는 중…", termsError: "프로그램 약관을 불러오지 못했습니다",
-    officialTermsNote: "공식 프로그램 약관은 Tatik에서 제공한 이탈리아어 원문 그대로 표시됩니다. 동의하기 전에 확인하세요.",
+    officialTermsNote: "이 번역은 참고용입니다. Tatik이 제공한 이탈리아어 공식 원문이 아래에 있으니 동의하기 전에 확인하세요.",
     acceptTerms: "학교 프로그램 약관을 읽고 동의합니다", registerInstitution: "기관 등록 및 약관 동의", submitting: "요청을 제출하는 중…",
     schoolStatus: "기관 상태", accessUntil: "접근 가능 기간", activeStudentAccess: "학생 접근 권한 기관",
     redeemTitle: "초대 사용", redeemDescription: "초대가 생성된 이메일 주소로 로그인한 다음 기관에서 승인한 토큰을 입력하세요.",
@@ -277,7 +277,7 @@ export const schoolProgramCopy: Record<string, SchoolProgramCopy> = {
   },
   ar: {
     institutionName: "اسم المؤسسة", institutionEmail: "البريد الإلكتروني للمؤسسة", loadingTerms: "جارٍ تحميل شروط البرنامج…", termsError: "تعذّر تحميل شروط البرنامج",
-    officialTermsNote: "تُعرض الشروط الرسمية باللغة الإيطالية كما قدمتها Tatik. يُرجى مراجعتها قبل الموافقة.",
+    officialTermsNote: "تُقدَّم هذه الترجمة للتيسير فقط. يتوفر أدناه النص الرسمي باللغة الإيطالية كما قدمته Tatik؛ يُرجى مراجعته قبل الموافقة.",
     acceptTerms: "قرأت شروط برنامج المدارس وأوافق عليها", registerInstitution: "تسجيل المؤسسة والموافقة على الشروط", submitting: "جارٍ إرسال الطلب…",
     schoolStatus: "حالة المؤسسة", accessUntil: "الوصول حتى", activeStudentAccess: "وصولك كطالب لدى",
     redeemTitle: "استخدام دعوة", redeemDescription: "سجّل الدخول باستخدام عنوان البريد الإلكتروني الذي أُنشئت له الدعوة، ثم أدخل الرمز الذي وافقت عليه المؤسسة.",
@@ -299,7 +299,7 @@ export const schoolProgramCopy: Record<string, SchoolProgramCopy> = {
   },
   hi: {
     institutionName: "संस्था का नाम", institutionEmail: "संस्थागत ईमेल", loadingTerms: "कार्यक्रम की शर्तें लोड हो रही हैं…", termsError: "कार्यक्रम की शर्तें लोड नहीं हो सकीं",
-    officialTermsNote: "आधिकारिक शर्तें Tatik द्वारा दिए गए इतालवी मूल रूप में दिखाई जाती हैं। स्वीकार करने से पहले उन्हें पढ़ें।",
+    officialTermsNote: "यह अनुवाद केवल सुविधा के लिए दिया गया है। Tatik द्वारा दिया गया आधिकारिक इतालवी पाठ नीचे उपलब्ध है; स्वीकार करने से पहले उसे पढ़ें।",
     acceptTerms: "मैंने स्कूल कार्यक्रम की शर्तें पढ़ी हैं और उन्हें स्वीकार करता/करती हूँ", registerInstitution: "संस्था पंजीकृत करें और शर्तें स्वीकार करें", submitting: "अनुरोध भेजा जा रहा है…",
     schoolStatus: "संस्था की स्थिति", accessUntil: "इस तारीख तक पहुँच", activeStudentAccess: "आपकी छात्र पहुँच",
     redeemTitle: "आमंत्रण रिडीम करें", redeemDescription: "उस ईमेल पते से साइन इन करें जिसके लिए आमंत्रण बनाया गया था, फिर संस्था द्वारा स्वीकृत टोकन दर्ज करें।",
@@ -321,7 +321,7 @@ export const schoolProgramCopy: Record<string, SchoolProgramCopy> = {
   },
   pl: {
     institutionName: "Nazwa placówki", institutionEmail: "Służbowy adres e-mail placówki", loadingTerms: "Wczytywanie warunków programu…", termsError: "Nie udało się wczytać warunków programu",
-    officialTermsNote: "Oficjalne warunki programu są wyświetlane po włosku, w oryginalnej wersji przekazanej przez Tatik. Zapoznaj się z nimi przed akceptacją.",
+    officialTermsNote: "To tłumaczenie ma charakter pomocniczy. Oficjalny tekst w języku włoskim przekazany przez Tatik znajduje się poniżej; zapoznaj się z nim przed akceptacją.",
     acceptTerms: "Przeczytałem(-am) i akceptuję warunki programu szkolnego", registerInstitution: "Zarejestruj placówkę i zaakceptuj warunki", submitting: "Wysyłanie zgłoszenia…",
     schoolStatus: "Status placówki", accessUntil: "Dostęp do", activeStudentAccess: "Twój dostęp ucznia w",
     redeemTitle: "Zrealizuj zaproszenie", redeemDescription: "Zaloguj się przy użyciu adresu e-mail, na który utworzono zaproszenie, a następnie wpisz token zatwierdzony przez placówkę.",
@@ -343,7 +343,7 @@ export const schoolProgramCopy: Record<string, SchoolProgramCopy> = {
   },
   nl: {
     institutionName: "Naam van de instelling", institutionEmail: "E-mailadres van de instelling", loadingTerms: "Programmavoorwaarden laden…", termsError: "Programmavoorwaarden konden niet worden geladen",
-    officialTermsNote: "De officiële programmavoorwaarden worden in het Italiaans getoond, zoals aangeleverd door Tatik. Lees ze voordat je akkoord gaat.",
+    officialTermsNote: "Deze vertaling is alleen ter verduidelijking. De officiële Italiaanse tekst zoals aangeleverd door Tatik staat hieronder; lees deze voordat je akkoord gaat.",
     acceptTerms: "Ik heb de voorwaarden van het scholenprogramma gelezen en ga ermee akkoord", registerInstitution: "Instelling registreren en voorwaarden accepteren", submitting: "Aanvraag indienen…",
     schoolStatus: "Status van de instelling", accessUntil: "Toegang tot", activeStudentAccess: "Je studententoegang bij",
     redeemTitle: "Een uitnodiging inwisselen", redeemDescription: "Log in met het e-mailadres waarvoor de uitnodiging is aangemaakt en voer daarna het door de instelling goedgekeurde token in.",
@@ -365,7 +365,7 @@ export const schoolProgramCopy: Record<string, SchoolProgramCopy> = {
   },
   tr: {
     institutionName: "Kurum adı", institutionEmail: "Kurumsal e-posta", loadingTerms: "Program koşulları yükleniyor…", termsError: "Program koşulları yüklenemedi",
-    officialTermsNote: "Resmî program koşulları Tatik tarafından sağlanan İtalyanca özgün metinle gösterilir. Kabul etmeden önce lütfen inceleyin.",
+    officialTermsNote: "Bu çeviri yalnızca kolaylık sağlamak amacıyla sunulmuştur. Tatik tarafından sağlanan resmî İtalyanca metin aşağıdadır; kabul etmeden önce lütfen inceleyin.",
     acceptTerms: "Okul programı koşullarını okudum ve kabul ediyorum", registerInstitution: "Kurumu kaydet ve koşulları kabul et", submitting: "Başvuru gönderiliyor…",
     schoolStatus: "Kurum durumu", accessUntil: "Erişim bitişi", activeStudentAccess: "Öğrenci erişiminiz",
     redeemTitle: "Daveti kullan", redeemDescription: "Davetin oluşturulduğu e-posta adresiyle giriş yapın ve kurum tarafından onaylanan tokenı girin.",
@@ -387,7 +387,7 @@ export const schoolProgramCopy: Record<string, SchoolProgramCopy> = {
   },
   sv: {
     institutionName: "Institutionens namn", institutionEmail: "Institutionens e-postadress", loadingTerms: "Läser in programmets villkor…", termsError: "Det gick inte att läsa in programmets villkor",
-    officialTermsNote: "De officiella programvillkoren visas på italienska i den version som Tatik har tillhandahållit. Läs dem innan du godkänner.",
+    officialTermsNote: "Den här översättningen är endast avsedd som hjälp. Den officiella italienska texten från Tatik finns nedan; läs den innan du godkänner.",
     acceptTerms: "Jag har läst och godkänner skolprogrammets villkor", registerInstitution: "Registrera institution och godkänn villkoren", submitting: "Skickar ansökan…",
     schoolStatus: "Institutionens status", accessUntil: "Åtkomst till", activeStudentAccess: "Din studentåtkomst hos",
     redeemTitle: "Lös in en inbjudan", redeemDescription: "Logga in med e-postadressen som inbjudan skapades för och ange sedan tokenen som institutionen har godkänt.",
@@ -409,7 +409,7 @@ export const schoolProgramCopy: Record<string, SchoolProgramCopy> = {
   },
   da: {
     institutionName: "Institutionens navn", institutionEmail: "Institutionens e-mailadresse", loadingTerms: "Indlæser programmets vilkår…", termsError: "Programmets vilkår kunne ikke indlæses",
-    officialTermsNote: "De officielle programvilkår vises på italiensk i den version, Tatik har leveret. Læs dem, før du accepterer.",
+    officialTermsNote: "Denne oversættelse er kun vejledende. Den officielle italienske tekst fra Tatik findes nedenfor; læs den, før du accepterer.",
     acceptTerms: "Jeg har læst og accepterer skoleprogrammets vilkår", registerInstitution: "Registrér institution og acceptér vilkår", submitting: "Sender ansøgning…",
     schoolStatus: "Institutionens status", accessUntil: "Adgang til", activeStudentAccess: "Din elevadgang hos",
     redeemTitle: "Indløs en invitation", redeemDescription: "Log ind med den e-mailadresse, invitationen blev oprettet til, og indtast derefter tokenet, som institutionen har godkendt.",
@@ -431,7 +431,7 @@ export const schoolProgramCopy: Record<string, SchoolProgramCopy> = {
   },
   no: {
     institutionName: "Institusjonens navn", institutionEmail: "Institusjonens e-postadresse", loadingTerms: "Laster inn programvilkårene…", termsError: "Kunne ikke laste inn programvilkårene",
-    officialTermsNote: "De offisielle programvilkårene vises på italiensk slik Tatik har levert dem. Les dem før du godtar.",
+    officialTermsNote: "Denne oversettelsen er kun ment som en hjelp. Den offisielle italienske teksten fra Tatik finnes nedenfor; les den før du godtar.",
     acceptTerms: "Jeg har lest og godtar vilkårene for skoleprogrammet", registerInstitution: "Registrer institusjon og godta vilkårene", submitting: "Sender søknad…",
     schoolStatus: "Institusjonens status", accessUntil: "Tilgang til", activeStudentAccess: "Studenttilgangen din hos",
     redeemTitle: "Løs inn en invitasjon", redeemDescription: "Logg inn med e-postadressen invitasjonen ble opprettet for, og skriv deretter inn tokenet som institusjonen har godkjent.",
@@ -453,7 +453,7 @@ export const schoolProgramCopy: Record<string, SchoolProgramCopy> = {
   },
   fi: {
     institutionName: "Oppilaitoksen nimi", institutionEmail: "Oppilaitoksen sähköpostiosoite", loadingTerms: "Ladataan ohjelman ehtoja…", termsError: "Ohjelman ehtojen lataaminen epäonnistui",
-    officialTermsNote: "Viralliset ohjelmaehdot näytetään Tatikin toimittamassa italiankielisessä alkuperäismuodossa. Tutustu niihin ennen hyväksymistä.",
+    officialTermsNote: "Tämä käännös on tarkoitettu vain avuksi. Tatikin toimittama virallinen italiankielinen teksti on alla; tutustu siihen ennen hyväksymistä.",
     acceptTerms: "Olen lukenut kouluohjelman ehdot ja hyväksyn ne", registerInstitution: "Rekisteröi oppilaitos ja hyväksy ehdot", submitting: "Lähetetään hakemusta…",
     schoolStatus: "Oppilaitoksen tila", accessUntil: "Käyttöoikeus päättyy", activeStudentAccess: "Opiskelijan käyttöoikeutesi oppilaitoksessa",
     redeemTitle: "Lunasta kutsu", redeemDescription: "Kirjaudu sisään kutsun luomiseen käytetyllä sähköpostiosoitteella ja anna sitten oppilaitoksen hyväksymä tunniste.",
@@ -475,7 +475,7 @@ export const schoolProgramCopy: Record<string, SchoolProgramCopy> = {
   },
   uk: {
     institutionName: "Назва закладу", institutionEmail: "Електронна пошта закладу", loadingTerms: "Завантаження умов програми…", termsError: "Не вдалося завантажити умови програми",
-    officialTermsNote: "Офіційні умови програми відображаються італійською мовою в оригінальній версії, наданій Tatik. Ознайомтеся з ними перед прийняттям.",
+    officialTermsNote: "Цей переклад надано лише для зручності. Нижче наведено офіційний італійський текст від Tatik; ознайомтеся з ним перед прийняттям умов.",
     acceptTerms: "Я прочитав(-ла) та приймаю умови шкільної програми", registerInstitution: "Зареєструвати заклад і прийняти умови", submitting: "Надсилання заявки…",
     schoolStatus: "Статус закладу", accessUntil: "Доступ до", activeStudentAccess: "Ваш учнівський доступ у закладі",
     redeemTitle: "Активувати запрошення", redeemDescription: "Увійдіть за адресою електронної пошти, для якої створено запрошення, а потім введіть токен, схвалений закладом.",
@@ -497,7 +497,7 @@ export const schoolProgramCopy: Record<string, SchoolProgramCopy> = {
   },
   cs: {
     institutionName: "Název instituce", institutionEmail: "Institucionální e-mail", loadingTerms: "Načítání podmínek programu…", termsError: "Podmínky programu se nepodařilo načíst",
-    officialTermsNote: "Oficiální podmínky programu se zobrazují v italštině v původním znění poskytnutém službou Tatik. Před přijetím si je přečtěte.",
+    officialTermsNote: "Tento překlad slouží pouze pro usnadnění orientace. Oficiální italský text poskytnutý službou Tatik je uveden níže; před přijetím si jej přečtěte.",
     acceptTerms: "Přečetl(a) jsem podmínky školního programu a souhlasím s nimi", registerInstitution: "Zaregistrovat instituci a přijmout podmínky", submitting: "Odesílání žádosti…",
     schoolStatus: "Stav instituce", accessUntil: "Přístup do", activeStudentAccess: "Váš studentský přístup v instituci",
     redeemTitle: "Uplatnit pozvánku", redeemDescription: "Přihlaste se e-mailovou adresou, pro kterou byla pozvánka vytvořena, a zadejte token schválený institucí.",
