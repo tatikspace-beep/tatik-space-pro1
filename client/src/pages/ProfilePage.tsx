@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/_core/hooks/useAuth';
 import { useLanguage } from '@/contexts/LanguageContext';
-import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -11,12 +10,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
     User,
     Mail,
-    Lock,
     FolderOpen,
     Bell,
     ChevronRight,
-    Eye,
-    EyeOff,
     Shield,
     Edit2,
     Check,
@@ -41,16 +37,31 @@ import BannerMonetizationWidget from '@/components/BannerMonetizationWidget';
 import BannerMonetizationDetails from '@/components/BannerMonetizationDetails';
 
 import { FREE_TEMPLATES } from '@/data/templates';
+import { profilePageCopy } from '@/lib/profilePageCopy';
 
 export default function ProfilePage() {
-    // determine reset token from query prior to auth hook
-    const initialParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
-    const initialToken = initialParams.get('reset');
-    const { user, logout } = useAuth({ redirectOnUnauthenticated: !initialToken });
-    const [resetToken, setResetToken] = useState<string | null>(null);
-    const [newPasswordForm, setNewPasswordForm] = useState({ newPassword: '', confirmPassword: '' });
-    const { t } = useLanguage();
-    const { t: i18nT } = useTranslation();
+    const { user, logout } = useAuth({ redirectOnUnauthenticated: true });
+    const { language, t: baseCopy } = useLanguage();
+    const copy = profilePageCopy[language];
+    const t = {
+        ...baseCopy,
+        profileInfo: copy.tabs.profile,
+        myFiles: copy.files.title,
+        microJobAlerts: copy.alerts.title,
+        contactInformation: copy.contact.title,
+        contactInfoDesc: copy.contact.description,
+        edit: copy.contact.edit,
+        name: copy.contact.name,
+        email: copy.contact.email,
+        role: copy.contact.role,
+        save: copy.contact.save,
+        cancel: copy.contact.cancel,
+        profileUpdated: copy.contact.saved,
+        myFilesDesc: copy.files.description,
+        openFiles: copy.files.openManager,
+        microJobAlertsDesc: copy.alerts.description,
+        logout: copy.common.signOut,
+    };
 
     // --- Saved Templates State (from TemplateMarketplace) ---
     const [savedTemplateIds, setSavedTemplateIds] = useState<string[]>([]);
@@ -81,7 +92,7 @@ export default function ProfilePage() {
         if (template.isPremium) {
             return (await getTemplateCodeMutation.mutateAsync({ templateId: template.id })).code;
         }
-        throw new Error('Il codice del template non è disponibile.');
+        throw new Error(copy.files.openTemplateError);
     };
 
     useEffect(() => {
@@ -96,11 +107,11 @@ export default function ProfilePage() {
             if (data.checkoutUrl) {
                 window.location.href = data.checkoutUrl;
             } else {
-                toast.error('Impossibile avviare il pagamento');
+                toast.error(copy.files.checkoutError);
             }
         },
         onError: (err) => {
-            toast.error('Errore durante il pagamento: ' + (err.message || 'Unknown error'));
+            toast.error(`${copy.files.paymentError}: ${err.message || copy.common.unknownError}`);
             setPurchasingTemplateId(null);
         },
     });
@@ -112,25 +123,12 @@ export default function ProfilePage() {
         email: user?.email ?? '',
     });
 
-    // --- Password State ---
-    const [passwordForm, setPasswordForm] = useState({
-        currentPassword: '',
-        newPassword: '',
-        confirmPassword: '',
-    });
-    const [showPasswords, setShowPasswords] = useState({
-        current: false,
-        new: false,
-        confirm: false,
-    });
-    const [pwLoading, setPwLoading] = useState(false);
-
     // --- Theme Preference State ---
     const [selectedTheme, setSelectedTheme] = useState<'light' | 'dark' | 'system'>('system');
     const [themeLoading, setThemeLoading] = useState(false);
 
     // which tab is active
-    const [activeTab, setActiveTab] = useState<'info' | 'password' | 'files' | 'alerts' | 'theme'>('info');
+    const [activeTab, setActiveTab] = useState<'info' | 'files' | 'alerts' | 'theme' | 'security' | 'history'>('info');
 
     // --- 2FA State ---
     const [twoFaEnabled, setTwoFaEnabled] = useState(false);
@@ -143,25 +141,15 @@ export default function ProfilePage() {
     // Load initial theme preference
     const themeQuery = trpc.user.getThemePreference.useQuery();
 
-    // check URL for reset token
-    useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
-        const tok = params.get('reset');
-        if (tok) {
-            setResetToken(tok);
-            setActiveTab('password');
-        }
-    }, []);
-
     // Update theme mutation
     const updateThemeMutation = trpc.user.setThemePreference.useMutation({
         onSuccess: (data) => {
             setSelectedTheme(data.theme as 'light' | 'dark' | 'system');
-            toast.success('Theme updated successfully');
+            toast.success(copy.theme.saved);
             applyTheme(data.theme as 'light' | 'dark' | 'system');
         },
         onError: () => {
-            toast.error('Failed to update theme');
+            toast.error(copy.theme.saveError);
         },
     });
 
@@ -177,7 +165,7 @@ export default function ProfilePage() {
                 // rollback on error
                 setSelectedTheme(previous);
                 applyTheme(previous);
-                toast.error('Impossibile salvare la preferenza tema');
+                toast.error(copy.theme.saveFailed);
             },
             onSettled: () => setThemeLoading(false),
         });
@@ -215,60 +203,6 @@ export default function ProfilePage() {
         setEditingContact(false);
     };
 
-    const resetMutation = trpc.auth.resetPassword.useMutation({
-        onSuccess: () => {
-            toast.success('Password aggiornata, accedi con la nuova password');
-            setResetToken(null);
-            // optionally redirect or clear query
-            window.history.replaceState({}, '', window.location.pathname);
-        },
-        onError: (err) => {
-            toast.error(err.message);
-        }
-    });
-
-    const requestResetLink = trpc.auth.requestPasswordReset.useMutation({
-        onSuccess: (data) => {
-            if (data.link) {
-                toast.success('Link generato (sviluppo): ' + data.link);
-            } else {
-                toast.success('Email inviata');
-            }
-        }
-    });
-
-    const handlePasswordChange = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (resetToken) {
-            if (newPasswordForm.newPassword !== newPasswordForm.confirmPassword) {
-                toast.error(t.passwordMismatch ?? 'Passwords do not match');
-                return;
-            }
-            setPwLoading(true);
-            try {
-                resetMutation.mutate({ token: resetToken, newPassword: newPasswordForm.newPassword });
-            } finally {
-                setPwLoading(false);
-            }
-            return;
-        }
-        if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-            toast.error(t.passwordMismatch ?? 'Passwords do not match');
-            return;
-        }
-        setPwLoading(true);
-        try {
-            // TODO: wire up to your trpc mutation e.g. trpc.auth.changePassword.mutate(...)
-            await new Promise((r) => setTimeout(r, 800));
-            toast.success(t.passwordChanged ?? 'Password changed successfully!');
-            setPasswordForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
-        } catch {
-            toast.error(t.error ?? 'Something went wrong');
-        } finally {
-            setPwLoading(false);
-        }
-    };
-
     if (!user) return null;
 
     const initials = user.name
@@ -301,9 +235,6 @@ export default function ProfilePage() {
                     <TabsTrigger value="info">
                         <User size={14} />&nbsp;{t.profileInfo ?? 'Profile'}
                     </TabsTrigger>
-                    <TabsTrigger value="password">
-                        <Lock size={14} />&nbsp;{t.changePassword ?? 'Password'}
-                    </TabsTrigger>
                     <TabsTrigger value="files">
                         <FolderOpen size={14} />&nbsp;{t.myFiles ?? 'Files'}
                     </TabsTrigger>
@@ -311,13 +242,13 @@ export default function ProfilePage() {
                         <Bell size={14} />&nbsp;{t.microJobAlerts ?? 'Alerts'}
                     </TabsTrigger>
                     <TabsTrigger value="theme">
-                        <Sun size={14} />&nbsp;Theme
+                        <Sun size={14} />&nbsp;{copy.tabs.theme}
                     </TabsTrigger>
                     <TabsTrigger value="security">
-                        <Shield size={14} />&nbsp;Security
+                        <Shield size={14} />&nbsp;{copy.tabs.security}
                     </TabsTrigger>
                     <TabsTrigger value="history">
-                        <Clock size={14} />&nbsp;Version History
+                        <Clock size={14} />&nbsp;{copy.tabs.history}
                     </TabsTrigger>
                 </TabsList>
 
@@ -381,109 +312,10 @@ export default function ProfilePage() {
                                     <div className="profile-info-row">
                                         <Shield size={15} className="profile-info-icon" />
                                         <span className="profile-info-label">{t.role ?? 'Role'}</span>
-                                        <span className="profile-role-badge">{user.role ?? 'User'}</span>
+                                        <span className="profile-role-badge">{user.role === 'admin' ? copy.contact.admin : copy.contact.user}</span>
                                     </div>
                                 </div>
                             )}
-                        </CardContent>
-                    </Card>
-                </TabsContent>
-
-                {/* ── Change Password ── */}
-                <TabsContent value="password">
-                    <Card className="profile-card">
-                        <CardHeader className="profile-card-header">
-                            <CardTitle>{t.changePassword ?? 'Change Password'}</CardTitle>
-                            <CardDescription>{t.changePasswordDesc ?? 'Choose a strong, unique password'}</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            {resetToken && (
-                                <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-800 rounded">
-                                    <p className="text-sm">
-                                        Hai richiesto la reimpostazione della password. Inserisci e conferma la nuova password qui sotto.
-                                    </p>
-                                </div>
-                            )}
-                            {!resetToken && (
-                                <div className="mb-4 text-right">
-                                    <Button size="sm" variant="outline" onClick={() => requestResetLink.mutate({ email: user?.email || '' })}>
-                                        Invia link reimpostazione via email
-                                    </Button>
-                                </div>
-                            )}
-                            <form className="profile-form" onSubmit={handlePasswordChange}>
-                                {resetToken ? (
-                                    // reset mode - only ask new password
-                                    <>
-                                        <div className="profile-form-field">
-                                            <Label htmlFor="pw-new">{t.newPassword ?? 'New Password'}</Label>
-                                            <div className="profile-pw-wrapper">
-                                                <Input
-                                                    id="pw-new"
-                                                    type={showPasswords.new ? 'text' : 'password'}
-                                                    value={newPasswordForm.newPassword}
-                                                    onChange={(e) => setNewPasswordForm({ ...newPasswordForm, newPassword: e.target.value })}
-                                                    required
-                                                />
-                                                <button
-                                                    type="button"
-                                                    className="profile-pw-toggle"
-                                                    onClick={() => setShowPasswords({ ...showPasswords, new: !showPasswords.new })}
-                                                >
-                                                    {showPasswords.new ? <EyeOff size={14} /> : <Eye size={14} />}
-                                                </button>
-                                            </div>
-                                        </div>
-                                        <div className="profile-form-field">
-                                            <Label htmlFor="pw-confirm">{t.confirmPassword ?? 'Confirm New Password'}</Label>
-                                            <div className="profile-pw-wrapper">
-                                                <Input
-                                                    id="pw-confirm"
-                                                    type={showPasswords.confirm ? 'text' : 'password'}
-                                                    value={newPasswordForm.confirmPassword}
-                                                    onChange={(e) => setNewPasswordForm({ ...newPasswordForm, confirmPassword: e.target.value })}
-                                                    required
-                                                />
-                                                <button
-                                                    type="button"
-                                                    className="profile-pw-toggle"
-                                                    onClick={() => setShowPasswords({ ...showPasswords, confirm: !showPasswords.confirm })}
-                                                >
-                                                    {showPasswords.confirm ? <EyeOff size={14} /> : <Eye size={14} />}
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </>
-                                ) : (
-                                    [
-                                        { field: 'current' as const, label: t.currentPassword ?? 'Current Password', key: 'currentPassword' as const },
-                                        { field: 'new' as const, label: t.newPassword ?? 'New Password', key: 'newPassword' as const },
-                                        { field: 'confirm' as const, label: t.confirmPassword ?? 'Confirm New Password', key: 'confirmPassword' as const },
-                                    ]
-                                ).map(({ field, label, key }) => (
-                                    <div className="profile-form-field" key={field}>
-                                        <Label htmlFor={`pw-${field}`}>{label}</Label>
-                                        <div className="profile-pw-wrapper">
-                                            <Input
-                                                id={`pw-${field}`}
-                                                type={showPasswords[field] ? 'text' : 'password'}
-                                                value={passwordForm[key]}
-                                                onChange={(e) => setPasswordForm({ ...passwordForm, [key]: e.target.value })}
-                                                required
-                                            />
-                                            <button
-                                                type="button"
-                                                className="profile-pw-toggle"
-                                                onClick={() => setShowPasswords({ ...showPasswords, [field]: !showPasswords[field] })}
-                                            >
-                                                {showPasswords[field] ? <EyeOff size={14} /> : <Eye size={14} />}
-                                            </button>
-                                        </div>
-                                    </div>
-                                ))}                                <Button type="submit" disabled={pwLoading} className="w-full mt-2">
-                                    {pwLoading ? (t.loading ?? 'Loading…') : (t.changePassword ?? 'Change Password')}
-                                </Button>
-                            </form>
                         </CardContent>
                     </Card>
                 </TabsContent>
@@ -510,9 +342,9 @@ export default function ProfilePage() {
                             <CardHeader className="profile-card-header">
                                 <CardTitle className="flex items-center gap-2">
                                     <ShoppingCart size={18} className="text-amber-500" />
-                                    Template Acquistati ({purchasedTemplateIds.length})
+                                    {copy.files.purchasedTitle.replace('{count}', String(purchasedTemplateIds.length))}
                                 </CardTitle>
-                                <CardDescription>Accesso disponibile per 30 giorni dall'acquisto</CardDescription>
+                                <CardDescription>{copy.files.accessDuration}</CardDescription>
                             </CardHeader>
                             <CardContent>
                                 <div className="space-y-3">
@@ -529,7 +361,7 @@ export default function ProfilePage() {
                                                 <div className="flex-1 min-w-0">
                                                     <div className="flex items-center gap-2 mb-1">
                                                         <h4 className="font-semibold text-sm text-foreground truncate">{template.name}</h4>
-                                                        <span className="text-xs bg-success/20 text-success px-2 py-0.5 rounded-full whitespace-nowrap">✓ Attivo</span>
+                                                        <span className="text-xs bg-success/20 text-success px-2 py-0.5 rounded-full whitespace-nowrap">✓ {copy.files.active}</span>
                                                     </div>
                                                     <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{template.description}</p>
                                                     <div className="flex gap-2 items-center flex-wrap">
@@ -541,7 +373,7 @@ export default function ProfilePage() {
                                                         {daysLeft > 0 && (
                                                             <div className="flex items-center gap-1 text-xs text-muted-foreground">
                                                                 <Clock size={12} />
-                                                                <span>{daysLeft} giorni rimasti</span>
+                                                                <span>{copy.files.daysRemaining.replace('{count}', String(daysLeft))}</span>
                                                             </div>
                                                         )}
                                                     </div>
@@ -562,12 +394,12 @@ export default function ProfilePage() {
                                                                     }));
                                                                     window.location.href = '/editor';
                                                                 } catch (error) {
-                                                                    toast.error(error instanceof Error ? error.message : 'Impossibile aprire il template.');
+                                                                    toast.error(error instanceof Error ? error.message : copy.files.openTemplateError);
                                                                 }
                                                             }}
                                                         >
                                                             <Zap size={14} />
-                                                            Apri con Editor
+                                                            {copy.files.openEditor}
                                                         </Button>
                                                     </Link>
                                                 </div>
@@ -584,20 +416,20 @@ export default function ProfilePage() {
                         <CardHeader className="profile-card-header">
                             <CardTitle className="flex items-center gap-2">
                                 <Heart size={18} className="text-red-500 fill-red-500" />
-                                {' '}Preferiti ({savedTemplateIds.length})
+                                {' '}{copy.files.favoritesTitle.replace('{count}', String(savedTemplateIds.length))}
                             </CardTitle>
-                            <CardDescription>Template che hai salvato dal marketplace</CardDescription>
+                            <CardDescription>{copy.files.favoritesDescription}</CardDescription>
                         </CardHeader>
                         <CardContent>
                             {savedTemplateIds.length === 0 ? (
                                 <div className="text-center py-8 text-muted-foreground">
                                     <Heart size={32} className="mx-auto mb-3 opacity-20" />
-                                    <p className="text-sm">Nessun template nei favoriti</p>
-                                    <p className="text-xs mt-1">Clicca sul cuore nel marketplace per aggiungerli</p>
+                                    <p className="text-sm">{copy.files.noFavorites}</p>
+                                    <p className="text-xs mt-1">{copy.files.favoritesHint}</p>
                                     <Link to="/templates" className="mt-4 inline-block">
                                         <Button size="sm" variant="outline" className="gap-2">
                                             <Star size={14} />
-                                            Vai al Marketplace
+                                            {copy.files.browseMarketplace}
                                         </Button>
                                     </Link>
                                 </div>
@@ -654,15 +486,15 @@ export default function ProfilePage() {
 
                                                                     await navigator.clipboard.writeText(codeWithAttribution);
                                                                     localStorage.setItem('copied_template', JSON.stringify({ code: codeWithAttribution, name: template.name }));
-                                                                    toast.success(i18nT('copied'));
+                                                                    toast.success(copy.common.copied);
                                                                 } catch (error) {
-                                                                    toast.error(error instanceof Error ? error.message : 'Impossibile copiare il template.');
+                                                                    toast.error(error instanceof Error ? error.message : copy.files.copyTemplateError);
                                                                 }
                                                             }}
-                                                            title={i18nT('copyCode')}
+                                                            title={copy.common.copyCode}
                                                         >
                                                             <Copy size={14} />
-                                                            {i18nT('copyCode')}
+                                                            {copy.common.copyCode}
                                                         </Button>
                                                         <Button
                                                             size="sm"
@@ -678,15 +510,15 @@ export default function ProfilePage() {
                                                                     document.body.appendChild(elem);
                                                                     elem.click();
                                                                     document.body.removeChild(elem);
-                                                                    toast.success(i18nT('fileDownloaded'));
+                                                                    toast.success(copy.common.downloaded);
                                                                 } catch (error) {
-                                                                    toast.error(error instanceof Error ? error.message : 'Impossibile scaricare il template.');
+                                                                    toast.error(error instanceof Error ? error.message : copy.files.downloadTemplateError);
                                                                 }
                                                             }}
-                                                            title="Scarica il template"
+                                                            title={copy.files.download}
                                                         >
                                                             <Download size={14} />
-                                                            Download
+                                                            {copy.files.download}
                                                         </Button>
                                                         {template.isPremium && (
                                                             <Button
@@ -700,22 +532,22 @@ export default function ProfilePage() {
                                                                         templateId: template.id,
                                                                     });
                                                                 }}
-                                                                title={purchasedTemplateIds.includes(template.id) ? "Accesso già acquistato" : "Acquista template premium"}
+                                                                title={purchasedTemplateIds.includes(template.id) ? copy.files.alreadyPurchased : copy.files.buyPremium}
                                                             >
                                                                 {purchasedTemplateIds.includes(template.id) ? (
                                                                     <>
                                                                         <Check size={14} />
-                                                                        Acquistato
+                                                                        {copy.files.purchased}
                                                                     </>
                                                                 ) : purchasingTemplateId === template.id ? (
                                                                     <>
                                                                         <Loader2 size={14} className="animate-spin" />
-                                                                        Pagamento...
+                                                                        {copy.files.paymentProgress}
                                                                     </>
                                                                 ) : (
                                                                     <>
                                                                         <ShoppingCart size={14} />
-                                                                        Acquista €{template.price}
+                                                                        {copy.files.buyPremium} €{template.price}
                                                                     </>
                                                                 )}
                                                             </Button>
@@ -728,9 +560,9 @@ export default function ProfilePage() {
                                                                 const updated = savedTemplateIds.filter(id => id !== template.id);
                                                                 setSavedTemplateIds(updated);
                                                                 localStorage.setItem('tatik_saved_templates', JSON.stringify(updated));
-                                                                toast.success(`${template.name} rimosso dai preferiti`);
+                                                                toast.success(copy.files.favoriteRemoved.replace('{name}', template.name));
                                                             }}
-                                                            title="Rimuovi dai favoriti"
+                                                            title={copy.files.removeFavorite}
                                                         >
                                                             <Heart size={16} className="fill-current" />
                                                         </Button>
@@ -749,23 +581,19 @@ export default function ProfilePage() {
                 <TabsContent value="alerts">
                     <Card className="profile-card">
                         <CardHeader className="profile-card-header">
-                            <CardTitle>{t.microJobAlerts ?? 'Micro-Job Alerts'}</CardTitle>
-                            <CardDescription>
-                                {t.microJobAlertsDesc ?? 'Get notified when new micro-jobs matching your skills are posted'}
-                            </CardDescription>
+                            <CardTitle>{copy.alerts.title}</CardTitle>
+                            <CardDescription>{copy.alerts.description}</CardDescription>
                         </CardHeader>
                         <CardContent>
                             <div className="space-y-3">
                                 <div className="flex items-start gap-3">
                                     <div className="flex-1">
-                                        <div className="text-sm font-semibold">Remote: React Dev Needed</div>
-                                        <div className="text-xs text-muted-foreground">$60/h · 8+ hours · Remote</div>
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        <a href="https://www.upwork.com/search/jobs/?q=react%20developer&ref=tatik_microjob" target="_blank" rel="noopener noreferrer sponsored" className="text-xs bg-indigo-600 text-white px-3 py-1 rounded">Apply</a>
+                                        <a href="https://www.upwork.com/search/jobs/?q=react%20developer&ref=tatik_microjob" target="_blank" rel="noopener noreferrer sponsored" className="text-xs bg-indigo-600 text-white px-3 py-1 rounded">{copy.alerts.apply}</a>
                                     </div>
                                 </div>
-                                <div className="text-xs text-muted-foreground">Powered by marketplace listings — click to view similar gigs on Upwork</div>
+                                <div className="text-xs text-muted-foreground">{copy.alerts.externalListingNotice}</div>
                             </div>
                         </CardContent>
                     </Card>
@@ -776,8 +604,8 @@ export default function ProfilePage() {
                     <Card className="profile-card">
                         <CardHeader className="profile-card-header">
                             <div>
-                                <CardTitle className="flex items-center gap-2">✨ Theme Preferences</CardTitle>
-                                <CardDescription>Choose how Tatik.space should look</CardDescription>
+                                <CardTitle className="flex items-center gap-2">✨ {copy.theme.title}</CardTitle>
+                                <CardDescription>{copy.theme.description}</CardDescription>
                             </div>
                         </CardHeader>
                         <CardContent>
@@ -788,9 +616,9 @@ export default function ProfilePage() {
                             ) : (
                                 <div className="grid gap-3">
                                     {[
-                                        { id: 'light' as const, label: 'Light', icon: Sun, description: 'Always use light theme', comingSoon: true },
-                                        { id: 'dark' as const, label: 'Dark', icon: Moon, description: 'Always use dark theme', comingSoon: true },
-                                        { id: 'system' as const, label: 'System', icon: Monitor, description: 'Follow system preference', comingSoon: false },
+                                        { id: 'light' as const, label: copy.theme.light, icon: Sun, description: copy.theme.lightDescription, comingSoon: true },
+                                        { id: 'dark' as const, label: copy.theme.dark, icon: Moon, description: copy.theme.darkDescription, comingSoon: true },
+                                        { id: 'system' as const, label: copy.theme.system, icon: Monitor, description: copy.theme.systemDescription, comingSoon: false },
                                     ].map(({ id, label, icon: Icon, description, comingSoon }) => (
                                         <button
                                             key={id}
@@ -808,7 +636,7 @@ export default function ProfilePage() {
                                             </div>
                                             {comingSoon && (
                                                 <div className="absolute top-2 right-2 bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 text-xs px-2 py-1 rounded">
-                                                    Coming Soon
+                                                    {copy.theme.comingSoon}
                                                 </div>
                                             )}
                                             {selectedTheme === id && !comingSoon && (
@@ -827,18 +655,19 @@ export default function ProfilePage() {
                     <Card className="profile-card">
                         <CardHeader className="profile-card-header">
                             <div>
-                                <CardTitle className="flex items-center gap-2">🔐 Two-Factor Authentication</CardTitle>
-                                <CardDescription>Add an extra layer of security to your account</CardDescription>
+                                <CardTitle className="flex items-center gap-2">🔐 {copy.security.title}</CardTitle>
+                                <CardDescription>{copy.security.description}</CardDescription>
                             </div>
                         </CardHeader>
                         <CardContent className="space-y-4">
+                            <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-800 dark:text-amber-200">
+                                {copy.security.demoDisclaimer}
+                            </p>
                             {!showQrCode ? (
                                 <div className="space-y-4">
                                     <div className="p-4 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
                                         <p className="text-sm text-blue-900 dark:text-blue-200">
-                                            {twoFaEnabled
-                                                ? '✓ Two-factor authentication is currently enabled on your account'
-                                                : 'Two-factor authentication adds an extra security layer by requiring a code from your phone'}
+                                            {twoFaEnabled ? copy.security.demoEnabled : copy.security.demoDisabled}
                                         </p>
                                     </div>
                                     <Button
@@ -859,29 +688,29 @@ export default function ProfilePage() {
                                         variant={twoFaEnabled ? 'outline' : 'default'}
                                     >
                                         <QrCode size={16} />
-                                        {twoFaEnabled ? 'Reset 2FA' : 'Enable 2FA'}
+                                        {twoFaEnabled ? copy.security.reset : copy.security.enable}
                                     </Button>
                                 </div>
                             ) : qrCodeData ? (
                                 <div className="space-y-4">
                                     <div className="p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg">
-                                        <p className="text-sm font-semibold text-amber-900 dark:text-amber-200 mb-2">📱 Step 1: Scan QR Code</p>
-                                        <p className="text-xs text-amber-800 dark:text-amber-300">Use an authenticator app (Google Authenticator, Authy, Microsoft Authenticator) to scan this code:</p>
+                                        <p className="text-sm font-semibold text-amber-900 dark:text-amber-200 mb-2">📱 {copy.security.stepScan}</p>
+                                        <p className="text-xs text-amber-800 dark:text-amber-300">{copy.security.authenticatorInstructions}</p>
                                     </div>
 
                                     {/* QR Code Display */}
                                     <div className="flex flex-col items-center gap-3">
                                         <div className="border-2 border-dashed border-border p-4 rounded-lg bg-background">
-                                            <img src={qrCodeData.qrCode} alt="2FA QR Code" className="w-48 h-48" />
+                                            <img src={qrCodeData.qrCode} alt={copy.security.qrAlt} className="w-48 h-48" />
                                         </div>
-                                        <p className="text-xs text-muted-foreground text-center">Can't scan? Enter this code manually:</p>
+                                        <p className="text-xs text-muted-foreground text-center">{copy.security.manualEntry}</p>
                                         <div className="flex items-center gap-2 bg-muted px-3 py-2 rounded-lg font-mono text-sm">
                                             <span>{qrCodeData.secret}</span>
                                             <button
                                                 className="p-1 hover:bg-background rounded"
                                                 onClick={() => {
                                                     navigator.clipboard.writeText(qrCodeData.secret);
-                                                    toast.success('Secret copied to clipboard');
+                                                    toast.success(copy.security.secretCopied);
                                                 }}
                                             >
                                                 <Copy size={14} />
@@ -891,14 +720,14 @@ export default function ProfilePage() {
 
                                     {/* Verification Code Input */}
                                     <div className="p-4 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg">
-                                        <p className="text-sm font-semibold text-green-900 dark:text-green-200 mb-3">✓ Step 2: Verify Code</p>
+                                        <p className="text-sm font-semibold text-green-900 dark:text-green-200 mb-3">✓ {copy.security.stepVerify}</p>
                                         <div className="flex gap-2 items-end">
                                             <div className="flex-1">
-                                                <Label htmlFor="totp-code" className="text-xs">Enter 6-digit code from your authenticator:</Label>
+                                                <Label htmlFor="totp-code" className="text-xs">{copy.security.enterCode}</Label>
                                                 <Input
                                                     id="totp-code"
                                                     type="text"
-                                                    placeholder="000000"
+                                                    placeholder={copy.security.codePlaceholder}
                                                     maxLength={6}
                                                     value={twoFaCode}
                                                     onChange={(e) => setTwoFaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
@@ -914,16 +743,16 @@ export default function ProfilePage() {
                                                             setTwoFaEnabled(true);
                                                             setBackupCodesVisible(true);
                                                             setTwoFaLoading(false);
-                                                            toast.success('2FA enabled successfully!');
+                                                            toast.success(copy.security.demoEnabledToast);
                                                         }, 500);
                                                     } else {
-                                                        toast.error('Please enter 6 digits');
+                                                        toast.error(copy.security.sixDigits);
                                                     }
                                                 }}
                                                 disabled={twoFaCode.length !== 6 || twoFaLoading}
                                                 size="sm"
                                             >
-                                                Verify
+                                                {copy.security.verify}
                                             </Button>
                                         </div>
                                     </div>
@@ -931,8 +760,8 @@ export default function ProfilePage() {
                                     {/* Backup Codes */}
                                     {backupCodesVisible && (
                                         <div className="p-4 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg">
-                                            <p className="text-sm font-semibold text-red-900 dark:text-red-200 mb-2">⚠️ Save Backup Codes</p>
-                                            <p className="text-xs text-red-800 dark:text-red-300 mb-3">Store these codes somewhere safe. You can use them to access your account if you lose your authenticator:</p>
+                                            <p className="text-sm font-semibold text-red-900 dark:text-red-200 mb-2">⚠️ {copy.security.saveCodes}</p>
+                                            <p className="text-xs text-red-800 dark:text-red-300 mb-3">{copy.security.saveCodesDescription}</p>
                                             <div className="grid grid-cols-2 gap-2 mb-3">
                                                 {qrCodeData.backupCodes.map((code, i) => (
                                                     <div key={i} className="font-mono text-xs bg-background p-2 rounded border border-red-200 dark:border-red-800">
@@ -947,11 +776,11 @@ export default function ProfilePage() {
                                                 onClick={() => {
                                                     const text = qrCodeData.backupCodes.join('\n');
                                                     navigator.clipboard.writeText(text);
-                                                    toast.success('Backup codes copied to clipboard');
+                                                    toast.success(copy.security.codesCopied);
                                                 }}
                                             >
                                                 <Copy size={14} />
-                                                Copy All Codes
+                                                {copy.security.copyCodes}
                                             </Button>
                                         </div>
                                     )}
@@ -966,8 +795,8 @@ export default function ProfilePage() {
                     <Card className="profile-card">
                         <CardHeader className="profile-card-header">
                             <div>
-                                <CardTitle className="flex items-center gap-2">📚 Version History</CardTitle>
-                                <CardDescription>Track changes and restore previous versions of your projects</CardDescription>
+                                <CardTitle className="flex items-center gap-2">📚 {copy.history.title}</CardTitle>
+                                <CardDescription>{copy.history.description}</CardDescription>
                             </div>
                         </CardHeader>
                         <CardContent className="space-y-4">
@@ -976,29 +805,21 @@ export default function ProfilePage() {
                                     <Code size={24} className="text-indigo-600 dark:text-indigo-400 flex-shrink-0 mt-1" />
                                     <div className="flex-1">
                                         <p className="font-semibold text-indigo-900 dark:text-indigo-100 mb-2">
-                                            ✨ Under Development & Testing
+                                            ✨ {copy.history.underDevelopment}
                                         </p>
                                         <p className="text-sm text-indigo-800 dark:text-indigo-200 mb-3">
-                                            We're currently building a comprehensive version history system that will allow you to:
+                                            {copy.history.developmentDescription}
                                         </p>
                                         <ul className="space-y-1 text-sm text-indigo-700 dark:text-indigo-300 ml-4">
-                                            <li>✓ Automatic snapshots of every project save</li>
-                                            <li>✓ Browse complete file history with timestamps</li>
-                                            <li>✓ Restore any previous version instantly</li>
-                                            <li>✓ Compare changes between versions (diff view)</li>
-                                            <li>✓ Named snapshots for important milestones</li>
-                                            <li>✓ Cloud backup with 30-day retention</li>
+                                            {copy.history.features.map((feature) => <li key={feature}>✓ {feature}</li>)}
                                         </ul>
-                                        <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-3 font-medium">
-                                            → Expected release: March 2026
-                                        </p>
                                     </div>
                                 </div>
                             </div>
 
                             <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800/50 rounded-lg">
                                 <p className="text-xs text-blue-700 dark:text-blue-300">
-                                    💡 <strong>What you can do now:</strong> Use "Save as Backup" on your editor to manually create snapshots of your current work.
+                                    💡 <strong>{copy.history.backupTipTitle}</strong> {copy.history.backupTip}
                                 </p>
                             </div>
                         </CardContent>

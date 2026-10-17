@@ -1,6 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { trpc } from '@/lib/trpc';
 import { useAuth } from '@/_core/hooks/useAuth';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { monetizationAdminCopy } from '@/lib/monetizationAdminCopy';
 import { format } from 'date-fns';
 import { ChevronUp, ChevronDown, ExternalLink } from 'lucide-react';
 
@@ -22,6 +24,8 @@ const ACTIVITY_PAGE_MAP: Record<string, string> = {
 
 export default function BannerMonetizationDetails() {
     const { user } = useAuth();
+    const { language } = useLanguage();
+    const copy = monetizationAdminCopy[language];
     const { data, isLoading, error, refetch } = trpc.user.monetizationDetails.useQuery(undefined, {
         retry: 1,
         refetchOnWindowFocus: true,
@@ -37,8 +41,8 @@ export default function BannerMonetizationDetails() {
 
     const ITEMS_PER_PAGE = 10;
 
-    if (isLoading) return <div className="p-4 text-sm text-muted-foreground">Caricamento dettagli...</div>;
-    if (error) return <div className="p-4 text-sm text-destructive">Errore caricamento dettagli</div>;
+    if (isLoading) return <div className="p-4 text-sm text-muted-foreground">{copy.loadingDetails}</div>;
+    if (error) return <div className="p-4 text-sm text-destructive">{copy.loadDetailsError}</div>;
 
     const additions = data?.additions ?? [];
 
@@ -64,7 +68,7 @@ export default function BannerMonetizationDetails() {
     const paginatedData = filtered.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE);
 
     // Unique activities for quick filter buttons
-    const uniqueActivities = Array.from(new Set(additions.map((a: any) => a.activityType || a.bannerId || 'Unknown'))).sort();
+    const uniqueActivities = Array.from(new Set(additions.map((a: any) => a.activityType || a.bannerId || copy.defaultActivity))).sort();
 
     const handleDevTestAdd = async (actType: string) => {
         try {
@@ -87,30 +91,30 @@ export default function BannerMonetizationDetails() {
     return (
         <div className="mt-4 bg-card border border-border rounded-lg p-4">
             <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-semibold">Dettaglio Interazioni Banner (ultimi 30 giorni)</h3>
-                <button className="text-sm px-2 py-1 bg-primary/10 rounded hover:bg-primary/20" onClick={() => refetch()}>Aggiorna</button>
+                <h3 className="text-sm font-semibold">{copy.detailsTitle}</h3>
+                <button className="text-sm px-2 py-1 bg-primary/10 rounded hover:bg-primary/20" onClick={() => refetch()}>{copy.refresh}</button>
             </div>
 
             {/* Dev Test Controls */}
             {isDevMode && isDevUser && (
                 <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded flex items-center gap-2">
-                    <span className="text-xs text-amber-700 dark:text-amber-300">Dev Mode:</span>
+                    <span className="text-xs text-amber-700 dark:text-amber-300">{copy.devMode}:</span>
                     <select
                         value={selectedActivityType}
                         onChange={(e) => setSelectedActivityType(e.target.value)}
                         className="text-xs rounded border px-2 py-0.5 bg-background"
                     >
-                        <option value="">Seleziona activity...</option>
+                        <option value="">{copy.selectActivity}</option>
                         {uniqueActivities.map(act => (
                             <option key={act} value={act}>{act}</option>
                         ))}
                     </select>
                     <button
-                        onClick={() => handleDevTestAdd(selectedActivityType || 'Elemento')}
+                        onClick={() => handleDevTestAdd(selectedActivityType || copy.defaultActivity)}
                         className="text-xs px-2 py-0.5 rounded bg-amber-600 text-white hover:bg-amber-700"
                         disabled={testMutation.isPending}
                     >
-                        {testMutation.isPending ? 'Aggiungendo...' : 'Aggiungi Test'}
+                        {testMutation.isPending ? copy.adding : copy.addTest}
                     </button>
                 </div>
             )}
@@ -119,7 +123,7 @@ export default function BannerMonetizationDetails() {
             <div className="mb-4 space-y-3">
                 <div className="flex items-center gap-2">
                     <input
-                        placeholder="Filtra per activity/banner"
+                        placeholder={copy.filterPlaceholder}
                         value={filter}
                         onChange={(e) => setFilter(e.target.value)}
                         className="text-sm px-2 py-1 border rounded bg-transparent w-64"
@@ -129,7 +133,7 @@ export default function BannerMonetizationDetails() {
                 {/* Quick filter buttons */}
                 {uniqueActivities.length > 0 && (
                     <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs text-muted-foreground">Filtra veloce:</span>
+                        <span className="text-xs text-muted-foreground">{copy.quickFilter}</span>
                         {uniqueActivities.slice(0, 5).map(act => (
                             <button
                                 key={act}
@@ -144,50 +148,53 @@ export default function BannerMonetizationDetails() {
 
                 {/* Sort controls */}
                 <div className="flex items-center gap-2 text-sm">
-                    <span className="text-muted-foreground">Ordina per:</span>
+                    <span className="text-muted-foreground">{copy.sortBy}</span>
                     <button
                         onClick={() => setSortBy('date')}
                         className={`px-2 py-1 rounded text-xs ${sortBy === 'date' ? 'bg-primary/20' : 'hover:bg-accent'}`}
                     >
-                        Data {sortBy === 'date' && (sortOrder === 'asc' ? <ChevronUp className="inline w-3 h-3" /> : <ChevronDown className="inline w-3 h-3" />)}
+                        {copy.date} {sortBy === 'date' && (sortOrder === 'asc' ? <ChevronUp className="inline w-3 h-3" /> : <ChevronDown className="inline w-3 h-3" />)}
                     </button>
                     <button
                         onClick={() => setSortBy('activity')}
                         className={`px-2 py-1 rounded text-xs ${sortBy === 'activity' ? 'bg-primary/20' : 'hover:bg-accent'}`}
                     >
-                        Activity {sortBy === 'activity' && (sortOrder === 'asc' ? <ChevronUp className="inline w-3 h-3" /> : <ChevronDown className="inline w-3 h-3" />)}
+                        {copy.activity} {sortBy === 'activity' && (sortOrder === 'asc' ? <ChevronUp className="inline w-3 h-3" /> : <ChevronDown className="inline w-3 h-3" />)}
                     </button>
                     <button
                         onClick={() => setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc')}
                         className="px-2 py-1 rounded text-xs hover:bg-accent"
                     >
-                        {sortOrder === 'asc' ? '↑ Asc' : '↓ Desc'}
+                        {sortOrder === 'asc' ? copy.ascending : copy.descending}
                     </button>
                 </div>
             </div>
 
             {/* Results summary */}
             <div className="text-xs text-muted-foreground mb-2">
-                Mostrando {paginatedData.length > 0 ? ((page - 1) * ITEMS_PER_PAGE) + 1 : 0}–{Math.min(page * ITEMS_PER_PAGE, filtered.length)} di {filtered.length} risultati
+                {copy.resultsSummary
+                    .replace('{from}', String(paginatedData.length > 0 ? ((page - 1) * ITEMS_PER_PAGE) + 1 : 0))
+                    .replace('{to}', String(Math.min(page * ITEMS_PER_PAGE, filtered.length)))
+                    .replace('{total}', String(filtered.length))}
             </div>
 
             {filtered.length === 0 ? (
-                <div className="text-sm text-muted-foreground">Nessuna interazione registrata.</div>
+                <div className="text-sm text-muted-foreground">{copy.noResults}</div>
             ) : (
                 <>
                     <div className="overflow-auto">
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="text-left text-muted-foreground text-xs">
-                                    <th className="pb-2 px-2">Data</th>
-                                    <th className="pb-2 px-2">Banner / Activity</th>
-                                    <th className="pb-2 px-2">Progetto</th>
-                                    <th className="pb-2 px-2">Link</th>
+                                    <th className="pb-2 px-2">{copy.date}</th>
+                                    <th className="pb-2 px-2">{copy.bannerActivity}</th>
+                                    <th className="pb-2 px-2">{copy.project}</th>
+                                    <th className="pb-2 px-2">{copy.link}</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {paginatedData.map((it: any, idx: number) => {
-                                    const activity = it.activityType ?? it.bannerId ?? 'Unknown';
+                                    const activity = it.activityType ?? it.bannerId ?? copy.defaultActivity;
                                     const pageLink = getPageLink(activity);
                                     return (
                                         <tr key={idx} className="border-t hover:bg-accent/50 transition-colors">
@@ -197,7 +204,7 @@ export default function BannerMonetizationDetails() {
                                             <td className="py-2 px-2">
                                                 {pageLink !== '#' ? (
                                                     <a href={pageLink} className="text-primary hover:underline inline-flex items-center gap-1" target="_blank" rel="noopener noreferrer">
-                                                        Vai <ExternalLink className="w-3 h-3" />
+                                                        {copy.go} <ExternalLink className="w-3 h-3" />
                                                     </a>
                                                 ) : (
                                                     <span className="text-muted-foreground text-xs">—</span>
@@ -218,17 +225,17 @@ export default function BannerMonetizationDetails() {
                                 disabled={page === 1}
                                 className="px-3 py-1 rounded border hover:bg-accent disabled:opacity-50"
                             >
-                                Precedente
+                                {copy.previous}
                             </button>
                             <span className="text-muted-foreground">
-                                Pagina {page} di {totalPages}
+                                {copy.pageSummary.replace('{page}', String(page)).replace('{total}', String(totalPages))}
                             </span>
                             <button
                                 onClick={() => setPage(Math.min(totalPages, page + 1))}
                                 disabled={page === totalPages}
                                 className="px-3 py-1 rounded border hover:bg-accent disabled:opacity-50"
                             >
-                                Successiva
+                                {copy.next}
                             </button>
                         </div>
                     )}
@@ -237,4 +244,3 @@ export default function BannerMonetizationDetails() {
         </div>
     );
 }
-
