@@ -154,7 +154,10 @@ export function GlobalNavbar() {
           ref={desktopNavRef}
           className={`absolute left-1/2 top-1/2 z-10 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center gap-1 transition-opacity 2xl:gap-3 ${desktopNavFits ? 'visible opacity-100' : 'invisible pointer-events-none opacity-0'}`}
         >
-          <div className="relative group">
+          <div
+            className="relative"
+            onMouseLeave={() => setOpenNavDropdown((open) => open === 'solutions' ? null : open)}
+          >
             <button
               type="button"
               aria-expanded={openNavDropdown === 'solutions'}
@@ -169,8 +172,7 @@ export function GlobalNavbar() {
             </button>
             <div
               id="solutions-menu"
-              style={{ visibility: openNavDropdown === 'solutions' ? 'visible' : undefined }}
-              className={`absolute left-0 top-full z-50 w-56 pt-1 transition-all duration-200 ${openNavDropdown === 'solutions' ? 'opacity-100' : 'invisible opacity-0 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100'}`}
+              className={`absolute left-0 top-full z-50 w-56 pt-1 transition-all duration-200 ${openNavDropdown === 'solutions' ? 'visible opacity-100' : 'invisible opacity-0 pointer-events-none'}`}
             >
               <div className="rounded-md border border-border bg-background p-2 shadow-lg">
                 <Link href="/editor" className="block px-3 py-2 rounded-md hover:bg-accent text-sm">
@@ -192,7 +194,10 @@ export function GlobalNavbar() {
             </div>
           </div>
 
-          <div className="relative group">
+          <div
+            className="relative"
+            onMouseLeave={() => setOpenNavDropdown((open) => open === 'resources' ? null : open)}
+          >
             <button
               type="button"
               aria-expanded={openNavDropdown === 'resources'}
@@ -207,8 +212,7 @@ export function GlobalNavbar() {
             </button>
             <div
               id="resources-menu"
-              style={{ visibility: openNavDropdown === 'resources' ? 'visible' : undefined }}
-              className={`absolute left-0 top-full z-50 w-56 pt-1 transition-all duration-200 ${openNavDropdown === 'resources' ? 'opacity-100' : 'invisible opacity-0 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100'}`}
+              className={`absolute left-0 top-full z-50 w-56 pt-1 transition-all duration-200 ${openNavDropdown === 'resources' ? 'visible opacity-100' : 'invisible opacity-0 pointer-events-none'}`}
             >
               <div className="rounded-md border border-border bg-background p-2 shadow-lg">
                 <Link href="/documentation" className="block px-3 py-2 rounded-md hover:bg-accent text-sm">
