@@ -42,6 +42,7 @@ import { siteShellCopy } from '@/lib/siteShellCopy';
 import { translations } from '@/lib/i18n';
 import { BetaNotice } from '@/components/BetaNotice';
 import { PUBLIC_SEO, Seo } from "@/components/Seo";
+import { AffiliatePartnerStrip } from "@/components/AffiliatePartnerStrip";
 
 // Initialize i18n
 import './lib/i18n';
@@ -273,6 +274,7 @@ function App() {
                   {/* Promo banner placed above the global footer for selected pages */}
                   <PromoPlacement />
 
+                  <AffiliatePartnerStrip />
                   <AppFooter />
                   <CookieConsent />
                 </TooltipProvider>
