@@ -53,7 +53,11 @@ export function AffiliatePartnerStrip() {
   const [marketingConsent, setMarketingConsent] = useState(false);
 
   useEffect(() => {
+    let expiryTimer: number | undefined;
     const updateConsent = () => {
+      if (expiryTimer !== undefined) {
+        window.clearTimeout(expiryTimer);
+      }
       const details = window.localStorage.getItem('tatik-cookie-details');
       if (!details) {
         setMarketingConsent(false);
@@ -61,11 +65,19 @@ export function AffiliatePartnerStrip() {
       }
       try {
         const preferences = JSON.parse(details) as { marketing?: boolean; expiresAt?: string };
+        const expiresAt = typeof preferences.expiresAt === 'string'
+          ? new Date(preferences.expiresAt).getTime()
+          : Number.NaN;
+        const isValid = preferences.marketing === true && expiresAt > Date.now();
         setMarketingConsent(
-          preferences.marketing === true
-          && typeof preferences.expiresAt === 'string'
-          && new Date(preferences.expiresAt).getTime() > Date.now(),
+          isValid,
         );
+        if (isValid) {
+          expiryTimer = window.setTimeout(
+            updateConsent,
+            Math.min(expiresAt - Date.now(), 2_147_000_000),
+          );
+        }
       } catch (error) {
         console.error('Failed to read affiliate marketing consent:', error);
         setMarketingConsent(false);
@@ -76,6 +88,9 @@ export function AffiliatePartnerStrip() {
     window.addEventListener('tatik:consent-updated', updateConsent);
     window.addEventListener('storage', updateConsent);
     return () => {
+      if (expiryTimer !== undefined) {
+        window.clearTimeout(expiryTimer);
+      }
       window.removeEventListener('tatik:consent-updated', updateConsent);
       window.removeEventListener('storage', updateConsent);
     };
