@@ -19,6 +19,16 @@ export default function ProfileBadge() {
     const copy = profileBadgeCopy[language];
     const [open, setOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
+    const isSchoolStaff = trpc.schools.isStaff.useQuery(undefined, {
+        enabled: Boolean(user),
+        refetchInterval: 60_000,
+        refetchOnWindowFocus: true,
+    });
+    const pendingSchoolApplications = trpc.schools.adminPending.useQuery(undefined, {
+        enabled: isSchoolStaff.data === true,
+        refetchInterval: 15_000,
+        refetchOnWindowFocus: true,
+    });
 
     // Close on outside click
     useEffect(() => {
@@ -94,9 +104,18 @@ export default function ProfileBadge() {
                         to="/schools"
                         className="profile-dropdown-item"
                         onClick={() => setOpen(false)}
+                        aria-label={`${copy.schools}${pendingSchoolApplications.data?.length ? ` (${pendingSchoolApplications.data.length})` : ''}`}
                     >
                         <School size={15} />
                         {copy.schools}
+                        {pendingSchoolApplications.data && pendingSchoolApplications.data.length > 0 && (
+                            <span
+                                className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-destructive px-1.5 py-0.5 text-xs font-semibold text-destructive-foreground"
+                                aria-hidden="true"
+                            >
+                                {pendingSchoolApplications.data.length}
+                            </span>
+                        )}
                     </Link>
 
                     <Link

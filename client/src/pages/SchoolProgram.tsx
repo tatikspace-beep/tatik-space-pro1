@@ -29,10 +29,18 @@ export default function SchoolProgram() {
   const terms = trpc.schools.terms.useQuery();
   const hasTermsTranslation = terms.data?.version === termsCopy.version
     && terms.data.terms.length === termsCopy.translatedTerms.length;
-  const isStaff = trpc.schools.isStaff.useQuery(undefined, { enabled: Boolean(user) });
+  const isStaff = trpc.schools.isStaff.useQuery(undefined, {
+    enabled: Boolean(user),
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
+  });
   const mySchool = trpc.schools.mySchool.useQuery(undefined, { enabled: Boolean(user) });
   const myMembership = trpc.schools.myMembership.useQuery(undefined, { enabled: Boolean(user) });
-  const pending = trpc.schools.adminPending.useQuery(undefined, { enabled: isStaff.data === true });
+  const pending = trpc.schools.adminPending.useQuery(undefined, {
+    enabled: isStaff.data === true,
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
+  });
   const reportMutationError = (operation: string, error: unknown) => {
     console.error(`School program ${operation} failed`, error);
     toast.error(copy.operationFailed);
