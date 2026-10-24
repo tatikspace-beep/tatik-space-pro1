@@ -327,6 +327,32 @@ export const paymentRecords = pgTable("payment_records", {
 export type PaymentRecord = typeof paymentRecords.$inferSelect;
 export type InsertPaymentRecord = typeof paymentRecords.$inferInsert;
 
+export const providerConnections = pgTable("provider_connections", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  provider: varchar("provider", { length: 32 }).notNull(),
+  encryptedCredential: text("encryptedCredential").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, table => ({
+  userProviderIdx: uniqueIndex("provider_connections_user_provider_idx").on(table.userId, table.provider),
+}));
+export type ProviderConnection = typeof providerConnections.$inferSelect;
+
+export const providerResources = pgTable("provider_resources", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  projectId: integer("projectId").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  provider: varchar("provider", { length: 32 }).notNull(),
+  resourceId: varchar("resourceId", { length: 255 }).notNull(),
+  resourceUrl: text("resourceUrl"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, table => ({
+  userProjectProviderIdx: uniqueIndex("provider_resources_user_project_provider_idx").on(table.userId, table.projectId, table.provider),
+}));
+export type ProviderResource = typeof providerResources.$inferSelect;
+
 /**
  * Developer marketplace. Listing source files are kept in private storage and
  * are only released after a verified order.

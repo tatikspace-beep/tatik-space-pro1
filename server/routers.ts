@@ -11,6 +11,7 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { pricingRouter } from "./_core/pricingRouter";
 import { publicProcedure, router, protectedProcedure } from "./_core/trpc";
+import type { TrpcContext } from "./_core/context";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import * as db from "./db";
@@ -41,6 +42,8 @@ import { getUserFeatureAccess, requireFeatureAccess } from "./_core/featureAcces
 import { PREMIUM_TEMPLATE_CATALOG } from "./_core/premiumTemplateCatalog";
 import { getAuthBaseUrl } from "./_core/authUrls";
 import { PREMIUM_TEMPLATES } from "../client/src/data/templates";
+import { assertProviderCredentialStorageConfigured, decryptProviderCredential, encryptProviderCredential, PROVIDER_IDS, verifyProviderCredential } from "./provider-credentials";
+import { createDatabaseProject, deployStaticProject } from "./provider-operations";
 
 async function sendAuthEmail(to: string, subject: string, text: string) {
   const apiKey = process.env.RESEND_API_KEY;
@@ -67,6 +70,16 @@ const MARKETPLACE_SELLER_TERMS_VERSION = "2026-09-30-screening-v1";
 
 const SCHOOL_TERMS_VERSION = "2026-09-15";
 const SCHOOL_INVITE_DAYS = 7;
+
+async function resolveProviderUserId(user: NonNullable<TrpcContext["user"]>) {
+  if (typeof user.id === "number") return user.id;
+  const openId = user.openId || String(user.id);
+  const syncedUser = await db.getUserByOpenId(openId);
+  if (!syncedUser) {
+    throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Could not resolve the signed-in account." });
+  }
+  return syncedUser.id;
+}
 
 function hashSchoolInviteToken(token: string) {
   return crypto.createHash("sha256").update(token).digest("hex");
@@ -564,6 +577,148 @@ export const appRouter = router({
       .mutation(async ({ input }) => {
         await db.deleteFile(input.fileId);
         return { success: true };
+      }),
+  }),
+
+  providerConnections: router({
+    list: protectedProcedure.query(async ({ ctx }) => {
+      try {
+        return await db.listProviderConnections(await resolveProviderUserId(ctx.user));
+      } catch (error) {
+        console.error("[Provider connections] Failed to list connections:", error);
+        throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Could not load provider connections." });
+      }
+    }),
+    connect: protectedProcedure
+      .input(z.object({
+        provider: z.enum(PROVIDER_IDS),
+        credential: z.string().trim().min(16).max(8192),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        try {
+          assertProviderCredentialStorageConfigured();
+          await verifyProviderCredential(input.provider, input.credential);
+          const userId = await resolveProviderUserId(ctx.user);
+          const encryptedCredential = encryptProviderCredential(
+            input.credential,
+            undefined,
+            `${userId}:${input.provider}`,
+          );
+          return await db.saveProviderConnection(userId, input.provider, encryptedCredential);
+        } catch (error) {
+          if (error instanceof Error && /credential storage is not configured|PROVIDER_CREDENTIALS_ENCRYPTION_KEY/.test(error.message)) {
+            throw new TRPCError({
+              code: "PRECONDITION_FAILED",
+              message: "Secure provider storage is not configured yet.",
+            });
+          }
+          if (error instanceof Error && /provider rejected|verification failed|did not confirm/.test(error.message)) {
+            throw new TRPCError({ code: "UNAUTHORIZED", message: error.message });
+          }
+          console.error(`[Provider connections] Failed to connect ${input.provider}:`, error);
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Could not securely connect this provider." });
+        }
+      }),
+    disconnect: protectedProcedure
+      .input(z.object({ provider: z.enum(PROVIDER_IDS) }))
+      .mutation(async ({ ctx, input }) => {
+        try {
+          await db.deleteProviderConnection(await resolveProviderUserId(ctx.user), input.provider);
+          return { success: true };
+        } catch (error) {
+          console.error(`[Provider connections] Failed to disconnect ${input.provider}:`, error);
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Could not disconnect this provider." });
+        }
+      }),
+    createDatabase: protectedProcedure
+      .input(z.object({
+        provider: z.enum(["supabase", "neon"]),
+        projectId: z.number().int().positive(),
+        projectName: z.string().trim().min(3).max(60).regex(/^[a-zA-Z0-9][a-zA-Z0-9-_]*$/),
+        region: z.string().trim().min(3).max(64).regex(/^[a-zA-Z0-9-]+$/),
+        organizationSlug: z.string().trim().min(3).max(128).optional(),
+        databasePassword: z.string().min(12).max(128).optional(),
+        confirmed: z.literal(true),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        try {
+          const userId = await resolveProviderUserId(ctx.user);
+          const project = await db.getProjectById(input.projectId);
+          if (!project || project.userId !== userId) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "Project not found." });
+          }
+          const existing = await db.getProviderResource(userId, input.projectId, input.provider);
+          if (existing) {
+            return {
+              provider: input.provider,
+              projectId: existing.resourceId,
+              projectName: input.projectName,
+              dashboardUrl: existing.resourceUrl,
+              alreadyExists: true,
+            };
+          }
+          const encrypted = await db.getProviderCredential(userId, input.provider);
+          if (!encrypted) {
+            throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Connect this database provider first." });
+          }
+          const token = decryptProviderCredential(encrypted, undefined, `${userId}:${input.provider}`);
+          const result = await createDatabaseProject({ ...input, token });
+          await db.saveProviderResource(userId, input.projectId, input.provider, result.projectId, result.dashboardUrl);
+          return result;
+        } catch (error) {
+          if (error instanceof TRPCError) throw error;
+          console.error(`[Provider operations] Failed to create ${input.provider} database project:`, error);
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: error instanceof Error ? error.message : "Could not create the database project.",
+          });
+        }
+      }),
+    deployStatic: protectedProcedure
+      .input(z.object({
+        provider: z.enum(["vercel", "netlify"]),
+        projectId: z.number().int().positive(),
+        projectName: z.string().trim().min(1).max(100),
+        files: z.array(z.object({
+          path: z.string().min(1).max(500),
+          content: z.string().max(4_200_000),
+        })).min(1).max(100).superRefine((files, refinement) => {
+          const totalBase64Characters = files.reduce((total, file) => total + file.content.length, 0);
+          if (totalBase64Characters > 4_200_000) {
+            refinement.addIssue({
+              code: z.ZodIssueCode.custom,
+              message: "Static deployment is limited to 3 MB of uncompressed files.",
+            });
+          }
+        }),
+        confirmed: z.literal(true),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        try {
+          const userId = await resolveProviderUserId(ctx.user);
+          const project = await db.getProjectById(input.projectId);
+          if (!project || project.userId !== userId) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "Project not found." });
+          }
+          const encrypted = await db.getProviderCredential(userId, input.provider);
+          if (!encrypted) {
+            throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Connect this deployment provider first." });
+          }
+          const token = decryptProviderCredential(encrypted, undefined, `${userId}:${input.provider}`);
+          const existing = await db.getProviderResource(userId, input.projectId, input.provider);
+          const result = await deployStaticProject({ ...input, token, resourceId: existing?.resourceId });
+          if (result.resourceId) {
+            await db.saveProviderResource(userId, input.projectId, input.provider, result.resourceId, result.url);
+          }
+          return result;
+        } catch (error) {
+          if (error instanceof TRPCError) throw error;
+          console.error(`[Provider operations] Failed to deploy to ${input.provider}:`, error);
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: error instanceof Error ? error.message : "Could not deploy the project.",
+          });
+        }
       }),
   }),
 

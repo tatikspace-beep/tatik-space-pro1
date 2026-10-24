@@ -1,7 +1,7 @@
 import { desc, eq, and, gte, lte, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
-import { InsertUser, users, backups, InsertBackup, projects, files, InsertProject, InsertFile, twoFactorSettings, InsertTwoFactorSettings, contactMessages, InsertContactMessage, cookieConsents, InsertCookieConsent, bannerAdditions, InsertBannerAddition, subscriptions, InsertSubscription, subscriptionDiscounts, InsertSubscriptionDiscount, monetizationEarnings, InsertMonetizationEarning, paymentRecords, InsertPaymentRecord, templatePurchases } from "../drizzle/schema";
+import { InsertUser, users, backups, InsertBackup, projects, files, InsertProject, InsertFile, twoFactorSettings, InsertTwoFactorSettings, contactMessages, InsertContactMessage, cookieConsents, InsertCookieConsent, bannerAdditions, InsertBannerAddition, subscriptions, InsertSubscription, subscriptionDiscounts, InsertSubscriptionDiscount, monetizationEarnings, InsertMonetizationEarning, paymentRecords, InsertPaymentRecord, templatePurchases, providerConnections, providerResources } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { normalizeEmail } from "./auth-utils";
 
@@ -659,4 +659,86 @@ export async function updateThemePreference(userId: number, theme: 'light' | 'da
     .returning();
 
   return result.length > 0 ? result[0] : null;
+}
+
+export async function listProviderConnections(userId: number) {
+  const database = await getDb();
+  if (!database) throw new Error("Database is unavailable.");
+  return database.select({
+    provider: providerConnections.provider,
+    connectedAt: providerConnections.createdAt,
+  }).from(providerConnections).where(eq(providerConnections.userId, userId));
+}
+
+export async function saveProviderConnection(userId: number, provider: string, encryptedCredential: string) {
+  const database = await getDb();
+  if (!database) throw new Error("Database is unavailable.");
+  const [connection] = await database.insert(providerConnections).values({
+    userId,
+    provider,
+    encryptedCredential,
+  }).onConflictDoUpdate({
+    target: [providerConnections.userId, providerConnections.provider],
+    set: { encryptedCredential, updatedAt: new Date() },
+  }).returning({
+    provider: providerConnections.provider,
+    connectedAt: providerConnections.updatedAt,
+  });
+  return connection;
+}
+
+export async function deleteProviderConnection(userId: number, provider: string) {
+  const database = await getDb();
+  if (!database) throw new Error("Database is unavailable.");
+  await database.delete(providerConnections).where(and(
+    eq(providerConnections.userId, userId),
+    eq(providerConnections.provider, provider),
+  ));
+}
+
+export async function getProviderCredential(userId: number, provider: string) {
+  const database = await getDb();
+  if (!database) throw new Error("Database is unavailable.");
+  const [connection] = await database.select({
+    encryptedCredential: providerConnections.encryptedCredential,
+  }).from(providerConnections).where(and(
+    eq(providerConnections.userId, userId),
+    eq(providerConnections.provider, provider),
+  )).limit(1);
+  return connection?.encryptedCredential ?? null;
+}
+
+export async function getProviderResource(userId: number, projectId: number, provider: string) {
+  const database = await getDb();
+  if (!database) throw new Error("Database is unavailable.");
+  const [resource] = await database.select({
+    resourceId: providerResources.resourceId,
+    resourceUrl: providerResources.resourceUrl,
+  }).from(providerResources).where(and(
+    eq(providerResources.userId, userId),
+    eq(providerResources.projectId, projectId),
+    eq(providerResources.provider, provider),
+  )).limit(1);
+  return resource ?? null;
+}
+
+export async function saveProviderResource(
+  userId: number,
+  projectId: number,
+  provider: string,
+  resourceId: string,
+  resourceUrl: string | null,
+) {
+  const database = await getDb();
+  if (!database) throw new Error("Database is unavailable.");
+  await database.insert(providerResources).values({
+    userId,
+    projectId,
+    provider,
+    resourceId,
+    resourceUrl,
+  }).onConflictDoUpdate({
+    target: [providerResources.userId, providerResources.projectId, providerResources.provider],
+    set: { resourceId, resourceUrl, updatedAt: new Date() },
+  });
 }

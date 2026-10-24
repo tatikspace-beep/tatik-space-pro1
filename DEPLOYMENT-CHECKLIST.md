@@ -11,7 +11,14 @@ Questa checklist descrive il passaggio dall'ambiente di sviluppo alla produzione
 - [ ] Usare `https://www.tatik.space` come dominio pubblico principale e `https://tatik.space` come dominio secondario.
 - [ ] Configurare prima l'ambiente Preview, testare, poi replicare le variabili in Production.
 
-## 2. Supabase PostgreSQL
+## 2. Credenziali dei provider per l'ambiente sviluppatori
+
+- [ ] Configurare `PROVIDER_CREDENTIALS_ENCRYPTION_KEY` come variabile server-only in Preview e Production. Deve codificare 32 byte casuali (64 caratteri esadecimali); non usare la stessa chiave in ambienti diversi.
+- [ ] Conservare la chiave in un gestore sicuro e non inserirla nel repository, negli artefatti client o nelle variabili `VITE_*`.
+- [ ] Applicare prima del rilascio la migrazione `0018_provider_connections.sql` al database dell'ambiente, verificando progetto e connessione attivi.
+- [ ] Collegare i token provider solo dopo aver verificato account, permessi e costi del servizio. Il wizard crea risorse esterne solo dopo conferma esplicita.
+
+## 3. Supabase PostgreSQL
 
 ### Connessione
 
@@ -85,7 +92,7 @@ Non usare `pnpm run db:push` contro la produzione finché `DATABASE_URL` non è 
 - [ ] Conservare il riferimento al backup e la data di applicazione delle migrazioni.
 - [ ] Non rendere pubblici i bucket o le tabelle contenenti file marketplace.
 
-## 3. Variabili Vercel
+## 4. Variabili Vercel
 
 In **Vercel > Project > Settings > Environment Variables** configurare le variabili per **Preview** e **Production**. Le variabili server non devono avere prefisso `VITE_`.
 
@@ -198,7 +205,7 @@ VITE_GOOGLE_ADSENSE_CLIENT=ca-pub-...
 
 Questi identificativi sono pubblici, ma gli script vengono caricati dal client solo secondo il consenso previsto. Configurare proprietà Google, domini autorizzati e conversioni separatamente.
 
-## 4. Deploy Vercel
+## 5. Deploy Vercel
 
 1. Importare il repository in Vercel.
 2. Impostare il framework secondo il repository.
@@ -218,7 +225,7 @@ Non eseguire migrazioni sul database Production come effetto implicito di un dep
 
 Il file `vercel.json` gestisce già il rewrite di `/api/trpc` e il fallback SPA. Non aggiungere un secondo rewrite tRPC senza verificarne l'effetto.
 
-## 5. Test dopo il deploy
+## 6. Test dopo il deploy
 
 ### Autenticazione
 
@@ -280,7 +287,7 @@ Il file `vercel.json` gestisce già il rewrite di `/api/trpc` e il fallback SPA.
 - [ ] Revoca membro.
 - [ ] Audit degli eventi.
 
-## 6. Prima dell'uso pubblico
+## 7. Prima dell'uso pubblico
 
 - [ ] Applicare e verificare tutte le migrazioni.
 - [ ] Configurare email automatica per gli inviti scuola: la UI attuale mostra ancora il token per il test.
