@@ -1263,7 +1263,8 @@ export default function EditorApp() {
           name: newFileName,
           path: newPath,
           content: val,
-          type: 'file'
+          type: 'file',
+          isLocal: true,
         };
 
         // Create or update - always remove old "nuovo-file" entries
@@ -2079,7 +2080,8 @@ export default function EditorApp() {
       name: newFileName,
       path: newPath,
       content: code,
-      type: 'file'
+      type: 'file',
+      isLocal: true,
     };
 
     setCurrentFile(newFile);
