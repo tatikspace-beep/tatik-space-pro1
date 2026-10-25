@@ -330,6 +330,7 @@ export default function EditorApp() {
   });
   const createAssistantFilesMutation = trpc.files.createAssistantFiles.useMutation();
   const updateFilePathMutation = trpc.files.updatePath.useMutation();
+  const renameFolderMutation = trpc.files.renameFolder.useMutation();
 
   // copied template helper
   const [copiedTemplate, setCopiedTemplate] = useState<{ code: string; name: string } | null>(null);
@@ -1107,6 +1108,22 @@ export default function EditorApp() {
       : prev);
   };
 
+  const updateEditorFolderPath = (oldPath: string, newPath: string) => {
+    const sourcePrefix = `${oldPath}/`;
+    const updateFilePath = (file: any) => {
+      if (!file.path.startsWith(sourcePrefix)) return file;
+      const path = `${newPath}${file.path.slice(oldPath.length)}`;
+      return { ...file, name: path.slice(path.lastIndexOf('/') + 1), path };
+    };
+
+    setLocalFiles(prev => prev.map(updateFilePath));
+    setOpenFiles(prev => prev.map(updateFilePath));
+    setCurrentFile((prev: any) => prev ? updateFilePath(prev) : prev);
+    setOpenedFolderName(prev =>
+      prev === oldPath ? newPath : prev?.startsWith(sourcePrefix) ? `${newPath}${prev.slice(oldPath.length)}` : prev
+    );
+  };
+
   const handleMoveFile = async (sourcePath: string, destinationFolderPath: string) => {
     const name = sourcePath.split('/').pop();
     if (!name) throw new Error(editorText('invalidFileName'));
@@ -1173,6 +1190,67 @@ export default function EditorApp() {
     });
     updateEditorFilePath(oldPath, newPath, normalizedName);
     await utils.files.list.invalidate({ projectId: currentProject });
+  };
+
+  const handleRenameFolder = async (folderPath: string, newName: string) => {
+    const normalizedName = newName.trim();
+    if (
+      !normalizedName
+      || normalizedName.length > 255
+      || normalizedName === '.'
+      || normalizedName === '..'
+      || /[\\/\u0000-\u001f]/.test(normalizedName)
+    ) {
+      throw new Error(editorText('invalidFolderName'));
+    }
+    if (normalizedName === folderPath.slice(folderPath.lastIndexOf('/') + 1)) return;
+
+    const separator = folderPath.lastIndexOf('/');
+    const newPath = separator === -1
+      ? normalizedName
+      : `${folderPath.slice(0, separator)}/${normalizedName}`;
+    const sourcePrefix = `${folderPath}/`;
+    if (
+      newPath.length > 500
+      || newPath === folderPath
+      || newPath.startsWith(sourcePrefix)
+      || folderPath.startsWith(`${newPath}/`)
+    ) {
+      throw new Error(editorText('invalidFolderName'));
+    }
+
+    const descendants = previewFiles.filter(file => file.path.startsWith(sourcePrefix));
+    if (descendants.length === 0 || descendants.some(file =>
+      `${newPath}${file.path.slice(folderPath.length)}`.length > 500
+    )) {
+      throw new Error(editorText('invalidFolderName'));
+    }
+    const conflicts = previewFiles.some(file => {
+      if (file.path.startsWith(sourcePrefix)) return false;
+      return file.path === newPath
+        || file.path.startsWith(`${newPath}/`)
+        || newPath.startsWith(`${file.path}/`);
+    });
+    if (conflicts) {
+      throw new Error(language === 'it'
+        ? 'Esiste già un file o una cartella con questo percorso.'
+        : 'A file or folder already exists at this path.');
+    }
+
+    const cloudFiles = files.filter(file => file.path.startsWith(sourcePrefix));
+    if (cloudFiles.length > 0) {
+      if (!currentProject) {
+        throw new Error(language === 'it' ? 'Progetto non disponibile.' : 'Project unavailable.');
+      }
+      await renameFolderMutation.mutateAsync({
+        projectId: currentProject,
+        folderPath,
+        newName: normalizedName,
+      });
+      await utils.files.list.invalidate({ projectId: currentProject });
+    }
+
+    updateEditorFolderPath(folderPath, newPath);
   };
 
   const handleCreateNewFile = () => {
@@ -2590,6 +2668,7 @@ export default function EditorApp() {
                   onCloseFolder={handleCloseFolder}
                   onMoveFile={handleMoveFile}
                   onRenameFile={handleRenameFile}
+                  onRenameFolder={handleRenameFolder}
                   onSaveFile={handleExplorerSaveFile}
                 />
               )}
@@ -2725,15 +2804,15 @@ export default function EditorApp() {
         )}
 
         <main className="editor-main-panel flex-1 flex flex-col min-w-0">
-          <div className="bg-slate-800 border-b border-slate-700 px-4 py-2 flex items-center gap-3 overflow-x-auto h-10">
-            <div className="flex items-center gap-2 min-w-0 flex-shrink-0">
+          <div className="editor-toolbar bg-slate-800 border-b border-slate-700 px-4 py-2 flex items-center gap-3 min-h-[40px] h-auto overflow-x-auto">
+            <div className="editor-toolbar-search flex items-center gap-2 min-w-0 flex-shrink-0">
               <Search className="h-4 w-4 text-slate-400" />
               <Input
                 placeholder={editorText('searchPlaceholder')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => setSearchPanelOpen(true)}
-                className="max-w-[220px] bg-slate-900 border-slate-700 text-white"
+                className="editor-toolbar-search-input max-w-[220px] bg-slate-900 border-slate-700 text-white"
               />
               <button
                 onClick={() => setSearchPanelOpen(!searchPanelOpen)}
@@ -2744,8 +2823,7 @@ export default function EditorApp() {
               </button>
             </div>
 
-            {/* Buttons immediately after search - compact, no space between */}
-            <div className="flex items-center gap-1 flex-nowrap flex-shrink-0">
+            <div className="editor-toolbar-actions flex items-center gap-1 flex-wrap flex-shrink-0">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="gap-1 px-2 py-1">

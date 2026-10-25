@@ -632,6 +632,33 @@ export const appRouter = router({
         }
         return { success: true };
       }),
+    renameFolder: protectedProcedure
+      .input(z.object({
+        projectId: z.number(),
+        folderPath: z.string().min(1).max(500).refine(path =>
+          !path.startsWith("/")
+          && !path.includes("\\")
+          && path.split("/").every(segment => segment && segment !== "." && segment !== ".."),
+        ),
+        newName: z.string().trim().min(1).max(255).refine(name =>
+          name !== "." && name !== ".." && !/[\\/\u0000-\u001f]/.test(name),
+        ),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const result = await db.renameProjectFolder(
+          input.projectId,
+          ctx.user.id,
+          input.folderPath,
+          input.newName,
+        );
+        if ("notFound" in result) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Folder not found or unavailable." });
+        }
+        if ("conflict" in result) {
+          throw new TRPCError({ code: "CONFLICT", message: "A file or folder already exists at this path." });
+        }
+        return { success: true };
+      }),
     delete: protectedProcedure
       .input(z.object({ fileId: z.number() }))
       .mutation(async ({ input }) => {

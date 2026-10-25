@@ -35,16 +35,18 @@ interface FileExplorerProps {
   onCloseFile?: (path: string) => void;
   onMoveFile?: (sourcePath: string, destinationFolderPath: string) => void | Promise<void>;
   onRenameFile?: (oldPath: string, newName: string) => void | Promise<void>;
+  onRenameFolder?: (folderPath: string, newName: string) => void | Promise<void>;
   onSaveFile?: (path: string, content: string) => void | Promise<void>;
   openedFolderName?: string | null; // Name of the root open folder
   onCloseFolder?: () => void; // Close the opened folder
 }
 
-export function FileExplorer({ files, onSelectFile, selectedPath, openFilePaths = [], onRefreshFile, onCloseFile, onMoveFile, onRenameFile, onSaveFile, openedFolderName, onCloseFolder }: FileExplorerProps) {
+export function FileExplorer({ files, onSelectFile, selectedPath, openFilePaths = [], onRefreshFile, onCloseFile, onMoveFile, onRenameFile, onRenameFolder, onSaveFile, openedFolderName, onCloseFolder }: FileExplorerProps) {
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [draggedFilePath, setDraggedFilePath] = useState<string | null>(null);
   const [dragOverFolderPath, setDragOverFolderPath] = useState<string | null>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
+  const [renamingFolder, setRenamingFolder] = useState(false);
   const [newName, setNewName] = useState('');
   const { language } = useLanguage();
   const copy = filesPageCopy[language];
@@ -215,10 +217,15 @@ export function FileExplorer({ files, onSelectFile, selectedPath, openFilePaths 
   const handleRename = async () => {
     if (renamingPath && newName.trim()) {
       try {
-        await onRenameFile?.(renamingPath, newName.trim());
+        if (renamingFolder) {
+          await onRenameFolder?.(renamingPath, newName.trim());
+          toast.success(`${explorerCopy.renameDialog}: ${newName.trim()}`);
+        } else {
+          await onRenameFile?.(renamingPath, newName.trim());
+          toast.success(toastCopy('renamedFile'));
+        }
         setRenamingPath(null);
         setNewName('');
-        toast.success(toastCopy('renamedFile'));
       } catch (error) {
         toast.error(error instanceof Error ? error.message : 'Unable to rename file');
       }
@@ -284,6 +291,7 @@ export function FileExplorer({ files, onSelectFile, selectedPath, openFilePaths 
               <button
                 onClick={() => {
                   setRenamingPath(node.path);
+                  setRenamingFolder(false);
                   setNewName(node.name);
                 }}
                 className="p-1 hover:bg-blue-500/30 rounded text-blue-400 transition-colors"
@@ -315,17 +323,33 @@ export function FileExplorer({ files, onSelectFile, selectedPath, openFilePaths 
               )}
             </>
           )}
+          {node.type === 'folder' && (
+            <>
+              <button
+                onClick={() => {
+                  setRenamingPath(node.path);
+                  setRenamingFolder(true);
+                  setNewName(node.name);
+                }}
+                className="p-1 hover:bg-blue-500/30 rounded text-blue-400 transition-colors"
+                title={explorerCopy.renameDialog}
+                aria-label={`${explorerCopy.renameDialog}: ${node.name}`}
+              >
+                <Edit2 className="h-4 w-4" />
+              </button>
+              {expandedFolders[node.path] && (
+                <button
+                  onClick={() => setExpandedFolders(prev => ({ ...prev, [node.path]: false }))}
+                  className="p-1 hover:bg-slate-700 rounded text-slate-200 transition-colors"
+                  title={formatFilesCopy(explorerCopy.collapseFolder, { name: node.name })}
+                  aria-label={formatFilesCopy(explorerCopy.collapseFolder, { name: node.name })}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </>
+          )}
         </div>
-        {node.type === 'folder' && openedFolderName && node.path === openedFolderName && (
-          <button
-            onClick={() => onCloseFolder?.()}
-            className="p-1 mr-2 hover:bg-slate-700 rounded text-slate-200 transition-colors opacity-100"
-            title={explorerCopy.closeFolder}
-            aria-label={formatFilesCopy(explorerCopy.closeFolderNamed, { name: node.name })}
-          >
-            <X className="h-4 w-4" />
-          </button>
-        )}
       </div>
 
       {node.type === 'folder' && expandedFolders[node.path] && node.children?.map(child =>

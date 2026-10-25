@@ -299,6 +299,68 @@ export async function updateFilePath(fileId: number, userId: number, name: strin
   });
 }
 
+export async function renameProjectFolder(projectId: number, userId: number, folderPath: string, newName: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  return db.transaction(async (tx) => {
+    const projectFiles = await tx
+      .select({ id: files.id, name: files.name, path: files.path })
+      .from(files)
+      .innerJoin(projects, eq(files.projectId, projects.id))
+      .where(and(eq(files.projectId, projectId), eq(projects.userId, userId)));
+    const sourcePrefix = `${folderPath}/`;
+    const movingFiles = projectFiles.filter(file => file.path.startsWith(sourcePrefix));
+    if (movingFiles.length === 0) return { notFound: true as const };
+
+    const separator = folderPath.lastIndexOf("/");
+    const destinationPrefix = separator === -1
+      ? newName
+      : `${folderPath.slice(0, separator)}/${newName}`;
+    if (
+      destinationPrefix === folderPath
+      || destinationPrefix.startsWith(sourcePrefix)
+      || folderPath.startsWith(`${destinationPrefix}/`)
+    ) {
+      return { conflict: true as const };
+    }
+
+    const unaffectedPaths = projectFiles
+      .filter(file => !file.path.startsWith(sourcePrefix))
+      .map(file => file.path);
+    if (
+      unaffectedPaths.some(path =>
+        path === destinationPrefix
+        || path.startsWith(`${destinationPrefix}/`)
+        || destinationPrefix.startsWith(`${path}/`)
+      )
+    ) {
+      return { conflict: true as const };
+    }
+
+    const pathUpdates = movingFiles.map(file => {
+      const path = `${destinationPrefix}${file.path.slice(folderPath.length)}`;
+      const name = path.slice(path.lastIndexOf("/") + 1);
+      return { id: file.id, path, name };
+    });
+    if (pathUpdates.some(update => unaffectedPaths.some(path =>
+      path === update.path
+      || path.startsWith(`${update.path}/`)
+      || update.path.startsWith(`${path}/`)
+    ))) {
+      return { conflict: true as const };
+    }
+
+    for (const update of pathUpdates) {
+      await tx.update(files)
+        .set({ name: update.name, path: update.path, updatedAt: new Date() })
+        .where(eq(files.id, update.id));
+    }
+
+    return { updated: pathUpdates.length } as const;
+  });
+}
+
 export async function deleteFile(fileId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
