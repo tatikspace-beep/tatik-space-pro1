@@ -15,6 +15,7 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/_core/hooks/useAuth';
 import { formatCopy, getComponentCopy, getModelCopy } from '@/lib/assistantUiCopy';
 import { AITransparencyNotice } from '@/components/AITransparencySection';
+import { extractAssistantCodeBlocks, extractAssistantCodeFiles } from '@/lib/assistantCodeFiles';
 
 // ---------------------------------------------------------------------------
 // Constants & Configuration
@@ -69,7 +70,10 @@ interface DailyUsage {
 }
 
 interface AIAssistantProps {
-  onCodeInsert?: (code: string) => void;
+  currentFilePath?: string;
+  currentFileContent?: string;
+  onCodeInsert?: (code: string) => Promise<void>;
+  onCreateFiles?: (files: Array<{ path: string; content: string }>) => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -114,16 +118,11 @@ function renderMarkdown(text: string): string {
     .replace(/\n/g, '<br/>');
 }
 
-function extractCodeBlock(text: string): string | null {
-  const match = text.match(/```(?:\w+)?\n?([\s\S]*?)```/);
-  return match ? match[1].trim() : null;
-}
-
 // ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
 
-export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
+export function AIAssistant({ currentFilePath, currentFileContent, onCodeInsert, onCreateFiles }: AIAssistantProps) {
   const { user } = useAuth({ redirectOnUnauthenticated: false });
   const { language } = useLanguage();
   const copy = getComponentCopy(language);
@@ -290,6 +289,14 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
       const apiHistory = nextMessages
         .filter((m) => m.id !== 'welcome' && !m.id.startsWith('switch-'))
         .map((m) => ({ role: m.role, content: m.content }));
+      if (currentFilePath && currentFileContent !== undefined) {
+        const maxContextLength = 16_000;
+        const truncatedContent = currentFileContent.slice(0, maxContextLength);
+        apiHistory.unshift({
+          role: 'user',
+          content: `Current editor file context (read-only): ${currentFilePath}\n${truncatedContent}${currentFileContent.length > maxContextLength ? '\n[File content truncated to fit the AI context limit.]' : ''}`,
+        });
+      }
 
       const response = await chatMutation.mutateAsync({
         model: selectedModel === 'gemini' ? 'gemini' : selectedModel === 'deepseek' ? 'deepseek' : 'qwen',
@@ -321,7 +328,7 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
       setIsLoading(false);
       textareaRef.current?.focus();
     }
-  }, [input, isLoading, messages, selectedModel, dailyUsage, isLimitReached, chatMutation]);
+  }, [input, isLoading, messages, selectedModel, dailyUsage, isLimitReached, chatMutation, currentFilePath, currentFileContent]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -657,10 +664,30 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
                         message={msg}
                         model={MODELS.find((m) => m.id === msg.modelId)}
                         onInsertCode={
-                          onCodeInsert && msg.role === 'assistant' && /```/.test(msg.content)
-                            ? () => {
-                              const code = extractCodeBlock(msg.content);
-                              if (code) { onCodeInsert(code); toast.success(copy.ai.codeInserted); }
+                          onCodeInsert && msg.role === 'assistant' && extractAssistantCodeBlocks(msg.content).length > 0
+                            ? async () => {
+                              const blocks = extractAssistantCodeBlocks(msg.content);
+                              const code = blocks[0]?.content;
+                              if (!code) return;
+                              try {
+                                await onCodeInsert(code);
+                                toast.success(copy.ai.codeInserted);
+                              } catch (error) {
+                                toast.error(error instanceof Error ? error.message : copy.ai.chatError);
+                              }
+                            }
+                            : undefined
+                        }
+                        onCreateFiles={
+                          onCreateFiles && msg.role === 'assistant' && extractAssistantCodeFiles(msg.content).length > 0
+                            ? async () => {
+                              const files = extractAssistantCodeFiles(msg.content);
+                              try {
+                                await onCreateFiles(files);
+                                toast.success(language === 'it' ? `${files.length} file creati nel progetto` : `${files.length} files created in the project`);
+                              } catch (error) {
+                                toast.error(error instanceof Error ? error.message : copy.ai.chatError);
+                              }
                             }
                             : undefined
                         }
@@ -710,33 +737,42 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
           {/* Input */}
           {/* Input / Analyze Button */}
           {!bugFixMode && !optimizationMode ? (
-            <form
-              onSubmit={(e) => { e.preventDefault(); handleSend(); }}
-              className="flex gap-2 px-4 py-3 border-t bg-background/60 items-end shrink-0"
-            >
-              <Textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={
-                  isLimitReached
-                    ? copy.ai.limitPlaceholder
-                    : formatCopy(copy.ai.askModel, { model: currentModel.name })
-                }
-                className="flex-1 resize-none min-h-[40px] max-h-32 text-sm"
-                rows={1}
-                disabled={isLoading || isLimitReached}
-              />
-              <Button
-                type="submit"
-                size="icon"
-                disabled={!input.trim() || isLoading || isLimitReached}
-                className="h-10 w-10 shrink-0"
+            <div className="border-t bg-background/60 shrink-0">
+              {currentFilePath && currentFileContent !== undefined && (
+                <p className="px-4 pt-2 text-[10px] text-muted-foreground">
+                  {language === 'it'
+                    ? `Contesto inviato al modello IA selezionato: ${currentFilePath}`
+                    : `Context sent to the selected AI model: ${currentFilePath}`}
+                </p>
+              )}
+              <form
+                onSubmit={(e) => { e.preventDefault(); handleSend(); }}
+                className="flex gap-2 px-4 py-3 items-end"
               >
-                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              </Button>
-            </form>
+                <Textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={
+                    isLimitReached
+                      ? copy.ai.limitPlaceholder
+                      : formatCopy(copy.ai.askModel, { model: currentModel.name })
+                  }
+                  className="flex-1 resize-none min-h-[40px] max-h-32 text-sm"
+                  rows={1}
+                  disabled={isLoading || isLimitReached}
+                />
+                <Button
+                  type="submit"
+                  size="icon"
+                  disabled={!input.trim() || isLoading || isLimitReached}
+                  className="h-10 w-10 shrink-0"
+                >
+                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                </Button>
+              </form>
+            </div>
           ) : bugFixMode ? (
             <div className="flex gap-2 px-4 py-3 border-t bg-background/60 shrink-0">
               <Button
@@ -841,9 +877,10 @@ interface MessageBubbleProps {
   message: Message;
   model?: (typeof MODELS)[number];
   onInsertCode?: () => void;
+  onCreateFiles?: () => void;
 }
 
-function MessageBubble({ message, model, onInsertCode }: MessageBubbleProps) {
+function MessageBubble({ message, model, onInsertCode, onCreateFiles }: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const { language } = useLanguage();
   const copy = getComponentCopy(language);
@@ -908,6 +945,11 @@ function MessageBubble({ message, model, onInsertCode }: MessageBubbleProps) {
           {onInsertCode && (
             <button onClick={onInsertCode} className="text-[10px] text-primary hover:underline font-medium">
               {copy.ai.insertCode}
+            </button>
+          )}
+          {onCreateFiles && (
+            <button onClick={onCreateFiles} className="text-[10px] text-primary hover:underline font-medium">
+              {language === 'it' ? 'Crea file nel progetto' : 'Create project files'}
             </button>
           )}
         </div>

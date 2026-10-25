@@ -231,6 +231,31 @@ export async function createFile(file: InsertFile) {
   return result[0].id;
 }
 
+export async function createAssistantFiles(projectId: number, userId: number, newFiles: Omit<InsertFile, "projectId">[]) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  return db.transaction(async (tx) => {
+    const [project] = await tx
+      .select({ id: projects.id })
+      .from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
+      .limit(1);
+    if (!project) return { missingProject: true as const, files: [] };
+
+    const existingFiles = await tx.select({ path: files.path }).from(files).where(eq(files.projectId, projectId));
+    const existingPaths = new Set(existingFiles.map(file => file.path.toLowerCase()));
+    const conflicts = newFiles.filter(file => existingPaths.has(file.path.toLowerCase())).map(file => file.path);
+    if (conflicts.length > 0) return { missingProject: false as const, conflicts, files: [] };
+
+    const createdFiles = await tx
+      .insert(files)
+      .values(newFiles.map(file => ({ ...file, projectId })))
+      .returning();
+    return { missingProject: false as const, conflicts: [], files: createdFiles };
+  });
+}
+
 export async function getProjectFiles(projectId: number) {
   const db = await getDb();
   if (!db) return [];

@@ -563,6 +563,50 @@ export const appRouter = router({
         const fileId = await db.createFile(input);
         return { fileId };
       }),
+    createAssistantFiles: protectedProcedure
+      .input(z.object({
+        projectId: z.number(),
+        files: z.array(z.object({
+          name: z.string().min(1).max(255),
+          path: z.string().min(1).max(500),
+          content: z.string().max(100_000),
+          language: z.string().max(50),
+        })).min(1).max(20),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const normalizedPaths = input.files.map(file => file.path.replace(/\\/g, "/"));
+        const paths = new Set<string>();
+        for (const path of normalizedPaths) {
+          if (
+            path.startsWith("/")
+            || /^[a-z]:/i.test(path)
+            || path.split("/").some(segment => !segment || segment === "." || segment === "..")
+            || /(^|\/)(?:\.env(?:\.[^/]+)?|node_modules|\.git)(?:\/|$)/i.test(path)
+            || /\.(?:pem|key|p12|pfx)$/i.test(path)
+          ) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "An assistant-generated file path is not allowed." });
+          }
+          if (paths.has(path.toLowerCase())) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Assistant-generated file paths must be unique." });
+          }
+          paths.add(path.toLowerCase());
+        }
+
+        const result = await db.createAssistantFiles(input.projectId, ctx.user.id, input.files.map((file, index) => ({
+          ...file,
+          path: normalizedPaths[index],
+        })));
+        if (result.missingProject) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Project not found or unavailable." });
+        }
+        if (result.conflicts.length > 0) {
+          throw new TRPCError({
+            code: "CONFLICT",
+            message: `These files already exist and were not overwritten: ${result.conflicts.join(", ")}`,
+          });
+        }
+        return { files: result.files };
+      }),
     update: protectedProcedure
       .input(z.object({
         fileId: z.number(),

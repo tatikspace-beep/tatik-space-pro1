@@ -328,6 +328,7 @@ export default function EditorApp() {
       toast.error(editorText('createFileError', { error: err.message }));
     },
   });
+  const createAssistantFilesMutation = trpc.files.createAssistantFiles.useMutation();
 
   // copied template helper
   const [copiedTemplate, setCopiedTemplate] = useState<{ code: string; name: string } | null>(null);
@@ -1391,16 +1392,17 @@ export default function EditorApp() {
     setPendingClosePath(null);
   };
 
-  const handleSaveFile = async () => {
+  const handleSaveFile = async (contentOverride?: string): Promise<boolean> => {
     if (!currentFile) {
       toast.error(editorText('noFileSelected'));
-      return;
+      return false;
     }
 
+    const contentToSave = contentOverride ?? editorContent;
     setSaveStatus('saving');
     console.log('[DEBUG] handleSaveFile called', {
       currentFile: { name: currentFile.name, path: currentFile.path, isLocal: (currentFile as any).isLocal },
-      editorContent: { length: editorContent.length },
+      editorContent: { length: contentToSave.length },
       selectedLanguage,
       currentProject
     });
@@ -1416,7 +1418,7 @@ export default function EditorApp() {
             projectId: currentProject,
             name: currentFile.name,
             path: currentFile.path,
-            content: editorContent,
+            content: contentToSave,
             language: selectedLanguage,
           } as const;
 
@@ -1431,7 +1433,7 @@ export default function EditorApp() {
             name: currentFile.name,
             type: 'file' as const,
             path: currentFile.path,
-            content: editorContent,
+            content: contentToSave,
           };
           setCurrentFile(newServerFile as any);
           // Invalidate server list handled by mutation onSuccess; optionally refetch now
@@ -1440,9 +1442,9 @@ export default function EditorApp() {
           setOpenFiles(prev => {
             const exists = prev.some(f => f.path === newServerFile.path);
             if (exists) {
-              return prev.map(f => f.path === newServerFile.path ? { ...f, content: editorContent, savedContent: editorContent } : f);
+              return prev.map(f => f.path === newServerFile.path ? { ...f, content: contentToSave, savedContent: contentToSave } : f);
             }
-            return [...prev, { ...newServerFile, savedContent: editorContent }];
+            return [...prev, { ...newServerFile, content: contentToSave, savedContent: contentToSave }];
           });
           toast.success(editorText('serverFileSaved'));
           setSaveStatus('saved');
@@ -1450,11 +1452,12 @@ export default function EditorApp() {
           console.error('Errore durante la creazione file sul server:', err);
           toast.error(editorText('serverSaveError'));
           setSaveStatus('error');
+          return false;
         }
       } else {
         // No project open: prompt user to save to local filesystem
         console.log('[DEBUG] No project - exporting to filesystem...');
-        handleExportFile(currentFile.path, editorContent);
+        handleExportFile(currentFile.path, contentToSave);
       }
     } else {
       // Existing DB file: update via RPC
@@ -1462,15 +1465,18 @@ export default function EditorApp() {
       try {
         await updateFileMutation.mutateAsync({
           fileId: currentFile.id,
-          content: editorContent,
+          content: contentToSave,
         });
         // Mark the tab as saved only after the server confirms the update.
-        setOpenFiles(prev => prev.map(f => f.path === currentFile.path ? { ...f, content: editorContent, savedContent: editorContent } : f));
+        setOpenFiles(prev => prev.map(f => f.path === currentFile.path ? { ...f, content: contentToSave, savedContent: contentToSave } : f));
+        setCurrentFile((prev: any) => prev?.path === currentFile.path
+          ? { ...prev, content: contentToSave, savedContent: contentToSave }
+          : prev);
         setSaveStatus('saved');
       } catch (err) {
         console.error('Errore durante il salvataggio del file sul server:', err);
         setSaveStatus('error');
-        return;
+        return false;
       }
     }
 
@@ -1479,11 +1485,56 @@ export default function EditorApp() {
       {
         id: Date.now().toString(),
         timestamp: new Date(),
-        content: editorContent,
+        content: contentToSave,
         label: editorText('manualSave', { time: new Date().toLocaleTimeString(language) }),
       },
       ...prev.slice(0, 19),
     ]);
+    return true;
+  };
+
+  const handleAssistantApplyCode = async (code: string) => {
+    if (!currentFile) {
+      toast.error(editorText('noFileSelected'));
+      return;
+    }
+    setEditorContent(code);
+    setOpenFiles(prev => prev.map(file => file.path === currentFile.path ? { ...file, content: code } : file));
+    setLocalFiles(prev => prev.map(file => file.path === currentFile.path ? { ...file, content: code } : file));
+    const saved = await handleSaveFile(code);
+    if (!saved) throw new Error(editorText('serverSaveError'));
+  };
+
+  const handleAssistantCreateFiles = async (assistantFiles: Array<{ path: string; content: string }>) => {
+    if (!currentProject) {
+      throw new Error(language === 'it'
+        ? 'Apri o crea un progetto prima di generare file.'
+        : 'Open or create a project before generating files.');
+    }
+    const filesToCreate = assistantFiles.map(file => {
+      const name = file.path.split('/').pop()!;
+      return { ...file, name, language: detectLanguageFromExtension(name) };
+    });
+    const created = await createAssistantFilesMutation.mutateAsync({
+      projectId: currentProject,
+      files: filesToCreate,
+    });
+    await utils.files.list.invalidate({ projectId: currentProject });
+    const first = created.files[0];
+    if (first) {
+      const file = {
+        id: first.id,
+        name: first.name,
+        type: 'file' as const,
+        path: first.path,
+        content: first.content || '',
+        savedContent: first.content || '',
+      };
+      setCurrentFile(file as any);
+      setEditorContent(file.content);
+      setSelectedLanguage(detectLanguageFromExtension(file.name) as any);
+      setOpenFiles(prev => [...prev.filter(openFile => openFile.path !== file.path), file]);
+    }
   };
 
   const handleExportFile = (path: string, content: string) => {
@@ -2649,7 +2700,12 @@ export default function EditorApp() {
                 {i18nT('backup')}
               </Button>
               <VersionHistory versions={versions} onRestore={handleRestoreVersion} />
-              <AIAssistant />
+              <AIAssistant
+                currentFilePath={currentFile?.path}
+                currentFileContent={currentFile ? editorContent : undefined}
+                onCodeInsert={handleAssistantApplyCode}
+                onCreateFiles={handleAssistantCreateFiles}
+              />
               <ProjectLaunchWizard
                 files={previewFiles}
                 projectId={currentProject}
