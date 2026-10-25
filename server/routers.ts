@@ -616,6 +616,22 @@ export const appRouter = router({
         await db.updateFileContent(input.fileId, input.content);
         return { success: true };
       }),
+    updatePath: protectedProcedure
+      .input(z.object({
+        fileId: z.number(),
+        name: z.string().trim().min(1).max(255),
+        path: z.string().trim().min(1).max(500),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const result = await db.updateFilePath(input.fileId, ctx.user.id, input.name, input.path);
+        if ("notFound" in result) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "File not found or unavailable." });
+        }
+        if ("conflict" in result) {
+          throw new TRPCError({ code: "CONFLICT", message: "A file already exists at this path." });
+        }
+        return { success: true };
+      }),
     delete: protectedProcedure
       .input(z.object({ fileId: z.number() }))
       .mutation(async ({ input }) => {

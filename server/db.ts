@@ -1,4 +1,4 @@
-import { desc, eq, and, gte, lte, sql } from "drizzle-orm";
+import { desc, eq, and, gte, lte, ne, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { InsertUser, users, backups, InsertBackup, projects, files, InsertProject, InsertFile, twoFactorSettings, InsertTwoFactorSettings, contactMessages, InsertContactMessage, cookieConsents, InsertCookieConsent, bannerAdditions, InsertBannerAddition, subscriptions, InsertSubscription, subscriptionDiscounts, InsertSubscriptionDiscount, monetizationEarnings, InsertMonetizationEarning, paymentRecords, InsertPaymentRecord, templatePurchases, providerConnections, providerResources } from "../drizzle/schema";
@@ -268,6 +268,35 @@ export async function updateFileContent(fileId: number, content: string) {
   if (!db) throw new Error("Database not available");
 
   await db.update(files).set({ content, updatedAt: new Date() }).where(eq(files.id, fileId));
+}
+
+export async function updateFilePath(fileId: number, userId: number, name: string, path: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database not available");
+
+  return db.transaction(async (tx) => {
+    const [file] = await tx
+      .select({ id: files.id, projectId: files.projectId })
+      .from(files)
+      .innerJoin(projects, eq(files.projectId, projects.id))
+      .where(and(eq(files.id, fileId), eq(projects.userId, userId)))
+      .limit(1);
+    if (!file) return { notFound: true as const };
+
+    const [conflict] = await tx
+      .select({ id: files.id })
+      .from(files)
+      .where(and(
+        eq(files.projectId, file.projectId),
+        eq(files.path, path),
+        ne(files.id, fileId),
+      ))
+      .limit(1);
+    if (conflict) return { conflict: true as const };
+
+    await tx.update(files).set({ name, path, updatedAt: new Date() }).where(eq(files.id, fileId));
+    return { updated: true as const };
+  });
 }
 
 export async function deleteFile(fileId: number) {

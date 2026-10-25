@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { filesPageCopy, formatFilesCopy } from '@/lib/filesPageCopy';
-import { ChevronRight, ChevronDown, File, Folder, Edit2, Trash2, Save, RefreshCw, X } from 'lucide-react';
+import { ChevronRight, ChevronDown, File, Folder, Edit2, Save, RefreshCw, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
@@ -30,23 +30,22 @@ interface FileExplorerProps {
   files: RawFile[]; // Raw flat files from the API
   onSelectFile: (file: FileNode) => void;
   selectedPath?: string;
+  openFilePaths?: string[];
   onRefreshFile?: (path: string) => void;
   onCloseFile?: (path: string) => void;
-  onMoveFile?: (sourcePath: string, destinationFolderPath: string) => void;
-  onRenameFile?: (oldPath: string, newName: string) => void;
-  onDeleteFile?: (path: string) => void;
-  onSaveFile?: (path: string, content: string) => void;
+  onMoveFile?: (sourcePath: string, destinationFolderPath: string) => void | Promise<void>;
+  onRenameFile?: (oldPath: string, newName: string) => void | Promise<void>;
+  onSaveFile?: (path: string, content: string) => void | Promise<void>;
   openedFolderName?: string | null; // Name of the root open folder
   onCloseFolder?: () => void; // Close the opened folder
 }
 
-export function FileExplorer({ files, onSelectFile, selectedPath, onRefreshFile, onCloseFile, onMoveFile, onRenameFile, onDeleteFile, onSaveFile, openedFolderName, onCloseFolder }: FileExplorerProps) {
+export function FileExplorer({ files, onSelectFile, selectedPath, openFilePaths = [], onRefreshFile, onCloseFile, onMoveFile, onRenameFile, onSaveFile, openedFolderName, onCloseFolder }: FileExplorerProps) {
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [draggedFilePath, setDraggedFilePath] = useState<string | null>(null);
   const [dragOverFolderPath, setDragOverFolderPath] = useState<string | null>(null);
   const [renamingPath, setRenamingPath] = useState<string | null>(null);
   const [newName, setNewName] = useState('');
-  const [deleteConfirmPath, setDeleteConfirmPath] = useState<string | null>(null);
   const { language } = useLanguage();
   const copy = filesPageCopy[language];
   const explorerCopy = copy.explorer;
@@ -197,37 +196,42 @@ export function FileExplorer({ files, onSelectFile, selectedPath, onRefreshFile,
     setDragOverFolderPath(null);
   };
 
-  const handleDrop = (e: React.DragEvent, destinationFolderPath: string) => {
+  const handleDrop = async (e: React.DragEvent, destinationFolderPath: string) => {
     e.preventDefault();
     const sourcePath = e.dataTransfer.getData('text/plain');
 
     if (sourcePath && sourcePath !== destinationFolderPath && onMoveFile) {
-      onMoveFile(sourcePath, destinationFolderPath);
+      try {
+        await onMoveFile(sourcePath, destinationFolderPath);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Unable to move file');
+      }
     }
 
     setDraggedFilePath(null);
     setDragOverFolderPath(null);
   };
 
-  const handleRename = () => {
+  const handleRename = async () => {
     if (renamingPath && newName.trim()) {
-      onRenameFile?.(renamingPath, newName.trim());
-      setRenamingPath(null);
-      setNewName('');
-      toast.success(toastCopy('renamedFile'));
+      try {
+        await onRenameFile?.(renamingPath, newName.trim());
+        setRenamingPath(null);
+        setNewName('');
+        toast.success(toastCopy('renamedFile'));
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Unable to rename file');
+      }
     }
   };
 
-  const handleDelete = (path: string) => {
-    onDeleteFile?.(path);
-    setDeleteConfirmPath(null);
-    toast.success(toastCopy('deletedExplorerFile'));
-  };
-
-  const handleSave = (node: FileNode) => {
+  const handleSave = async (node: FileNode) => {
     if (node.type === 'file' && node.content !== undefined) {
-      onSaveFile?.(node.path, node.content);
-      toast.success(toastCopy('savedFile'));
+      try {
+        await onSaveFile?.(node.path, node.content);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : 'Unable to save file');
+      }
     }
   };
 
@@ -242,14 +246,14 @@ export function FileExplorer({ files, onSelectFile, selectedPath, onRefreshFile,
       onDrop={(e) => node.type === 'folder' && handleDrop(e, node.path)}
       className={`group ${node.type === 'folder' && dragOverFolderPath === node.path ? 'bg-blue-500/20' : ''}`}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex min-w-0 items-center gap-2">
         <button
           onClick={() => node.type === 'folder' ? toggleFolder(node.path) : onSelectFile(node)}
           aria-label={node.type === 'folder'
             ? formatFilesCopy(expandedFolders[node.path] ? explorerCopy.collapseFolder : explorerCopy.expandFolder, { name: node.name })
             : undefined}
           aria-expanded={node.type === 'folder' ? !!expandedFolders[node.path] : undefined}
-          className={`flex-1 text-left px-3 py-2 rounded text-sm flex items-center gap-2 transition-colors ${draggedFilePath === node.path ? 'opacity-50' : ''
+          className={`min-w-0 flex-1 text-left px-3 py-2 rounded text-sm flex items-center gap-2 transition-colors ${draggedFilePath === node.path ? 'opacity-50' : ''
             } ${node.type === 'folder' && dragOverFolderPath === node.path ? 'bg-blue-500/30 hover:bg-blue-500/40' : 'hover:bg-slate-700/50'
             } ${node.type === 'file' ? 'text-slate-300 cursor-move' : 'text-slate-200'
             } ${node.type === 'file' && node.path === selectedPath ? 'bg-slate-700' : ''}`}
@@ -266,8 +270,7 @@ export function FileExplorer({ files, onSelectFile, selectedPath, onRefreshFile,
           <span className="truncate">{node.name}</span>
         </button>
 
-        {/* Action buttons - close controls stay visible so files/folders can always be closed. */}
-        <div className="flex gap-1 opacity-100 transition-opacity pr-2 pointer-events-auto z-10">
+        <div className="flex shrink-0 gap-1 pr-2">
           {node.type === 'file' && (
             <>
               <button
@@ -300,72 +303,14 @@ export function FileExplorer({ files, onSelectFile, selectedPath, onRefreshFile,
                   <RefreshCw className="h-4 w-4" />
                 </button>
               )}
-              <button
-                onClick={() => onCloseFile?.(node.path)}
-                className="p-1 hover:bg-slate-700 rounded text-slate-200 transition-colors"
-                title={explorerCopy.closeFile}
-                aria-label={explorerCopy.closeFile}
-              >
-                <X className="h-4 w-4" />
-              </button>
-              <button
-                onClick={() => setDeleteConfirmPath(node.path)}
-                className="p-1 hover:bg-red-500/30 rounded text-red-400 transition-colors"
-                title={explorerCopy.deleteFile}
-                aria-label={explorerCopy.deleteFile}
-              >
-                <Trash2 className="h-4 w-4" />
-              </button>
-            </>
-          )}
-          {node.type === 'folder' && (
-            <>
-              {openedFolderName && (node.path === openedFolderName || node.path.startsWith(openedFolderName + '/')) ? (
-                <>
-                  {node.path === openedFolderName ? (
-                    <>
-                      <button
-                        onClick={() => {
-                          files.forEach(file => {
-                            if (file.path.startsWith(node.path)) {
-                              onSaveFile?.(file.path, file.content || '');
-                            }
-                          });
-                          toast.success(toastCopy('savedFolder'));
-                        }}
-                        className="p-1 hover:bg-green-500/30 rounded text-green-400 transition-colors"
-                        title={explorerCopy.saveFolder}
-                        aria-label={explorerCopy.saveFolder}
-                      >
-                        <Save className="h-4 w-4" />
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      onClick={() => {
-                        files.forEach(file => {
-                          if (file.path.startsWith(node.path)) {
-                            onSaveFile?.(file.path, file.content || '');
-                          }
-                        });
-                        toast.success(toastCopy('savedFolder'));
-                      }}
-                      className="p-1 hover:bg-green-500/30 rounded text-green-400 transition-colors"
-                      title={explorerCopy.saveFolder}
-                      aria-label={explorerCopy.saveFolder}
-                    >
-                      <Save className="h-4 w-4" />
-                    </button>
-                  )}
-                </>
-              ) : (
+              {openFilePaths.includes(node.path) && (
                 <button
-                  onClick={() => setDeleteConfirmPath(node.path)}
-                  className="p-1 hover:bg-red-500/30 rounded text-red-400 transition-colors"
-                  title={explorerCopy.deleteFolder}
-                  aria-label={explorerCopy.deleteFolder}
+                  onClick={() => onCloseFile?.(node.path)}
+                  className="p-1 hover:bg-slate-700 rounded text-slate-200 transition-colors"
+                  title={explorerCopy.closeFile}
+                  aria-label={explorerCopy.closeFile}
                 >
-                  <Trash2 className="h-4 w-4" />
+                  <X className="h-4 w-4" />
                 </button>
               )}
             </>
@@ -391,30 +336,17 @@ export function FileExplorer({ files, onSelectFile, selectedPath, onRefreshFile,
 
   return (
     <>
-      {(selectedPath || openedFolderName) && (
+      {openedFolderName && (
         <div className="mb-2 flex items-center justify-end gap-2 border-b border-slate-700 pb-2">
-          {selectedPath && (
-            <button
-              onClick={() => onCloseFile?.(selectedPath)}
-              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-slate-200 hover:bg-slate-700"
-              title={explorerCopy.closeSelectedFile}
-              aria-label={explorerCopy.closeSelectedFile}
-            >
-              <X className="h-4 w-4" />
-              {explorerCopy.closeSelectedFile}
-            </button>
-          )}
-          {openedFolderName && (
-            <button
-              onClick={() => onCloseFolder?.()}
-              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-slate-200 hover:bg-slate-700"
-              title={formatFilesCopy(explorerCopy.closeFolderNamed, { name: openedFolderName })}
-              aria-label={formatFilesCopy(explorerCopy.closeFolderNamed, { name: openedFolderName })}
-            >
-              <X className="h-4 w-4" />
-              {explorerCopy.closeFolder}
-            </button>
-          )}
+          <button
+            onClick={() => onCloseFolder?.()}
+            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-slate-200 hover:bg-slate-700"
+            title={formatFilesCopy(explorerCopy.closeFolderNamed, { name: openedFolderName })}
+            aria-label={formatFilesCopy(explorerCopy.closeFolderNamed, { name: openedFolderName })}
+          >
+            <X className="h-4 w-4" />
+            {explorerCopy.closeFolder}
+          </button>
         </div>
       )}
       <div className="space-y-1">
@@ -450,21 +382,6 @@ export function FileExplorer({ files, onSelectFile, selectedPath, onRefreshFile,
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
-      <Dialog open={!!deleteConfirmPath} onOpenChange={(open) => !open && setDeleteConfirmPath(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{explorerCopy.confirmDelete}</DialogTitle>
-          </DialogHeader>
-          <p className="text-sm text-slate-300">
-            {formatFilesCopy(explorerCopy.confirmDeleteNamed, { name: deleteConfirmPath?.split('/').pop() ?? '' })}
-          </p>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteConfirmPath(null)}>{explorerCopy.cancel}</Button>
-            <Button variant="destructive" onClick={() => deleteConfirmPath && handleDelete(deleteConfirmPath)}>{copy.delete}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }

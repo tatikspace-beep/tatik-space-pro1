@@ -329,6 +329,7 @@ export default function EditorApp() {
     },
   });
   const createAssistantFilesMutation = trpc.files.createAssistantFiles.useMutation();
+  const updateFilePathMutation = trpc.files.updatePath.useMutation();
 
   // copied template helper
   const [copiedTemplate, setCopiedTemplate] = useState<{ code: string; name: string } | null>(null);
@@ -1094,45 +1095,84 @@ export default function EditorApp() {
     }
   };
 
-  const handleMoveFile = (sourcePath: string, destinationFolderPath: string) => {
-    setLocalFiles(prev => {
-      const updated = prev.map(file => {
-        if (file.path === sourcePath) {
-          // Move the file to the new folder
-          const fileName = sourcePath.split('/').pop();
-          const newPath = destinationFolderPath ? `${destinationFolderPath}/${fileName}` : fileName;
-          return { ...file, path: newPath };
-        }
-        return file;
-      });
+  const updateEditorFilePath = (oldPath: string, newPath: string, newName: string) => {
+    setLocalFiles(prev => prev.map(file =>
+      file.path === oldPath ? { ...file, name: newName, path: newPath } : file
+    ));
+    setOpenFiles(prev => prev.map(file =>
+      file.path === oldPath ? { ...file, name: newName, path: newPath } : file
+    ));
+    setCurrentFile((prev: any) => prev?.path === oldPath
+      ? { ...prev, name: newName, path: newPath }
+      : prev);
+  };
+
+  const handleMoveFile = async (sourcePath: string, destinationFolderPath: string) => {
+    const name = sourcePath.split('/').pop();
+    if (!name) throw new Error(editorText('invalidFileName'));
+    const destinationPath = destinationFolderPath ? `${destinationFolderPath}/${name}` : name;
+    if (destinationPath === sourcePath) return;
+    if (previewFiles.some(file => file.path === destinationPath)) {
+      throw new Error(language === 'it' ? 'Esiste già un file con questo percorso.' : 'A file already exists at this path.');
+    }
+
+    const localFile = localFiles.find(file => file.path === sourcePath);
+    if (localFile?.isLocal) {
+      updateEditorFilePath(sourcePath, destinationPath, name);
       toast.success(editorText('fileMoved', { path: destinationFolderPath }));
-      return updated;
+      return;
+    }
+
+    const serverFile = files.find(file => file.path === sourcePath);
+    if (!serverFile || !currentProject) {
+      throw new Error(language === 'it' ? 'File del progetto non trovato.' : 'Project file not found.');
+    }
+    await updateFilePathMutation.mutateAsync({
+      fileId: serverFile.id,
+      name,
+      path: destinationPath,
     });
+    updateEditorFilePath(sourcePath, destinationPath, name);
+    await utils.files.list.invalidate({ projectId: currentProject });
+    toast.success(editorText('fileMoved', { path: destinationFolderPath }));
   };
 
-  const handleRenameFile = (oldPath: string, newName: string) => {
-    setLocalFiles(prev => {
-      const updated = prev.map(file => {
-        if (file.path === oldPath) {
-          // Rename the file
-          const pathParts = oldPath.split('/');
-          pathParts[pathParts.length - 1] = newName;
-          const newPath = pathParts.join('/');
-          return { ...file, name: newName, path: newPath };
-        }
-        return file;
-      });
-      toast.success(editorText('fileRenamed', { name: newName }));
-      return updated;
-    });
-  };
+  const handleRenameFile = async (oldPath: string, newName: string) => {
+    const normalizedName = newName.trim();
+    if (
+      !normalizedName
+      || normalizedName.length > 255
+      || normalizedName === '.'
+      || normalizedName === '..'
+      || /[\\/\u0000-\u001f]/.test(normalizedName)
+    ) {
+      throw new Error(editorText('invalidFileName'));
+    }
+    const pathParts = oldPath.split('/');
+    pathParts[pathParts.length - 1] = normalizedName;
+    const newPath = pathParts.join('/');
+    if (newPath.length > 500) throw new Error(editorText('invalidFileName'));
+    if (newPath !== oldPath && previewFiles.some(file => file.path === newPath)) {
+      throw new Error(language === 'it' ? 'Esiste già un file con questo percorso.' : 'A file already exists at this path.');
+    }
 
-  const handleDeleteFile = (path: string) => {
-    setLocalFiles(prev => {
-      const updated = prev.filter(file => file.path !== path);
-      toast.success(editorText('fileDeleted'));
-      return updated;
+    const localFile = localFiles.find(file => file.path === oldPath);
+    if (localFile?.isLocal) {
+      updateEditorFilePath(oldPath, newPath, normalizedName);
+      return;
+    }
+
+    const serverFile = files.find(file => file.path === oldPath);
+    if (!serverFile || !currentProject) {
+      throw new Error(language === 'it' ? 'File del progetto non trovato.' : 'Project file not found.');
+    }
+    await updateFilePathMutation.mutateAsync({
+      fileId: serverFile.id,
+      name: normalizedName,
+      path: newPath,
     });
+    updateEditorFilePath(oldPath, newPath, normalizedName);
+    await utils.files.list.invalidate({ projectId: currentProject });
   };
 
   const handleCreateNewFile = () => {
@@ -1305,11 +1345,6 @@ export default function EditorApp() {
       return next;
     });
 
-    // Remove file from localFiles if no folder is open (single file mode)
-    if (!openedFolderName) {
-      setLocalFiles((prev: any[]) => prev.filter(f => f.path !== path));
-    }
-
     setCurrentFile((prev: any) => {
       if (!prev) return null;
       if (prev.path === path) {
@@ -1341,24 +1376,19 @@ export default function EditorApp() {
   };
 
   const handleConfirmCloseSave = async () => {
-    setConfirmCloseDialogOpen(false);
     if (!pendingClosePath) return;
     const fileToClose = openFiles.find(f => f.path === pendingClosePath);
     if (!fileToClose) {
+      setConfirmCloseDialogOpen(false);
       setPendingClosePath(null);
       return;
     }
-    // bring file to current so save uses correct currentFile
-    setCurrentFile(fileToClose as any);
-    setEditorContent(fileToClose.content || '');
-    try {
-      await handleSaveFile();
-    } catch (err) {
-      console.error('Errore salvataggio durante chiusura:', err);
-    }
-    // remove after save
+
+    const saved = await handleSaveFile(fileToClose.content || '', fileToClose);
+    if (!saved) return;
+
+    setConfirmCloseDialogOpen(false);
     setOpenFiles((prev: any[]) => prev.filter(f => f.path !== pendingClosePath));
-    // switch current
     setCurrentFile((prev: any) => {
       if (prev && prev.path === pendingClosePath) {
         const remaining = openFiles.filter(f => f.path !== pendingClosePath);
@@ -1377,6 +1407,13 @@ export default function EditorApp() {
   const handleConfirmCloseDiscard = () => {
     setConfirmCloseDialogOpen(false);
     if (!pendingClosePath) return;
+    const discardedFile = openFiles.find(file => file.path === pendingClosePath);
+    if (discardedFile) {
+      const restoredContent = discardedFile.savedContent ?? '';
+      setLocalFiles(prev => prev.map(file =>
+        file.path === pendingClosePath ? { ...file, content: restoredContent } : file
+      ));
+    }
     setOpenFiles((prev: any[]) => prev.filter(f => f.path !== pendingClosePath));
     setCurrentFile((prev: any) => {
       if (prev && prev.path === pendingClosePath) {
@@ -1393,8 +1430,8 @@ export default function EditorApp() {
     setPendingClosePath(null);
   };
 
-  const handleSaveFile = async (contentOverride?: string): Promise<boolean> => {
-    if (!currentFile) {
+  const handleSaveFile = async (contentOverride?: string, fileToSave: any = currentFile): Promise<boolean> => {
+    if (!fileToSave) {
       toast.error(editorText('noFileSelected'));
       return false;
     }
@@ -1402,25 +1439,25 @@ export default function EditorApp() {
     const contentToSave = contentOverride ?? editorContent;
     setSaveStatus('saving');
     console.log('[DEBUG] handleSaveFile called', {
-      currentFile: { name: currentFile.name, path: currentFile.path, isLocal: (currentFile as any).isLocal },
+      currentFile: { name: fileToSave.name, path: fileToSave.path, isLocal: fileToSave.isLocal },
       editorContent: { length: contentToSave.length },
-      selectedLanguage,
+      selectedLanguage: fileToSave.language || selectedLanguage,
       currentProject
     });
 
     // If this is a local-only file (created in the client), it will have `isLocal: true`.
     // If there is a current project, create the file on the server and remove the local placeholder.
-    if ((currentFile as any).isLocal) {
+    if (fileToSave.isLocal) {
       console.log('[DEBUG] File is LOCAL - checking if project exists...');
       if (currentProject) {
         try {
           console.log('[DEBUG] HasProject - creating on server...');
           const payload = {
             projectId: currentProject,
-            name: currentFile.name,
-            path: currentFile.path,
+            name: fileToSave.name,
+            path: fileToSave.path,
             content: contentToSave,
-            language: selectedLanguage,
+            language: fileToSave.language || selectedLanguage,
           } as const;
 
           console.log('[DEBUG] createFile payload:', payload);
@@ -1428,22 +1465,26 @@ export default function EditorApp() {
           const res = await createFileMutation.mutateAsync(payload as any);
 
           // Remove local placeholder and set currentFile to server file
-          setLocalFiles(prev => prev.filter(f => f.path !== currentFile.path));
+          setLocalFiles(prev => prev.filter(f => f.path !== fileToSave.path));
           const newServerFile = {
+            ...fileToSave,
             id: res.fileId,
-            name: currentFile.name,
+            name: fileToSave.name,
             type: 'file' as const,
-            path: currentFile.path,
+            path: fileToSave.path,
             content: contentToSave,
+            isLocal: false,
           };
-          setCurrentFile(newServerFile as any);
+          setCurrentFile((prev: any) => prev?.path === fileToSave.path ? newServerFile : prev);
           // Invalidate server list handled by mutation onSuccess; optionally refetch now
           if (currentProject) utils.files.list.invalidate({ projectId: currentProject });
           // Update openFiles savedContent so tab reflects saved state
           setOpenFiles(prev => {
             const exists = prev.some(f => f.path === newServerFile.path);
             if (exists) {
-              return prev.map(f => f.path === newServerFile.path ? { ...f, content: contentToSave, savedContent: contentToSave } : f);
+              return prev.map(f => f.path === newServerFile.path
+                ? { ...newServerFile, content: contentToSave, savedContent: contentToSave }
+                : f);
             }
             return [...prev, { ...newServerFile, content: contentToSave, savedContent: contentToSave }];
           });
@@ -1458,19 +1499,19 @@ export default function EditorApp() {
       } else {
         // No project open: prompt user to save to local filesystem
         console.log('[DEBUG] No project - exporting to filesystem...');
-        handleExportFile(currentFile.path, contentToSave);
+        handleExportFile(fileToSave.path, contentToSave);
       }
     } else {
       // Existing DB file: update via RPC
       console.log('[DEBUG] File is SERVER file - updating...');
       try {
         await updateFileMutation.mutateAsync({
-          fileId: currentFile.id,
+          fileId: fileToSave.id,
           content: contentToSave,
         });
         // Mark the tab as saved only after the server confirms the update.
-        setOpenFiles(prev => prev.map(f => f.path === currentFile.path ? { ...f, content: contentToSave, savedContent: contentToSave } : f));
-        setCurrentFile((prev: any) => prev?.path === currentFile.path
+        setOpenFiles(prev => prev.map(f => f.path === fileToSave.path ? { ...f, content: contentToSave, savedContent: contentToSave } : f));
+        setCurrentFile((prev: any) => prev?.path === fileToSave.path
           ? { ...prev, content: contentToSave, savedContent: contentToSave }
           : prev);
         setSaveStatus('saved');
@@ -1546,6 +1587,60 @@ export default function EditorApp() {
     setSavingFileContent(content);
     setCustomSavePath(path);
     setSaveDialogOpen(true);
+  };
+
+  const handleExplorerSaveFile = async (path: string, fileContent: string) => {
+    const openFile = openFiles.find(file => file.path === path);
+    const content = currentFile?.path === path
+      ? editorContent
+      : openFile?.content ?? localFiles.find(file => file.path === path)?.content ?? fileContent;
+    const localFile = localFiles.find(file => file.path === path);
+
+    if (localFile?.isLocal) {
+      if (!currentProject) {
+        handleExportFile(path, content);
+        return;
+      }
+
+      const name = path.split('/').pop();
+      if (!name) throw new Error(editorText('invalidFileName'));
+      const result = await createFileMutation.mutateAsync({
+        projectId: currentProject,
+        name,
+        path,
+        content,
+        language: detectLanguageFromExtension(name),
+      });
+      const savedFile = {
+        ...localFile,
+        id: result.fileId,
+        content,
+        savedContent: content,
+        isLocal: false,
+      };
+      setLocalFiles(prev => prev.filter(file => file.path !== path));
+      setOpenFiles(prev => prev.map(file => file.path === path ? savedFile : file));
+      setCurrentFile((prev: any) => prev?.path === path ? savedFile : prev);
+      await utils.files.list.invalidate({ projectId: currentProject });
+      return;
+    }
+
+    const serverFile = files.find(file => file.path === path);
+    if (!serverFile || !currentProject) {
+      throw new Error(language === 'it' ? 'File del progetto non trovato.' : 'Project file not found.');
+    }
+
+    await updateFileMutation.mutateAsync({
+      fileId: serverFile.id,
+      content,
+    });
+    setOpenFiles(prev => prev.map(file =>
+      file.path === path ? { ...file, content, savedContent: content } : file
+    ));
+    setCurrentFile((prev: any) => prev?.path === path
+      ? { ...prev, content, savedContent: content }
+      : prev);
+    await utils.files.list.invalidate({ projectId: currentProject });
   };
 
   const handleCloseFolder = () => {
@@ -2281,6 +2376,8 @@ export default function EditorApp() {
             variant="ghost"
             size="sm"
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            aria-expanded={isSidebarOpen}
+            aria-controls="editor-file-explorer"
             className="text-white hover:bg-slate-700"
           >
             {isSidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -2324,7 +2421,16 @@ export default function EditorApp() {
 
       <div className="editor-workspace-layout flex-1 flex overflow-hidden relative min-h-0 min-w-0">
         {isSidebarOpen && (
+          <button
+            type="button"
+            className="editor-file-explorer-backdrop"
+            aria-label={i18nT('close')}
+            onClick={() => setIsSidebarOpen(false)}
+          />
+        )}
+        {isSidebarOpen && (
           <aside
+            id="editor-file-explorer"
             className="editor-file-explorer bg-slate-800 border-r border-slate-700 flex flex-col"
             style={{ width: `${sidebarWidth}px`, minWidth: '150px', maxWidth: '400px', position: 'relative' }}
           >
@@ -2431,6 +2537,7 @@ export default function EditorApp() {
                     ...localFiles
                   ]}
                   selectedPath={currentFile?.path}
+                  openFilePaths={openFiles.map(file => file.path)}
                   openedFolderName={openedFolderName}
                   onSelectFile={(file) => {
                     if (file.type === 'file') {
@@ -2483,8 +2590,7 @@ export default function EditorApp() {
                   onCloseFolder={handleCloseFolder}
                   onMoveFile={handleMoveFile}
                   onRenameFile={handleRenameFile}
-                  onDeleteFile={handleDeleteFile}
-                  onSaveFile={handleExportFile}
+                  onSaveFile={handleExplorerSaveFile}
                 />
               )}
             </div>

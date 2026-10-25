@@ -89,6 +89,10 @@ nav[data-compact-menu="true"] + .site-content {
   overflow-x: clip;
 }
 
+.editor-file-explorer-backdrop {
+  display: none;
+}
+
 @media (max-width: 1023px) {
   nav[data-compact-menu="true"] .profile-badge-name {
     display: none;
@@ -110,14 +114,27 @@ nav[data-compact-menu="true"] + .site-content {
   }
 
   .editor-file-explorer {
-    width: 100% !important;
+    position: absolute !important;
+    inset: 0 auto 0 0;
+    z-index: 50;
+    width: min(88vw, 400px) !important;
     min-width: 0 !important;
-    max-width: none !important;
-    height: min(30vh, 220px);
-    min-height: 160px;
-    flex: 0 0 min(30vh, 220px);
+    max-width: calc(100vw - 2rem) !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    flex: none !important;
     border-right: 0;
-    border-bottom: 1px solid rgb(51 65 85);
+    border-bottom: 0;
+    box-shadow: 16px 0 36px rgb(2 6 23 / 0.45);
+  }
+
+  .editor-file-explorer-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 45;
+    display: block;
+    border: 0;
+    background: rgb(2 6 23 / 0.65);
   }
 
   .editor-trial-promo-card {
