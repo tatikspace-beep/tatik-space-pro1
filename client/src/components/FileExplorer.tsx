@@ -30,18 +30,16 @@ interface FileExplorerProps {
   files: RawFile[]; // Raw flat files from the API
   onSelectFile: (file: FileNode) => void;
   selectedPath?: string;
-  openFilePaths?: string[];
   onRefreshFile?: (path: string) => void;
   onCloseFile?: (path: string) => void;
   onMoveFile?: (sourcePath: string, destinationFolderPath: string) => void | Promise<void>;
   onRenameFile?: (oldPath: string, newName: string) => void | Promise<void>;
   onRenameFolder?: (folderPath: string, newName: string) => void | Promise<void>;
   onSaveFile?: (path: string, content: string) => void | Promise<void>;
-  openedFolderName?: string | null; // Name of the root open folder
-  onCloseFolder?: () => void; // Close the opened folder
+  onCloseFolder?: (path: string) => void;
 }
 
-export function FileExplorer({ files, onSelectFile, selectedPath, openFilePaths = [], onRefreshFile, onCloseFile, onMoveFile, onRenameFile, onRenameFolder, onSaveFile, openedFolderName, onCloseFolder }: FileExplorerProps) {
+export function FileExplorer({ files, onSelectFile, selectedPath, onRefreshFile, onCloseFile, onMoveFile, onRenameFile, onRenameFolder, onSaveFile, onCloseFolder }: FileExplorerProps) {
   const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
   const [draggedFilePath, setDraggedFilePath] = useState<string | null>(null);
   const [dragOverFolderPath, setDragOverFolderPath] = useState<string | null>(null);
@@ -52,6 +50,7 @@ export function FileExplorer({ files, onSelectFile, selectedPath, openFilePaths 
   const copy = filesPageCopy[language];
   const explorerCopy = copy.explorer;
   const toastCopy = (key: keyof typeof copy.toast) => copy.toast[key];
+  const isRootPath = (path: string) => path.split('/').filter(Boolean).length === 1;
 
   // Helper function to generate a hash for folder IDs
   const generateHash = (str: string): number => {
@@ -311,7 +310,7 @@ export function FileExplorer({ files, onSelectFile, selectedPath, openFilePaths 
                   <RefreshCw className="h-4 w-4" />
                 </button>
               )}
-              {openFilePaths.includes(node.path) && (
+              {isRootPath(node.path) && (
                 <button
                   onClick={() => onCloseFile?.(node.path)}
                   className="p-1 hover:bg-slate-700 rounded text-slate-200 transition-colors"
@@ -337,12 +336,12 @@ export function FileExplorer({ files, onSelectFile, selectedPath, openFilePaths 
               >
                 <Edit2 className="h-4 w-4" />
               </button>
-              {expandedFolders[node.path] && (
+              {isRootPath(node.path) && (
                 <button
-                  onClick={() => setExpandedFolders(prev => ({ ...prev, [node.path]: false }))}
+                  onClick={() => onCloseFolder?.(node.path)}
                   className="p-1 hover:bg-slate-700 rounded text-slate-200 transition-colors"
-                  title={formatFilesCopy(explorerCopy.collapseFolder, { name: node.name })}
-                  aria-label={formatFilesCopy(explorerCopy.collapseFolder, { name: node.name })}
+                  title={formatFilesCopy(explorerCopy.closeFolderNamed, { name: node.name })}
+                  aria-label={formatFilesCopy(explorerCopy.closeFolderNamed, { name: node.name })}
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -360,19 +359,6 @@ export function FileExplorer({ files, onSelectFile, selectedPath, openFilePaths 
 
   return (
     <>
-      {openedFolderName && (
-        <div className="mb-2 flex items-center justify-end gap-2 border-b border-slate-700 pb-2">
-          <button
-            onClick={() => onCloseFolder?.()}
-            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-slate-200 hover:bg-slate-700"
-            title={formatFilesCopy(explorerCopy.closeFolderNamed, { name: openedFolderName })}
-            aria-label={formatFilesCopy(explorerCopy.closeFolderNamed, { name: openedFolderName })}
-          >
-            <X className="h-4 w-4" />
-            {explorerCopy.closeFolder}
-          </button>
-        </div>
-      )}
       <div className="space-y-1">
         {hierarchicalFiles.length === 0 ? (
           <p className="text-sm text-slate-400 text-center py-8">

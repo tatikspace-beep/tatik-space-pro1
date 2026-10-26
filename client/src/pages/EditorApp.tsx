@@ -41,6 +41,8 @@ import { toast } from 'sonner';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu';
 import { Helmet } from "react-helmet-async";
 
+const normalizeExplorerPath = (path: string) => path.split('/').filter(Boolean).join('/');
+
 export default function EditorApp() {
   const { user, loading: authLoading } = useAuth();
   const { language } = useLanguage();
@@ -107,7 +109,12 @@ export default function EditorApp() {
   const [newFolderName, setNewFolderName] = useState('');
   const [openFiles, setOpenFiles] = useState<any[]>([]);
   const [confirmCloseDialogOpen, setConfirmCloseDialogOpen] = useState(false);
-  const [pendingClosePath, setPendingClosePath] = useState<string | null>(null);
+  const [pendingCloseTarget, setPendingCloseTarget] = useState<{
+    type: 'file' | 'folder';
+    path: string;
+    hideFromExplorer: boolean;
+  } | null>(null);
+  const [closedExplorerPaths, setClosedExplorerPaths] = useState<string[]>([]);
   const [sidebarWidth, setSidebarWidth] = useState(256); // default 16rem (64 * 4)
   const [editorWidth, setEditorWidth] = useState(150); // Initial min width
   const [previewWidth, setPreviewWidth] = useState(200); // Preview panel width
@@ -315,6 +322,15 @@ export default function EditorApp() {
 
     return Array.from(merged.values());
   }, [files, localFiles, currentFile, editorContent]);
+  const explorerFiles = useMemo(
+    () => [...files, ...localFiles].filter(file =>
+      !closedExplorerPaths.some(path => {
+        const normalizedFilePath = normalizeExplorerPath(file.path);
+        return normalizedFilePath === path || normalizedFilePath.startsWith(`${path}/`);
+      })
+    ),
+    [files, localFiles, closedExplorerPaths],
+  );
   const createFileMutation = trpc.files.create.useMutation({
     onSuccess: (res) => {
       console.log('[DEBUG] createFileMutation onSuccess:', res);
@@ -1411,7 +1427,11 @@ export default function EditorApp() {
     }
   };
 
-  const closeFileImmediate = (path: string) => {
+  const closeFileImmediate = (path: string, hideFromExplorer = false) => {
+    if (hideFromExplorer) {
+      const normalizedPath = normalizeExplorerPath(path);
+      setClosedExplorerPaths(prev => prev.includes(normalizedPath) ? prev : [...prev, normalizedPath]);
+    }
     setOpenFiles(prev => {
       const next = prev.filter(f => f.path !== path);
       // If no more files and no folder opened, reset preview
@@ -1440,72 +1460,122 @@ export default function EditorApp() {
     });
   };
 
-  const attemptCloseFile = (path: string) => {
-    const f = openFiles.find(x => x.path === path);
-    if (!f) return;
-    const saved = f.savedContent ?? '';
-    const current = f.content ?? '';
-    if (current !== saved) {
-      setPendingClosePath(path);
-      setConfirmCloseDialogOpen(true);
-    } else {
-      closeFileImmediate(path);
+  const attemptCloseFile = (path: string, hideFromExplorer = false) => {
+    setPendingCloseTarget({ type: 'file', path, hideFromExplorer });
+    setConfirmCloseDialogOpen(true);
+  };
+
+  const closeFolderImmediate = (path: string, hideFromExplorer = true) => {
+    const normalizedPath = normalizeExplorerPath(path);
+    const prefix = `${normalizedPath}/`;
+    if (hideFromExplorer) {
+      setClosedExplorerPaths(prev => prev.includes(normalizedPath) ? prev : [...prev, normalizedPath]);
     }
+    const remainingFiles = openFiles.filter(file => !normalizeExplorerPath(file.path).startsWith(prefix));
+    setOpenFiles(remainingFiles);
+
+    if (currentFile && normalizeExplorerPath(currentFile.path).startsWith(prefix)) {
+      const nextFile = remainingFiles[remainingFiles.length - 1] ?? null;
+      setCurrentFile(nextFile);
+      setEditorContent(nextFile?.content ?? '');
+      if (!nextFile) {
+        setHtmlContent('');
+        setCssContent('');
+        setJsContent('');
+      }
+    }
+    if (openedFolderName && normalizeExplorerPath(openedFolderName) === normalizedPath) setOpenedFolderName(null);
+    toast.success(editorText('folderClosed'));
+  };
+
+  const attemptCloseFolder = (path: string) => {
+    setPendingCloseTarget({ type: 'folder', path, hideFromExplorer: true });
+    setConfirmCloseDialogOpen(true);
+  };
+
+  const cancelClosePrompt = () => {
+    setConfirmCloseDialogOpen(false);
+    setPendingCloseTarget(null);
   };
 
   const handleConfirmCloseSave = async () => {
-    if (!pendingClosePath) return;
-    const fileToClose = openFiles.find(f => f.path === pendingClosePath);
-    if (!fileToClose) {
-      setConfirmCloseDialogOpen(false);
-      setPendingClosePath(null);
-      return;
-    }
+    const target = pendingCloseTarget;
+    if (!target) return;
 
-    const saved = await handleSaveFile(fileToClose.content || '', fileToClose);
-    if (!saved) return;
-
-    setConfirmCloseDialogOpen(false);
-    setOpenFiles((prev: any[]) => prev.filter(f => f.path !== pendingClosePath));
-    setCurrentFile((prev: any) => {
-      if (prev && prev.path === pendingClosePath) {
-        const remaining = openFiles.filter(f => f.path !== pendingClosePath);
-        if (remaining.length > 0) {
-          setEditorContent(remaining[remaining.length - 1].content || '');
-          return remaining[remaining.length - 1] as any;
+    try {
+      if (target.type === 'file') {
+        const file = openFiles.find(item => item.path === target.path)
+          ?? previewFiles.find(item => item.path === target.path);
+        if (!file) throw new Error(language === 'it' ? 'File non trovato.' : 'File not found.');
+        const content = currentFile?.path === target.path
+          ? editorContent
+          : openFiles.find(item => item.path === target.path)?.content ?? file.content ?? '';
+        const isLocalOnly = localFiles.some(item => item.path === target.path)
+          && !files.some(item => item.path === target.path);
+        if (isLocalOnly && !currentProject) {
+          throw new Error(language === 'it'
+            ? 'Apri un progetto prima di salvare questo file e chiuderlo.'
+            : 'Open a project before saving and closing this file.');
         }
-        setEditorContent('');
-        return null;
+        await handleExplorerSaveFile(target.path, content);
+        closeFileImmediate(target.path, target.hideFromExplorer);
+      } else {
+        const normalizedFolderPath = normalizeExplorerPath(target.path);
+        const prefix = `${normalizedFolderPath}/`;
+        const folderFiles = previewFiles.filter(file =>
+          normalizeExplorerPath(file.path).startsWith(prefix)
+        );
+        for (const file of folderFiles) {
+          const openFile = openFiles.find(item => item.path === file.path);
+          const content = currentFile?.path === file.path
+            ? editorContent
+            : openFile?.content ?? file.content ?? '';
+          const baseline = openFile?.savedContent ?? file.content ?? '';
+          const localOnly = localFiles.some(item => item.path === file.path)
+            && !files.some(item => item.path === file.path);
+          if (localOnly || content !== baseline) {
+            if (localOnly && !currentProject) {
+              throw new Error(language === 'it'
+                ? 'Apri un progetto prima di salvare i file della cartella.'
+                : 'Open a project before saving the folder files.');
+            }
+            await handleExplorerSaveFile(file.path, content);
+          }
+        }
+        closeFolderImmediate(target.path);
       }
-      return prev;
-    });
-    setPendingClosePath(null);
+      setConfirmCloseDialogOpen(false);
+      setPendingCloseTarget(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : editorText('serverSaveError'));
+    }
   };
 
   const handleConfirmCloseDiscard = () => {
-    setConfirmCloseDialogOpen(false);
-    if (!pendingClosePath) return;
-    const discardedFile = openFiles.find(file => file.path === pendingClosePath);
-    if (discardedFile) {
-      const restoredContent = discardedFile.savedContent ?? '';
+    const target = pendingCloseTarget;
+    if (!target) return;
+
+    if (target.type === 'file') {
+      const discardedFile = openFiles.find(file => file.path === target.path);
+      const originalContent = discardedFile?.savedContent
+        ?? localFiles.find(file => file.path === target.path)?.content
+        ?? files.find(file => file.path === target.path)?.content
+        ?? '';
       setLocalFiles(prev => prev.map(file =>
-        file.path === pendingClosePath ? { ...file, content: restoredContent } : file
+        file.path === target.path ? { ...file, content: originalContent } : file
       ));
+      closeFileImmediate(target.path, target.hideFromExplorer);
+    } else {
+      const prefix = `${normalizeExplorerPath(target.path)}/`;
+      setLocalFiles(prev => prev.map(file => {
+        if (!normalizeExplorerPath(file.path).startsWith(prefix)) return file;
+        const openFile = openFiles.find(item => item.path === file.path);
+        return openFile ? { ...file, content: openFile.savedContent ?? file.content } : file;
+      }));
+      closeFolderImmediate(target.path);
     }
-    setOpenFiles((prev: any[]) => prev.filter(f => f.path !== pendingClosePath));
-    setCurrentFile((prev: any) => {
-      if (prev && prev.path === pendingClosePath) {
-        const remaining = openFiles.filter(f => f.path !== pendingClosePath);
-        if (remaining.length > 0) {
-          setEditorContent(remaining[remaining.length - 1].content || '');
-          return remaining[remaining.length - 1] as any;
-        }
-        setEditorContent('');
-        return null;
-      }
-      return prev;
-    });
-    setPendingClosePath(null);
+    setConfirmCloseDialogOpen(false);
+    setPendingCloseTarget(null);
   };
 
   const handleSaveFile = async (contentOverride?: string, fileToSave: any = currentFile): Promise<boolean> => {
@@ -1674,7 +1744,7 @@ export default function EditorApp() {
       : openFile?.content ?? localFiles.find(file => file.path === path)?.content ?? fileContent;
     const localFile = localFiles.find(file => file.path === path);
 
-    if (localFile?.isLocal) {
+    if (localFile && !files.some(file => file.path === path)) {
       if (!currentProject) {
         handleExportFile(path, content);
         return;
@@ -1719,19 +1789,6 @@ export default function EditorApp() {
       ? { ...prev, content, savedContent: content }
       : prev);
     await utils.files.list.invalidate({ projectId: currentProject });
-  };
-
-  const handleCloseFolder = () => {
-    setLocalFiles([]);
-    setOpenedFolderName(null);
-    setCurrentFile(null);
-    setEditorContent('');
-    setOpenFiles([]);
-    setHtmlContent('');
-    setCssContent('');
-    setJsContent('');
-    setContextProject(null); // Reset the global project context
-    toast.success(editorText('folderClosed'));
   };
 
   const handleLinkClick = (href: string, fragment = '') => {
@@ -2570,14 +2627,6 @@ export default function EditorApp() {
                   <p className="text-xs text-blue-400">
                     📁 {openedFolderName}
                   </p>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={handleCloseFolder}
-                    title={`${editorText('closeFolder')}: ${openedFolderName}`}
-                  >
-                    {editorText('closeFolder')}
-                  </Button>
                 </div>
               )}
             </div>
@@ -2604,19 +2653,8 @@ export default function EditorApp() {
               )}
               {!isLoadingFolder && (
                 <FileExplorer
-                  files={[
-                    ...files.map(f => ({
-                      id: f.id,
-                      name: f.name,
-                      type: 'file' as const,
-                      path: f.path,
-                      content: f.content || undefined
-                    })),
-                    ...localFiles
-                  ]}
+                  files={explorerFiles}
                   selectedPath={currentFile?.path}
-                  openFilePaths={openFiles.map(file => file.path)}
-                  openedFolderName={openedFolderName}
                   onSelectFile={(file) => {
                     if (file.type === 'file') {
                       console.log('[FileExplorer Click]', {
@@ -2664,8 +2702,8 @@ export default function EditorApp() {
                     }
                   }}
                   onRefreshFile={(path) => { console.log('[FileExplorer] refresh requested for', path); setPreviewKey(k => k + 1); }}
-                  onCloseFile={(path) => { attemptCloseFile(path); }}
-                  onCloseFolder={handleCloseFolder}
+                  onCloseFile={(path) => { attemptCloseFile(path, true); }}
+                  onCloseFolder={attemptCloseFolder}
                   onMoveFile={handleMoveFile}
                   onRenameFile={handleRenameFile}
                   onRenameFolder={handleRenameFolder}
@@ -3215,18 +3253,34 @@ export default function EditorApp() {
       </Dialog>
 
       {/* Confirm close dialog for unsaved files */}
-      <Dialog open={confirmCloseDialogOpen} onOpenChange={setConfirmCloseDialogOpen}>
+      <Dialog
+        open={confirmCloseDialogOpen}
+        onOpenChange={(open) => {
+          setConfirmCloseDialogOpen(open);
+          if (!open) setPendingCloseTarget(null);
+        }}
+      >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{editorText('closeFileQuestion')}</DialogTitle>
+            <DialogTitle>
+              {pendingCloseTarget?.type === 'folder'
+                ? editorText('closeFolder')
+                : editorText('closeFileQuestion')}
+            </DialogTitle>
             <DialogDescription>
-              {editorText('saveChangesBeforeClose', { name: openFiles.find(f => f.path === pendingClosePath)?.name || pendingClosePath || '' })}
+              {editorText('saveChangesBeforeClose', {
+                name: pendingCloseTarget?.type === 'folder'
+                  ? pendingCloseTarget.path
+                  : openFiles.find(file => file.path === pendingCloseTarget?.path)?.name
+                    || pendingCloseTarget?.path
+                    || '',
+              })}
             </DialogDescription>
           </DialogHeader>
           <div className="flex gap-2 mt-4">
             <Button onClick={handleConfirmCloseSave}>{editorText('save')}</Button>
             <Button variant="destructive" onClick={handleConfirmCloseDiscard}>{editorText('discard')}</Button>
-            <Button variant="outline" onClick={() => setConfirmCloseDialogOpen(false)}>{editorText('cancel')}</Button>
+            <Button variant="outline" onClick={cancelClosePrompt}>{editorText('cancel')}</Button>
           </div>
         </DialogContent>
       </Dialog>
