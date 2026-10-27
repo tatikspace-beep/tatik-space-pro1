@@ -20,10 +20,11 @@ interface FileNode {
 interface RawFile {
   id: number;
   name: string;
-  type: 'file';
+  type: 'file' | 'folder';
   path: string;
   content?: string;
   language?: string;
+  isFolderPlaceholder?: boolean;
 }
 
 interface FileExplorerProps {
@@ -74,7 +75,8 @@ export function FileExplorer({ files, onSelectFile, selectedPath, onRefreshFile,
       const pathParts = file.path.split('/').filter(part => part !== '');
       let currentPath = '';
 
-      for (let i = 0; i < pathParts.length - 1; i++) {
+      const folderPartsLength = file.type === 'folder' ? pathParts.length : pathParts.length - 1;
+      for (let i = 0; i < folderPartsLength; i++) {
         currentPath = currentPath ? `${currentPath}/${pathParts[i]}` : pathParts[i];
         folders.add(currentPath);
       }
@@ -98,6 +100,7 @@ export function FileExplorer({ files, onSelectFile, selectedPath, onRefreshFile,
 
     // Create file nodes
     files.forEach(file => {
+      if (file.type === 'folder' || file.isFolderPlaceholder) return;
       const fileNode: FileNode = {
         ...file,
         type: 'file'

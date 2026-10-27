@@ -1346,6 +1346,7 @@ export default function EditorApp() {
           path: gitkeepPath,
           content: '',
           isLocal: true,
+          isFolderPlaceholder: true,
         }
       ];
       console.log('[DEBUG] Updated localFiles (folder):', newFiles);
