@@ -10,6 +10,7 @@ describe("buildAssistantProjectContext", () => {
 
     expect(context).toContain("Current Tatik.space project: Course site.");
     expect(context).toContain("Do not create a wrapper folder named after the project.");
+    expect(context).toContain("tatik-project-operations");
     expect(context.indexOf("File: index.html")).toBeLessThan(context.indexOf("File: about.html"));
     expect(context).toContain("href=\"about.html\"");
   });

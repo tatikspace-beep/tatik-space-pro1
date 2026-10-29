@@ -231,7 +231,12 @@ export async function createFile(file: InsertFile) {
   return result[0].id;
 }
 
-export async function createAssistantFiles(projectId: number, userId: number, newFiles: Omit<InsertFile, "projectId">[]) {
+export async function createAssistantFiles(
+  projectId: number,
+  userId: number,
+  newFiles: Omit<InsertFile, "projectId">[],
+  moves: Array<{ fromPath: string; toPath: string }> = [],
+) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
@@ -247,12 +252,59 @@ export async function createAssistantFiles(projectId: number, userId: number, ne
     const existingFiles = await tx.select().from(files).where(eq(files.projectId, projectId));
     const canonicalPath = (path: string) => path.replace(/\\/g, "/").replace(/^\/+/, "").toLowerCase();
     const existingByPath = new Map(existingFiles.map(file => [canonicalPath(file.path), file]));
+    const newFilesByPath = new Map(newFiles.map(file => [canonicalPath(file.path), file]));
+    const moveSources = new Set<string>();
+    const moveTargets = new Set<string>();
+    const resolvedMoves: Array<{
+      source: (typeof existingFiles)[number];
+      targetFile: (typeof newFiles)[number];
+      toPath: string;
+      targetKey: string;
+    }> = [];
+
+    for (const move of moves) {
+      const sourceKey = canonicalPath(move.fromPath);
+      const targetKey = canonicalPath(move.toPath);
+      const source = existingByPath.get(sourceKey);
+      const targetFile = newFilesByPath.get(targetKey);
+      if (!source) return { missingProject: false as const, missingFiles: [move.fromPath], files: [] };
+      if (!targetFile) return { missingProject: false as const, missingMoveOutput: move.toPath, files: [] };
+      if (moveSources.has(sourceKey) || moveTargets.has(targetKey) || newFilesByPath.has(sourceKey)) {
+        return { missingProject: false as const, invalidMoves: true as const, files: [] };
+      }
+      if (sourceKey === targetKey || existingByPath.has(targetKey)) {
+        return { missingProject: false as const, pathConflict: move.toPath, files: [] };
+      }
+      moveSources.add(sourceKey);
+      moveTargets.add(targetKey);
+      resolvedMoves.push({ source, targetFile, toPath: move.toPath, targetKey });
+    }
+    if (resolvedMoves.some(move => moveSources.has(move.targetKey))) {
+      return { missingProject: false as const, invalidMoves: true as const, files: [] };
+    }
+
     const savedFiles = [];
     let createdCount = 0;
     let updatedCount = 0;
+    let movedCount = 0;
+
+    for (const move of resolvedMoves) {
+      const saved = (await tx.update(files).set({
+        name: move.targetFile.name,
+        path: move.toPath,
+        content: move.targetFile.content,
+        language: move.targetFile.language,
+        updatedAt: new Date(),
+      }).where(and(eq(files.id, move.source.id), eq(files.projectId, projectId))).returning())[0];
+      savedFiles.push(saved);
+      existingByPath.set(move.targetKey, saved);
+      movedCount += 1;
+    }
 
     for (const file of newFiles) {
-      const existing = existingByPath.get(canonicalPath(file.path));
+      const fileKey = canonicalPath(file.path);
+      if (moveTargets.has(fileKey)) continue;
+      const existing = existingByPath.get(fileKey);
       const saved = existing
         ? (await tx.update(files).set({
           name: file.name,
@@ -267,7 +319,7 @@ export async function createAssistantFiles(projectId: number, userId: number, ne
       else createdCount += 1;
     }
 
-    return { missingProject: false as const, files: savedFiles, createdCount, updatedCount };
+    return { missingProject: false as const, files: savedFiles, createdCount, updatedCount, movedCount };
   });
 }
 

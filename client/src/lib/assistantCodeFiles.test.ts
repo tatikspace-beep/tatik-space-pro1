@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { extractAssistantCodeBlocks, extractAssistantCodeFiles } from "./assistantCodeFiles";
+import {
+  extractAssistantCodeBlocks,
+  extractAssistantCodeFiles,
+  extractAssistantProjectMoves,
+  hasAssistantProjectOperationsBlock,
+} from "./assistantCodeFiles";
 
 describe("assistant code response parsing", () => {
   it("extracts named files from headings and fenced code blocks", () => {
@@ -58,5 +63,46 @@ describe("assistant code response parsing", () => {
         { language: "js", content: "const a = 1;" },
         { language: "css", content: "body{}" },
       ]);
+  });
+
+  it("extracts explicit file moves from the project operations block", () => {
+    const response = [
+      "### belice/assets/css/style.css",
+      "```css",
+      "body { color: #222; }",
+      "```",
+      "```tatik-project-operations",
+      JSON.stringify({ moves: [{ fromPath: "assets/css/style.css", toPath: "belice/assets/css/style.css" }] }),
+      "```",
+    ].join("\n");
+
+    expect(hasAssistantProjectOperationsBlock(response)).toBe(true);
+    expect(extractAssistantCodeFiles(response)).toEqual([
+      { path: "belice/assets/css/style.css", content: "body { color: #222; }" },
+    ]);
+    expect(extractAssistantCodeBlocks(response)).toEqual([
+      { language: "css", content: "body { color: #222; }" },
+    ]);
+    expect(extractAssistantProjectMoves(response)).toEqual([
+      { fromPath: "assets/css/style.css", toPath: "belice/assets/css/style.css" },
+    ]);
+  });
+
+  it("rejects unsafe, duplicate, and malformed project moves", () => {
+    expect(() => extractAssistantProjectMoves([
+      "```tatik-project-operations",
+      JSON.stringify({ moves: [{ fromPath: "../secret.html", toPath: "belice/secret.html" }] }),
+      "```",
+    ].join("\n"))).toThrow("percorso file non valido");
+    expect(() => extractAssistantProjectMoves([
+      "```tatik-project-operations",
+      JSON.stringify({ moves: [
+        { fromPath: "index.html", toPath: "belice/index.html" },
+        { fromPath: "about.html", toPath: "belice/INDEX.html" },
+      ] }),
+      "```",
+    ].join("\n"))).toThrow("destinazione duplicati");
+    expect(() => extractAssistantProjectMoves("```tatik-project-operations\n{bad json}\n```"))
+      .toThrow("JSON valido");
   });
 });

@@ -15,7 +15,13 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/_core/hooks/useAuth';
 import { formatCopy, getComponentCopy, getModelCopy } from '@/lib/assistantUiCopy';
 import { AITransparencyNotice } from '@/components/AITransparencySection';
-import { extractAssistantCodeBlocks, extractAssistantCodeFiles } from '@/lib/assistantCodeFiles';
+import {
+  extractAssistantCodeBlocks,
+  extractAssistantCodeFiles,
+  extractAssistantProjectMoves,
+  hasAssistantProjectOperationsBlock,
+  type AssistantProjectMove,
+} from '@/lib/assistantCodeFiles';
 import { buildAssistantProjectContext, type AssistantProjectFile } from '@/lib/assistantProjectContext';
 
 // ---------------------------------------------------------------------------
@@ -76,7 +82,10 @@ interface AIAssistantProps {
   currentFilePath?: string;
   currentFileContent?: string;
   onCodeInsert?: (code: string) => Promise<void>;
-  onCreateFiles?: (files: Array<{ path: string; content: string }>) => Promise<{ created: number; updated: number } | null>;
+  onCreateFiles?: (
+    files: Array<{ path: string; content: string }>,
+    moves: AssistantProjectMove[],
+  ) => Promise<{ created: number; updated: number; moved: number } | null>;
 }
 
 // ---------------------------------------------------------------------------
@@ -687,15 +696,17 @@ export function AIAssistant({ projectName, projectFiles = [], currentFilePath, c
                             : undefined
                         }
                         onCreateFiles={
-                          onCreateFiles && msg.role === 'assistant' && extractAssistantCodeFiles(msg.content).length > 0
+                          onCreateFiles && msg.role === 'assistant'
+                            && (extractAssistantCodeFiles(msg.content).length > 0 || hasAssistantProjectOperationsBlock(msg.content))
                             ? async () => {
-                              const files = extractAssistantCodeFiles(msg.content);
                               try {
-                                const result = await onCreateFiles(files);
+                                const files = extractAssistantCodeFiles(msg.content);
+                                const moves = extractAssistantProjectMoves(msg.content);
+                                const result = await onCreateFiles(files, moves);
                                 if (result) {
                                   const summary = language === 'it'
-                                    ? `${result.created} file creati, ${result.updated} aggiornati nel progetto`
-                                    : `${result.created} files created, ${result.updated} updated in the project`;
+                                    ? `${result.created} file creati, ${result.updated} aggiornati, ${result.moved} spostati nel progetto`
+                                    : `${result.created} files created, ${result.updated} updated, ${result.moved} moved in the project`;
                                   toast.success(summary);
                                 }
                               } catch (error) {

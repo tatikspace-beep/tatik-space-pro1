@@ -34,6 +34,7 @@ import type { EditorAppCopyKey } from '@/lib/editorAppCopy';
 import { getEditorAppLabelFallback } from '@/lib/editorAppLabelFallbacks';
 import { normalizePreviewPath } from '@/lib/previewFileResolver';
 import { normalizeAssistantProjectPath } from '@/lib/assistantProjectContext';
+import type { AssistantProjectMove } from '@/lib/assistantCodeFiles';
 import { createPreviewAssetDocument, isPreviewBinaryAsset } from '@/lib/previewAssets';
 import { createPreviewDataDocument } from '@/lib/previewDataViewer';
 import { createPreviewRuntimeDocument, getPreviewExecutionSupport, getPreviewRuntimeNotice } from '@/lib/previewRuntime';
@@ -1697,63 +1698,122 @@ export default function EditorApp() {
     if (!saved) throw new Error(editorText('serverSaveError'));
   };
 
-  const handleAssistantCreateFiles = async (assistantFiles: Array<{ path: string; content: string }>) => {
+  const handleAssistantCreateFiles = async (
+    assistantFiles: Array<{ path: string; content: string }>,
+    assistantMoves: AssistantProjectMove[] = [],
+  ) => {
     if (!currentProject) {
       throw new Error(language === 'it'
         ? 'Apri o crea un progetto prima di generare file.'
         : 'Open or create a project before generating files.');
     }
-    const existingByPath = new Map(files.map(file => [
-      normalizeAssistantProjectPath(file.path)?.toLowerCase(),
-      file,
-    ]));
-    const filesToUpdate = assistantFiles.filter(file => {
+    const canonicalPath = (path: string) => normalizeAssistantProjectPath(path)?.toLowerCase() || null;
+    const existingByPath = new Map(files.map(file => [canonicalPath(file.path), file]));
+    const filesToSave = assistantFiles.map(file => {
       const path = normalizeAssistantProjectPath(file.path);
-      return path ? existingByPath.has(path.toLowerCase()) : false;
-    });
-    if (filesToUpdate.length > 0) {
-      const fileList = filesToUpdate.slice(0, 5).map(file => `• ${file.path}`).join('\n');
-      const remainingCount = filesToUpdate.length - 5;
-      const confirmation = language === 'it'
-        ? `L'assistente aggiornerà ${filesToUpdate.length} file già presenti nel progetto:\n${fileList}${remainingCount > 0 ? `\n• e altri ${remainingCount}` : ''}\n\nVuoi continuare?`
-        : `The assistant will update ${filesToUpdate.length} existing project files:\n${fileList}${remainingCount > 0 ? `\n• and ${remainingCount} more` : ''}\n\nContinue?`;
-      if (!window.confirm(confirmation)) return null;
-    }
-
-    const filesToCreate = assistantFiles.map(file => {
-      const path = normalizeAssistantProjectPath(file.path);
-      if (!path) throw new Error(language === 'it' ? `Percorso file non valido: ${file.path}` : `Invalid file path: ${file.path}`);
+      if (!path) {
+        throw new Error(language === 'it' ? `Percorso file non valido: ${file.path}` : `Invalid file path: ${file.path}`);
+      }
       const name = path.split('/').pop()!;
       return { ...file, path, name, language: detectLanguageFromExtension(name) };
     });
+    const outputPaths = new Set(filesToSave.map(file => canonicalPath(file.path)));
+    if (outputPaths.size !== filesToSave.length) {
+      throw new Error(language === 'it' ? 'La risposta contiene percorsi file duplicati.' : 'The response contains duplicate file paths.');
+    }
+
+    const normalizedMoves = assistantMoves.map(move => {
+      const fromPath = normalizeAssistantProjectPath(move.fromPath);
+      const toPath = normalizeAssistantProjectPath(move.toPath);
+      if (!fromPath || !toPath) {
+        throw new Error(language === 'it' ? 'Il piano contiene un percorso file non valido.' : 'The plan contains an invalid file path.');
+      }
+      const sourceKey = canonicalPath(fromPath)!;
+      const targetKey = canonicalPath(toPath)!;
+      if (!existingByPath.has(sourceKey)) {
+        throw new Error(language === 'it'
+          ? `Il file da spostare non è salvato nel progetto: ${fromPath}`
+          : `The file to move is not saved in this project: ${fromPath}`);
+      }
+      if (!outputPaths.has(targetKey)) {
+        throw new Error(language === 'it'
+          ? `Manca il contenuto generato per la destinazione: ${toPath}`
+          : `Generated destination content is missing: ${toPath}`);
+      }
+      if (existingByPath.has(targetKey)) {
+        throw new Error(language === 'it'
+          ? `La destinazione esiste già e non può essere sovrascritta durante uno spostamento: ${toPath}`
+          : `The destination already exists and cannot be overwritten by a move: ${toPath}`);
+      }
+      if (outputPaths.has(sourceKey)) {
+        throw new Error(language === 'it'
+          ? `Il file sorgente non deve essere generato di nuovo come file separato: ${fromPath}`
+          : `The source must not also be generated as a separate file: ${fromPath}`);
+      }
+      return { fromPath, toPath };
+    });
+
+    const moveSources = new Set(normalizedMoves.map(move => canonicalPath(move.fromPath)));
+    const moveTargets = new Set(normalizedMoves.map(move => canonicalPath(move.toPath)));
+    if (moveSources.size !== normalizedMoves.length || moveTargets.size !== normalizedMoves.length
+      || normalizedMoves.some(move => moveSources.has(canonicalPath(move.toPath)))) {
+      throw new Error(language === 'it'
+        ? 'Il piano contiene spostamenti duplicati o incrociati.'
+        : 'The plan contains duplicate or overlapping moves.');
+    }
+
+    const filesToUpdate = filesToSave.filter(file => {
+      const path = canonicalPath(file.path);
+      return path ? existingByPath.has(path) : false;
+    });
+    if (filesToUpdate.length > 0 || normalizedMoves.length > 0) {
+      const lines = [
+        ...normalizedMoves.slice(0, 5).map(move => `• ${move.fromPath} → ${move.toPath}`),
+        ...filesToUpdate.slice(0, Math.max(0, 5 - normalizedMoves.length)).map(file => `• ${file.path}`),
+      ];
+      const remainingCount = normalizedMoves.length + filesToUpdate.length - lines.length;
+      const confirmation = language === 'it'
+        ? `L'assistente applicherà ${normalizedMoves.length} spostamenti e aggiornerà ${filesToUpdate.length} file esistenti:\n${lines.join('\n')}${remainingCount > 0 ? `\n• e altri ${remainingCount}` : ''}\n\nI percorsi sorgente saranno rimossi solo come parte dello spostamento confermato. Vuoi continuare?`
+        : `The assistant will apply ${normalizedMoves.length} moves and update ${filesToUpdate.length} existing files:\n${lines.join('\n')}${remainingCount > 0 ? `\n• and ${remainingCount} more` : ''}\n\nSource paths will be removed only as part of the confirmed move. Continue?`;
+      if (!window.confirm(confirmation)) return null;
+    }
+
     const created = await createAssistantFilesMutation.mutateAsync({
       projectId: currentProject,
-      files: filesToCreate,
+      files: filesToSave,
+      moves: normalizedMoves,
     });
     await utils.files.list.invalidate({ projectId: currentProject });
-    const savedByPath = new Map(created.files.map(file => [file.path, file]));
+    const savedByPath = new Map(created.files.map(file => [canonicalPath(file.path), file]));
+    const destinationBySource = new Map(normalizedMoves.map(move => [
+      canonicalPath(move.fromPath),
+      move.toPath,
+    ]));
     setOpenFiles(prev => prev.map(openFile => {
-      const saved = savedByPath.get(openFile.path);
+      const openPath = canonicalPath(openFile.path);
+      const destinationPath = openPath ? destinationBySource.get(openPath) : undefined;
+      const saved = savedByPath.get(canonicalPath(destinationPath || openFile.path));
       return saved
         ? { ...openFile, ...saved, content: saved.content || '', savedContent: saved.content || '' }
         : openFile;
     }));
-    const first = created.files[0];
+    const currentPath = currentFile ? canonicalPath(currentFile.path) : null;
+    const currentDestination = currentPath ? destinationBySource.get(currentPath) : undefined;
+    const currentSaved = savedByPath.get(canonicalPath(currentDestination || currentFile?.path || ''));
+    const first = currentSaved || created.files[0];
     if (first) {
       const file = {
-        id: first.id,
-        name: first.name,
+        ...first,
         type: 'file' as const,
-        path: first.path,
         content: first.content || '',
         savedContent: first.content || '',
       };
       setCurrentFile(file);
       setEditorContent(file.content);
       setSelectedLanguage(detectLanguageFromExtension(file.name) as any);
-      setOpenFiles(prev => [...prev.filter(openFile => openFile.path !== file.path), file]);
+      setOpenFiles(prev => [...prev.filter(openFile => canonicalPath(openFile.path) !== canonicalPath(file.path)), file]);
     }
-    return { created: created.createdCount, updated: created.updatedCount };
+    return { created: created.createdCount, updated: created.updatedCount, moved: created.movedCount };
   };
 
   const handleExportFile = (path: string, content: string) => {

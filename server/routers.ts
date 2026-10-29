@@ -572,18 +572,27 @@ export const appRouter = router({
           content: z.string().max(100_000),
           language: z.string().max(50),
         })).min(1).max(20),
+        moves: z.array(z.object({
+          fromPath: z.string().min(1).max(500),
+          toPath: z.string().min(1).max(500),
+        })).max(20).default([]),
       }))
       .mutation(async ({ ctx, input }) => {
         const normalizedPaths = input.files.map(file => file.path.replace(/\\/g, "/"));
+        const normalizedMoves = input.moves.map(move => ({
+          fromPath: move.fromPath.replace(/\\/g, "/"),
+          toPath: move.toPath.replace(/\\/g, "/"),
+        }));
         const paths = new Set<string>();
+        const isAllowedPath = (path: string) => !(
+          path.startsWith("/")
+          || /^[a-z]:/i.test(path)
+          || path.split("/").some(segment => !segment || segment === "." || segment === "..")
+          || /(^|\/)(?:\.env(?:\.[^/]+)?|node_modules|\.git)(?:\/|$)/i.test(path)
+          || /\.(?:pem|key|p12|pfx)$/i.test(path)
+        );
         for (const path of normalizedPaths) {
-          if (
-            path.startsWith("/")
-            || /^[a-z]:/i.test(path)
-            || path.split("/").some(segment => !segment || segment === "." || segment === "..")
-            || /(^|\/)(?:\.env(?:\.[^/]+)?|node_modules|\.git)(?:\/|$)/i.test(path)
-            || /\.(?:pem|key|p12|pfx)$/i.test(path)
-          ) {
+          if (!isAllowedPath(path)) {
             throw new TRPCError({ code: "BAD_REQUEST", message: "An assistant-generated file path is not allowed." });
           }
           if (paths.has(path.toLowerCase())) {
@@ -592,17 +601,54 @@ export const appRouter = router({
           paths.add(path.toLowerCase());
         }
 
+        const moveSources = new Set<string>();
+        const moveTargets = new Set<string>();
+        for (const move of normalizedMoves) {
+          if (!isAllowedPath(move.fromPath) || !isAllowedPath(move.toPath)) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "An assistant-generated move path is not allowed." });
+          }
+          const sourceKey = move.fromPath.toLowerCase();
+          const targetKey = move.toPath.toLowerCase();
+          if (
+            sourceKey === targetKey
+            || moveSources.has(sourceKey)
+            || moveTargets.has(targetKey)
+            || paths.has(sourceKey)
+            || !paths.has(targetKey)
+          ) {
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Assistant-generated moves must be unique and include their destination file." });
+          }
+          moveSources.add(sourceKey);
+          moveTargets.add(targetKey);
+        }
+        if (Array.from(moveTargets).some(path => moveSources.has(path))) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Assistant-generated moves cannot overlap." });
+        }
+
         const result = await db.createAssistantFiles(input.projectId, ctx.user.id, input.files.map((file, index) => ({
           ...file,
           path: normalizedPaths[index],
-        })));
+        })), normalizedMoves);
         if (result.missingProject) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Project not found or unavailable." });
+        }
+        if ("missingFiles" in result && result.missingFiles) {
+          throw new TRPCError({ code: "NOT_FOUND", message: `Move source not found: ${result.missingFiles.join(", ")}` });
+        }
+        if ("missingMoveOutput" in result) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: `Move destination has no generated file: ${result.missingMoveOutput}` });
+        }
+        if ("invalidMoves" in result) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Assistant-generated moves must be unique." });
+        }
+        if ("pathConflict" in result) {
+          throw new TRPCError({ code: "CONFLICT", message: `A project file already exists at ${result.pathConflict}.` });
         }
         return {
           files: result.files,
           createdCount: result.createdCount,
           updatedCount: result.updatedCount,
+          movedCount: result.movedCount,
         };
       }),
     update: protectedProcedure
