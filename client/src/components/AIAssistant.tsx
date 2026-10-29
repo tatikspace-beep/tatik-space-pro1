@@ -16,6 +16,7 @@ import { useAuth } from '@/_core/hooks/useAuth';
 import { formatCopy, getComponentCopy, getModelCopy } from '@/lib/assistantUiCopy';
 import { AITransparencyNotice } from '@/components/AITransparencySection';
 import { extractAssistantCodeBlocks, extractAssistantCodeFiles } from '@/lib/assistantCodeFiles';
+import { buildAssistantProjectContext, type AssistantProjectFile } from '@/lib/assistantProjectContext';
 
 // ---------------------------------------------------------------------------
 // Constants & Configuration
@@ -70,10 +71,12 @@ interface DailyUsage {
 }
 
 interface AIAssistantProps {
+  projectName?: string;
+  projectFiles?: AssistantProjectFile[];
   currentFilePath?: string;
   currentFileContent?: string;
   onCodeInsert?: (code: string) => Promise<void>;
-  onCreateFiles?: (files: Array<{ path: string; content: string }>) => Promise<void>;
+  onCreateFiles?: (files: Array<{ path: string; content: string }>) => Promise<{ created: number; updated: number } | null>;
 }
 
 // ---------------------------------------------------------------------------
@@ -122,7 +125,7 @@ function renderMarkdown(text: string): string {
 // Main Component
 // ---------------------------------------------------------------------------
 
-export function AIAssistant({ currentFilePath, currentFileContent, onCodeInsert, onCreateFiles }: AIAssistantProps) {
+export function AIAssistant({ projectName, projectFiles = [], currentFilePath, currentFileContent, onCodeInsert, onCreateFiles }: AIAssistantProps) {
   const { user } = useAuth({ redirectOnUnauthenticated: false });
   const { language } = useLanguage();
   const copy = getComponentCopy(language);
@@ -289,12 +292,17 @@ export function AIAssistant({ currentFilePath, currentFileContent, onCodeInsert,
       const apiHistory = nextMessages
         .filter((m) => m.id !== 'welcome' && !m.id.startsWith('switch-'))
         .map((m) => ({ role: m.role, content: m.content }));
-      if (currentFilePath && currentFileContent !== undefined) {
-        const maxContextLength = 16_000;
-        const truncatedContent = currentFileContent.slice(0, maxContextLength);
+      apiHistory.splice(0, Math.max(0, apiHistory.length - 49));
+      if (projectFiles.length > 0 || (currentFilePath && currentFileContent !== undefined)) {
+        const contextFiles = projectFiles.slice();
+        if (currentFilePath && currentFileContent !== undefined) {
+          const currentIndex = contextFiles.findIndex(file => file.path === currentFilePath);
+          if (currentIndex === -1) contextFiles.unshift({ path: currentFilePath, content: currentFileContent });
+          else contextFiles[currentIndex] = { ...contextFiles[currentIndex], content: currentFileContent };
+        }
         apiHistory.unshift({
           role: 'user',
-          content: `Current editor file context (read-only): ${currentFilePath}\n${truncatedContent}${currentFileContent.length > maxContextLength ? '\n[File content truncated to fit the AI context limit.]' : ''}`,
+          content: buildAssistantProjectContext(projectName, contextFiles, currentFilePath),
         });
       }
 
@@ -328,7 +336,7 @@ export function AIAssistant({ currentFilePath, currentFileContent, onCodeInsert,
       setIsLoading(false);
       textareaRef.current?.focus();
     }
-  }, [input, isLoading, messages, selectedModel, dailyUsage, isLimitReached, chatMutation, currentFilePath, currentFileContent]);
+  }, [input, isLoading, messages, selectedModel, dailyUsage, isLimitReached, chatMutation, currentFilePath, currentFileContent, projectName, projectFiles]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -683,8 +691,13 @@ export function AIAssistant({ currentFilePath, currentFileContent, onCodeInsert,
                             ? async () => {
                               const files = extractAssistantCodeFiles(msg.content);
                               try {
-                                await onCreateFiles(files);
-                                toast.success(language === 'it' ? `${files.length} file creati nel progetto` : `${files.length} files created in the project`);
+                                const result = await onCreateFiles(files);
+                                if (result) {
+                                  const summary = language === 'it'
+                                    ? `${result.created} file creati, ${result.updated} aggiornati nel progetto`
+                                    : `${result.created} files created, ${result.updated} updated in the project`;
+                                  toast.success(summary);
+                                }
                               } catch (error) {
                                 toast.error(error instanceof Error ? error.message : copy.ai.chatError);
                               }
@@ -738,11 +751,11 @@ export function AIAssistant({ currentFilePath, currentFileContent, onCodeInsert,
           {/* Input / Analyze Button */}
           {!bugFixMode && !optimizationMode ? (
             <div className="border-t bg-background/60 shrink-0">
-              {currentFilePath && currentFileContent !== undefined && (
+              {(projectFiles.length > 0 || (currentFilePath && currentFileContent !== undefined)) && (
                 <p className="px-4 pt-2 text-[10px] text-muted-foreground">
                   {language === 'it'
-                    ? `Contesto inviato al modello IA selezionato: ${currentFilePath}`
-                    : `Context sent to the selected AI model: ${currentFilePath}`}
+                    ? `Contesto del progetto inviato al modello IA selezionato (${projectFiles.length} file${currentFilePath ? ` · attivo: ${currentFilePath}` : ''})`
+                    : `Project context sent to the selected AI model (${projectFiles.length} files${currentFilePath ? ` · active: ${currentFilePath}` : ''})`}
                 </p>
               )}
               <form

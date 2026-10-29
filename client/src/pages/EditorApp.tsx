@@ -33,6 +33,7 @@ import { getEditorAppCopy } from '@/lib/editorAppCopy';
 import type { EditorAppCopyKey } from '@/lib/editorAppCopy';
 import { getEditorAppLabelFallback } from '@/lib/editorAppLabelFallbacks';
 import { normalizePreviewPath } from '@/lib/previewFileResolver';
+import { normalizeAssistantProjectPath } from '@/lib/assistantProjectContext';
 import { createPreviewAssetDocument, isPreviewBinaryAsset } from '@/lib/previewAssets';
 import { createPreviewDataDocument } from '@/lib/previewDataViewer';
 import { createPreviewRuntimeDocument, getPreviewExecutionSupport, getPreviewRuntimeNotice } from '@/lib/previewRuntime';
@@ -1702,15 +1703,41 @@ export default function EditorApp() {
         ? 'Apri o crea un progetto prima di generare file.'
         : 'Open or create a project before generating files.');
     }
+    const existingByPath = new Map(files.map(file => [
+      normalizeAssistantProjectPath(file.path)?.toLowerCase(),
+      file,
+    ]));
+    const filesToUpdate = assistantFiles.filter(file => {
+      const path = normalizeAssistantProjectPath(file.path);
+      return path ? existingByPath.has(path.toLowerCase()) : false;
+    });
+    if (filesToUpdate.length > 0) {
+      const fileList = filesToUpdate.slice(0, 5).map(file => `• ${file.path}`).join('\n');
+      const remainingCount = filesToUpdate.length - 5;
+      const confirmation = language === 'it'
+        ? `L'assistente aggiornerà ${filesToUpdate.length} file già presenti nel progetto:\n${fileList}${remainingCount > 0 ? `\n• e altri ${remainingCount}` : ''}\n\nVuoi continuare?`
+        : `The assistant will update ${filesToUpdate.length} existing project files:\n${fileList}${remainingCount > 0 ? `\n• and ${remainingCount} more` : ''}\n\nContinue?`;
+      if (!window.confirm(confirmation)) return null;
+    }
+
     const filesToCreate = assistantFiles.map(file => {
-      const name = file.path.split('/').pop()!;
-      return { ...file, name, language: detectLanguageFromExtension(name) };
+      const path = normalizeAssistantProjectPath(file.path);
+      if (!path) throw new Error(language === 'it' ? `Percorso file non valido: ${file.path}` : `Invalid file path: ${file.path}`);
+      const name = path.split('/').pop()!;
+      return { ...file, path, name, language: detectLanguageFromExtension(name) };
     });
     const created = await createAssistantFilesMutation.mutateAsync({
       projectId: currentProject,
       files: filesToCreate,
     });
     await utils.files.list.invalidate({ projectId: currentProject });
+    const savedByPath = new Map(created.files.map(file => [file.path, file]));
+    setOpenFiles(prev => prev.map(openFile => {
+      const saved = savedByPath.get(openFile.path);
+      return saved
+        ? { ...openFile, ...saved, content: saved.content || '', savedContent: saved.content || '' }
+        : openFile;
+    }));
     const first = created.files[0];
     if (first) {
       const file = {
@@ -1721,11 +1748,12 @@ export default function EditorApp() {
         content: first.content || '',
         savedContent: first.content || '',
       };
-      setCurrentFile(file as any);
+      setCurrentFile(file);
       setEditorContent(file.content);
       setSelectedLanguage(detectLanguageFromExtension(file.name) as any);
       setOpenFiles(prev => [...prev.filter(openFile => openFile.path !== file.path), file]);
     }
+    return { created: created.createdCount, updated: created.updatedCount };
   };
 
   const handleExportFile = (path: string, content: string) => {
@@ -2926,6 +2954,8 @@ export default function EditorApp() {
               </Button>
               <VersionHistory versions={versions} onRestore={handleRestoreVersion} />
               <AIAssistant
+                projectName={projects.find(project => project.id === currentProject)?.name}
+                projectFiles={previewFiles}
                 currentFilePath={currentFile?.path}
                 currentFileContent={currentFile ? editorContent : undefined}
                 onCodeInsert={handleAssistantApplyCode}

@@ -240,19 +240,34 @@ export async function createAssistantFiles(projectId: number, userId: number, ne
       .select({ id: projects.id })
       .from(projects)
       .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
+      .for("update")
       .limit(1);
     if (!project) return { missingProject: true as const, files: [] };
 
-    const existingFiles = await tx.select({ path: files.path }).from(files).where(eq(files.projectId, projectId));
-    const existingPaths = new Set(existingFiles.map(file => file.path.toLowerCase()));
-    const conflicts = newFiles.filter(file => existingPaths.has(file.path.toLowerCase())).map(file => file.path);
-    if (conflicts.length > 0) return { missingProject: false as const, conflicts, files: [] };
+    const existingFiles = await tx.select().from(files).where(eq(files.projectId, projectId));
+    const canonicalPath = (path: string) => path.replace(/\\/g, "/").replace(/^\/+/, "").toLowerCase();
+    const existingByPath = new Map(existingFiles.map(file => [canonicalPath(file.path), file]));
+    const savedFiles = [];
+    let createdCount = 0;
+    let updatedCount = 0;
 
-    const createdFiles = await tx
-      .insert(files)
-      .values(newFiles.map(file => ({ ...file, projectId })))
-      .returning();
-    return { missingProject: false as const, conflicts: [], files: createdFiles };
+    for (const file of newFiles) {
+      const existing = existingByPath.get(canonicalPath(file.path));
+      const saved = existing
+        ? (await tx.update(files).set({
+          name: file.name,
+          content: file.content,
+          language: file.language,
+          updatedAt: new Date(),
+        }).where(and(eq(files.id, existing.id), eq(files.projectId, projectId))).returning())[0]
+        : (await tx.insert(files).values({ ...file, projectId }).returning())[0];
+
+      savedFiles.push(saved);
+      if (existing) updatedCount += 1;
+      else createdCount += 1;
+    }
+
+    return { missingProject: false as const, files: savedFiles, createdCount, updatedCount };
   });
 }
 

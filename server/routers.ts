@@ -599,13 +599,11 @@ export const appRouter = router({
         if (result.missingProject) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Project not found or unavailable." });
         }
-        if (result.conflicts.length > 0) {
-          throw new TRPCError({
-            code: "CONFLICT",
-            message: `These files already exist and were not overwritten: ${result.conflicts.join(", ")}`,
-          });
-        }
-        return { files: result.files };
+        return {
+          files: result.files,
+          createdCount: result.createdCount,
+          updatedCount: result.updatedCount,
+        };
       }),
     update: protectedProcedure
       .input(z.object({
