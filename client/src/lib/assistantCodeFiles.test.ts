@@ -31,6 +31,29 @@ describe("assistant code response parsing", () => {
       .toEqual([{ path: "pages/home.html", content: "<h1>Home</h1>" }]);
   });
 
+  it("removes numbered Markdown list prefixes from file headings", () => {
+    const response = [
+      "1️⃣ `index.html`",
+      "```html",
+      "<a href=\"css/style.css\">Style</a>",
+      "```",
+      "2️⃣ `css/style.css`",
+      "```css",
+      "body { color: navy; }",
+      "```",
+      "3. `js/main.js`",
+      "```js",
+      "console.log('Belice');",
+      "```",
+    ].join("\n");
+
+    expect(extractAssistantCodeFiles(response)).toEqual([
+      { path: "index.html", content: '<a href="css/style.css">Style</a>' },
+      { path: "css/style.css", content: "body { color: navy; }" },
+      { path: "js/main.js", content: "console.log('Belice');" },
+    ]);
+  });
+
   it("ignores unsafe paths, duplicate paths, and unnamed blocks", () => {
     const response = [
       "### ../outside.ts",

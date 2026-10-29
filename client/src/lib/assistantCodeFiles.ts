@@ -91,6 +91,7 @@ function filePathBeforeFence(response: string, fenceStart: number) {
     const line = precedingLines[index].trim();
     const candidate = line
       .replace(/^#{1,6}\s+/, "")
+      .replace(/^(?:\d+\uFE0F?\u20E3|\d+[.)])\s+/, "")
       .replace(/^(?:file|path)\s*:\s*/i, "")
       .replace(/^\*\*(.*?)\*\*$/, "$1")
       .replace(/^`(.*?)`$/, "$1")
