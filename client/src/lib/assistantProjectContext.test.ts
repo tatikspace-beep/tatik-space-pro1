@@ -15,6 +15,17 @@ describe("buildAssistantProjectContext", () => {
     expect(context).toContain("href=\"about.html\"");
   });
 
+  it("prioritizes files matching the current consolidation request", () => {
+    const context = buildAssistantProjectContext("Site", [
+      { path: "z-shared.js", content: "export const app = true;" },
+      { path: "belice/assets/main.js", content: "export const shop = true;" },
+      { path: "belice.html", content: '<a href="belice/index.html">Belice</a>' },
+    ], undefined, "Unisci i file del progetto Belice nella cartella belice");
+
+    expect(context.indexOf("- belice.html")).toBeLessThan(context.indexOf("- z-shared.js"));
+    expect(context.indexOf("File: belice.html")).toBeLessThan(context.indexOf("File: z-shared.js"));
+  });
+
   it("normalizes legacy root-leading paths without accepting traversal", () => {
     expect(normalizeAssistantProjectPath("/src/index.html")).toBe("src/index.html");
     expect(normalizeAssistantProjectPath("../outside.html")).toBeNull();
@@ -42,7 +53,7 @@ describe("buildAssistantProjectContext", () => {
       { path: "index.html", content: "x".repeat(20_000) },
     ]);
 
-    expect(context.length).toBeLessThanOrEqual(14_000);
+    expect(context.length).toBeLessThanOrEqual(18_000);
     expect(context).toContain("[File content truncated]");
   });
 
@@ -52,7 +63,7 @@ describe("buildAssistantProjectContext", () => {
       content: "<p>page</p>",
     })));
 
-    expect(context.length).toBeLessThanOrEqual(14_000);
+    expect(context.length).toBeLessThanOrEqual(18_000);
     expect(context).toContain("more files");
   });
 });

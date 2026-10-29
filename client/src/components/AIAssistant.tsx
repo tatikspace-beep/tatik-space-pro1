@@ -311,7 +311,7 @@ export function AIAssistant({ projectName, projectFiles = [], currentFilePath, c
         }
         apiHistory.unshift({
           role: 'user',
-          content: buildAssistantProjectContext(projectName, contextFiles, currentFilePath),
+          content: buildAssistantProjectContext(projectName, contextFiles, currentFilePath, trimmed),
         });
       }
 

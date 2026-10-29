@@ -35,6 +35,7 @@ import { getEditorAppLabelFallback } from '@/lib/editorAppLabelFallbacks';
 import { normalizePreviewPath } from '@/lib/previewFileResolver';
 import { normalizeAssistantProjectPath } from '@/lib/assistantProjectContext';
 import type { AssistantProjectMove } from '@/lib/assistantCodeFiles';
+import { validateAssistantProjectReferences } from '@/lib/assistantProjectIntegrity';
 import { createPreviewAssetDocument, isPreviewBinaryAsset } from '@/lib/previewAssets';
 import { createPreviewDataDocument } from '@/lib/previewDataViewer';
 import { createPreviewRuntimeDocument, getPreviewExecutionSupport, getPreviewRuntimeNotice } from '@/lib/previewRuntime';
@@ -1760,6 +1761,24 @@ export default function EditorApp() {
       throw new Error(language === 'it'
         ? 'Il piano contiene spostamenti duplicati o incrociati.'
         : 'The plan contains duplicate or overlapping moves.');
+    }
+
+    const referenceIssues = validateAssistantProjectReferences(
+      files.map(file => ({ path: file.path, content: file.content })),
+      filesToSave,
+      normalizedMoves,
+    );
+    if (referenceIssues.length > 0) {
+      const issueLines = referenceIssues.slice(0, 8).map(issue => {
+        const detail = issue.reason === 'stale'
+          ? (language === 'it' ? 'riferimento al vecchio percorso' : 'reference still points to old path')
+          : (language === 'it' ? 'file non presente nel progetto' : 'file is not in the project');
+        return `• ${issue.sourcePath} → ${issue.reference} (${detail})`;
+      });
+      const extraCount = referenceIssues.length - issueLines.length;
+      throw new Error(language === 'it'
+        ? `Non ho salvato i file: ${referenceIssues.length} riferimenti locali non sono collegati correttamente.\n${issueLines.join('\n')}${extraCount > 0 ? `\n• e altri ${extraCount}` : ''}\nChiedi all'assistente di includere o correggere questi file prima di applicare il progetto.`
+        : `Files were not saved: ${referenceIssues.length} local references are not connected correctly.\n${issueLines.join('\n')}${extraCount > 0 ? `\n• and ${extraCount} more` : ''}\nAsk the assistant to include or fix these files before applying the project.`);
     }
 
     const filesToUpdate = filesToSave.filter(file => {
