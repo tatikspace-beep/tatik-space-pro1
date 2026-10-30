@@ -144,6 +144,7 @@ export const PUBLIC_SEO: Record<string, Omit<SeoProps, "path">> = {
   "/blog": {
     title: "Blog sviluppo web e AI | Tatik.space",
     description: "Guide, aggiornamenti e consigli per sviluppatori su web development, AI e strumenti cloud.",
+    noIndex: true,
   },
   "/pricing": {
     title: "Prezzi Tatik.space | Piano gratuito e Pro",
