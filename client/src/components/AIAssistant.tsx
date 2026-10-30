@@ -340,10 +340,10 @@ export function AIAssistant({ projectId, projectName, projectFiles = [], current
           task: trimmed,
           history: messages
             .filter(message => message.id !== 'welcome' && !message.id.startsWith('switch-'))
-            .slice(-12)
-            .map(message => ({ role: message.role, content: message.content.slice(0, 8000) })),
+            .slice(-8)
+            .map(message => ({ role: message.role, content: message.content.slice(0, 4000) })),
           context: contextFiles.length > 0
-            ? buildAssistantProjectContext(projectName, contextFiles, currentFilePath, trimmed).slice(0, 45000)
+            ? buildAssistantProjectContext(projectName, contextFiles, currentFilePath, trimmed).slice(0, 12000)
             : undefined,
         });
         content = `**Piano di lavoro:** ${response.plan}\n\n**Deleghe:**\n${response.delegations.map(item => `- ${item.role}: ${item.task}`).join('\n')}\n\n${response.content}`;

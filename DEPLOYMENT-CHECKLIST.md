@@ -176,9 +176,11 @@ Le variabili SMTP sono necessarie solo se viene implementato e attivato un perco
 ```text
 HF_API_KEY=...
 GEMINI_API_KEY=...
+GEMINI_MODEL=gemini-3.8-flash
 ```
 
 Sono chiavi server-only. Non usare mai `VITE_HF_API_KEY` o `VITE_GEMINI_API_KEY`.
+`GEMINI_MODEL` è facoltativa; se omessa, l'app usa il modello Gemini Flash corrente predefinito.
 
 ### Storage marketplace e file
 

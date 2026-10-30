@@ -39,6 +39,7 @@ async function callOpenAICompatible(
   messages: Array<{ role: "system" | "user" | "assistant"; content: string }>,
   provider: string,
   extraHeaders: Record<string, string> = {},
+  maxTokens = 8192,
 ): Promise<ChatResult> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30_000);
@@ -53,34 +54,47 @@ async function callOpenAICompatible(
       body: JSON.stringify({
         model,
         messages,
-        max_tokens: 8192,
+        max_tokens: maxTokens,
         temperature: 0.3,
         stream: false,
       }),
       signal: controller.signal,
     });
     const payload = await response.json().catch(() => null) as {
-      choices?: Array<{ message?: { content?: unknown } }>;
+      choices?: Array<{ message?: { content?: unknown }; finish_reason?: string }>;
       error?: string | { message?: string };
       message?: string;
     } | null;
     if (!response.ok) {
       throw new Error(providerErrorMessage(payload, response.status));
     }
-    const content = payload?.choices?.[0]?.message?.content;
-    if (typeof content !== "string" || !content.trim()) {
-      throw new Error(`${provider} ha restituito una risposta vuota o non valida`);
+    const choice = payload?.choices?.[0];
+    const rawContent = choice?.message?.content;
+    const content = typeof rawContent === "string"
+      ? rawContent.trim()
+      : Array.isArray(rawContent)
+        ? rawContent.map(part => {
+          if (typeof part === "string") return part;
+          if (part && typeof part === "object" && "text" in part && typeof part.text === "string") {
+            return part.text;
+          }
+          return "";
+        }).join("").trim()
+        : "";
+    if (!content) {
+      const reason = choice?.finish_reason ? ` (finish_reason: ${choice.finish_reason})` : "";
+      throw new Error(`${provider} ha restituito una risposta vuota o non valida${reason}`);
     }
-    return { content: content.trim(), provider, model };
+    return { content, provider, model };
   } finally {
     clearTimeout(timeout);
   }
 }
 
-async function callGemini(messages: AssistantMessage[], systemPrompt: string): Promise<ChatResult> {
+async function callGemini(messages: AssistantMessage[], systemPrompt: string, maxTokens: number): Promise<ChatResult> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY non configurata");
-  const model = "gemini-2.5-flash";
+  const model = process.env.GEMINI_MODEL || "gemini-3.8-flash";
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30_000);
   try {
@@ -95,7 +109,7 @@ async function callGemini(messages: AssistantMessage[], systemPrompt: string): P
             parts: [{ text: message.content }],
           })),
           systemInstruction: { parts: [{ text: systemPrompt }] },
-          generationConfig: { maxOutputTokens: 8192, temperature: 0.3 },
+          generationConfig: { maxOutputTokens: maxTokens, temperature: 0.3 },
         }),
         signal: controller.signal,
       },
@@ -123,6 +137,7 @@ export async function generateAssistantResponse(
   selectedModel: AssistantModel,
   history: AssistantMessage[],
   systemPrompt = SYSTEM_PROMPT,
+  maxTokens = 8192,
 ): Promise<ChatResult> {
   const messages = [{ role: "system" as const, content: systemPrompt }, ...history];
   const groqKey = process.env.GROQ_API_KEY;
@@ -132,7 +147,7 @@ export async function generateAssistantResponse(
   const providers: Array<{ name: string; run: () => Promise<ChatResult> }> = [];
   const addGemini = () => {
     if (process.env.GEMINI_API_KEY) {
-      providers.push({ name: "Gemini", run: () => callGemini(history, systemPrompt) });
+      providers.push({ name: "Gemini", run: () => callGemini(history, systemPrompt, maxTokens) });
     }
   };
   const addGroq = () => {
@@ -145,6 +160,8 @@ export async function generateAssistantResponse(
           groqModel,
           messages,
           "Groq",
+          {},
+          maxTokens,
         ),
       });
     }
@@ -163,6 +180,7 @@ export async function generateAssistantResponse(
             "HTTP-Referer": "https://www.tatik.space",
             "X-Title": "Tatik.space",
           },
+          maxTokens,
         ),
       });
     }
@@ -187,7 +205,7 @@ export async function generateAssistantResponse(
         const result = await invokeLLM({
           model,
           messages,
-          maxTokens: 8192,
+          maxTokens,
           temperature: 0.3,
         });
         const content = result.choices[0]?.message.content.trim();
