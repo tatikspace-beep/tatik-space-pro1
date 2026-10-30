@@ -27,6 +27,16 @@ const partnerLinks = [
     region: 'DE',
     href: 'https://www.awin1.com/awclick.php?gid=375521&mid=14693&awinaffid=3125172&linkid=2505072&clickref=',
   },
+  {
+    name: 'Imou IT',
+    region: 'Italy',
+    href: 'https://www.awin1.com/awclick.php?gid=589780&mid=122428&awinaffid=3125172&linkid=4931172&clickref=',
+  },
+  {
+    name: 'DoctorQuality',
+    region: 'Italy',
+    href: 'https://www.awin1.com/awclick.php?gid=584744&mid=121176&awinaffid=3125172&linkid=4551003&clickref=',
+  },
 ];
 
 const disclosureCopy: Record<string, { title: string; disclosure: string; link: string }> = {
