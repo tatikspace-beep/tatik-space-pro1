@@ -82,17 +82,22 @@ async function resolveProviderUserId(user: NonNullable<TrpcContext["user"]>) {
   return syncedUser.id;
 }
 
+function isAdminUser(user: NonNullable<TrpcContext["user"]>) {
+  return user.role === "admin" || isAdminEmail(user.email);
+}
+
 async function assertProjectAccess(
   user: NonNullable<TrpcContext["user"]>,
   projectId: number,
   agentOnly = false,
 ) {
   const userId = await resolveProviderUserId(user);
-  const projectAccess = await db.hasProjectAccess(projectId, userId, user.role === "admin");
+  const isAdmin = isAdminUser(user);
+  const projectAccess = await db.hasProjectAccess(projectId, userId, isAdmin);
   const allowed = projectAccess && (!agentOnly || await db.hasProjectAgentAccess(
     projectId,
     userId,
-    user.role === "admin",
+    isAdmin,
     isAgentEarlyAccessEmail(user.email),
   ));
   if (!allowed) {
@@ -482,7 +487,7 @@ export const appRouter = router({
       const userId = await resolveProviderUserId(ctx.user);
       return db.getProjectsForUser(
         userId,
-        ctx.user.role === "admin",
+        isAdminUser(ctx.user),
         isAgentEarlyAccessEmail(ctx.user.email),
       );
     }),
@@ -549,7 +554,7 @@ export const appRouter = router({
         if (!await db.canManageProjectMembers(
           input.projectId,
           await resolveProviderUserId(ctx.user),
-          ctx.user.role === "admin",
+          isAdminUser(ctx.user),
         )) {
           throw new TRPCError({ code: "FORBIDDEN", message: "Solo il proprietario o un amministratore può gestire i collaboratori." });
         }
@@ -564,7 +569,7 @@ export const appRouter = router({
         if (!await db.canManageProjectMembers(
           input.projectId,
           await resolveProviderUserId(ctx.user),
-          ctx.user.role === "admin",
+          isAdminUser(ctx.user),
         )) {
           throw new TRPCError({ code: "FORBIDDEN", message: "Solo il proprietario o un amministratore può gestire i collaboratori." });
         }
@@ -582,7 +587,7 @@ export const appRouter = router({
         if (!await db.canManageProjectMembers(
           input.projectId,
           await resolveProviderUserId(ctx.user),
-          ctx.user.role === "admin",
+          isAdminUser(ctx.user),
         )) {
           throw new TRPCError({ code: "FORBIDDEN", message: "Solo il proprietario o un amministratore può gestire i collaboratori." });
         }
@@ -680,7 +685,7 @@ export const appRouter = router({
         const result = await db.createAssistantFiles(input.projectId, userId, input.files.map((file, index) => ({
           ...file,
           path: normalizedPaths[index],
-        })), normalizedMoves, ctx.user.role === "admin");
+        })), normalizedMoves, isAdminUser(ctx.user));
         if (result.missingProject) {
           throw new TRPCError({ code: "NOT_FOUND", message: "Project not found or unavailable." });
         }
@@ -730,7 +735,7 @@ export const appRouter = router({
           userId,
           input.name,
           input.path,
-          ctx.user.role === "admin",
+          isAdminUser(ctx.user),
         );
         if ("notFound" in result) {
           throw new TRPCError({ code: "NOT_FOUND", message: "File not found or unavailable." });
@@ -1230,11 +1235,11 @@ export const appRouter = router({
       .query(async ({ ctx, input }) => {
         const userId = await resolveProviderUserId(ctx.user);
         const available = input.projectId !== null
-          && await db.hasProjectAccess(input.projectId, userId, ctx.user.role === "admin")
+          && await db.hasProjectAccess(input.projectId, userId, isAdminUser(ctx.user))
           && await db.hasProjectAgentAccess(
             input.projectId,
             userId,
-            ctx.user.role === "admin",
+            isAdminUser(ctx.user),
             isAgentEarlyAccessEmail(ctx.user.email),
           );
         return {
