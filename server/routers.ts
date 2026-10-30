@@ -1251,7 +1251,7 @@ export const appRouter = router({
       .input(z.object({
         projectId: z.number().int().positive(),
         model: z.enum(["qwen", "deepseek", "gemini"]),
-        task: z.string().trim().min(1).max(4000),
+        task: z.string().trim().min(1).max(20000),
         history: z.array(z.object({
           role: z.enum(["user", "assistant"]),
           content: z.string().min(1).max(4000),
