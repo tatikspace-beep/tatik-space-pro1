@@ -3,14 +3,14 @@ import { useLanguage } from '@/contexts/LanguageContext';
 
 const partnerLinks = [
   {
-    name: 'Omneky AI Advertising',
-    region: 'AI creative and campaign tools',
-    href: 'https://www.dpbolvw.net/click-101904898-17289052',
+    name: 'NordVPN DE',
+    region: 'Germany',
+    href: 'https://www.awin1.com/awclick.php?gid=323861&mid=9399&awinaffid=3125172&linkid=2052032&clickref=',
   },
   {
-    name: 'NordVPN',
+    name: 'NordVPN PL',
     region: 'Poland',
-    href: 'https://www.awin1.com/cread.php?awinmid=30093&awinaffid=3125172',
+    href: 'https://www.awin1.com/awclick.php?gid=436993&mid=30093&awinaffid=3125172&linkid=3137738&clickref=',
   },
   {
     name: 'The Great Courses',
