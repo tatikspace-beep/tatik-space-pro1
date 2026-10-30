@@ -453,7 +453,23 @@ export function AIAssistant({ projectId, projectName, projectFiles = [], current
             </div>
 
             {/* Model tabs */}
-            <div className="flex gap-0.5 border-b">
+            <div className="flex min-w-0 gap-0.5 overflow-x-auto border-b">
+              <button
+                onClick={() => {
+                  setAgentMode(true);
+                  setBugFixMode(false);
+                  setOptimizationMode(false);
+                }}
+                className={cn(
+                  'relative flex shrink-0 items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-t-md transition-all border-b-2 -mb-px',
+                  agentMode
+                    ? 'border-primary text-primary bg-primary/5'
+                    : 'border-transparent text-primary hover:bg-primary/5'
+                )}
+              >
+                <Bot className="h-3.5 w-3.5" />
+                <span>Agente AI</span>
+              </button>
               {isPro && <>
               {MODELS.map((model) => {
                 const isActive = selectedModel === model.id;
@@ -465,7 +481,7 @@ export function AIAssistant({ projectId, projectName, projectFiles = [], current
                       handleModelChange(model.id);
                     }}
                     className={cn(
-                      'relative flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-md transition-all border-b-2 -mb-px',
+                      'relative flex shrink-0 items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-md transition-all border-b-2 -mb-px',
                       isActive && !bugFixMode
                         ? 'border-primary text-foreground bg-background'
                         : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
@@ -485,7 +501,7 @@ export function AIAssistant({ projectId, projectName, projectFiles = [], current
                   setBugFixMode(true);
                 }}
                 className={cn(
-                  'relative flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-md transition-all border-b-2 -mb-px',
+                  'relative flex shrink-0 items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-md transition-all border-b-2 -mb-px',
                   bugFixMode
                     ? 'border-primary text-foreground bg-background'
                     : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
@@ -502,7 +518,7 @@ export function AIAssistant({ projectId, projectName, projectFiles = [], current
                   setOptimizationMode(true);
                 }}
                 className={cn(
-                  'relative flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-md transition-all border-b-2 -mb-px',
+                  'relative flex shrink-0 items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-md transition-all border-b-2 -mb-px',
                   optimizationMode
                     ? 'border-primary text-foreground bg-background'
                     : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
@@ -512,22 +528,6 @@ export function AIAssistant({ projectId, projectName, projectFiles = [], current
                 <span>{copy.ai.optimizeTab}</span>
               </button>
               </>}
-              <button
-                onClick={() => {
-                  setAgentMode(true);
-                  setBugFixMode(false);
-                  setOptimizationMode(false);
-                }}
-                className={cn(
-                  'relative flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-md transition-all border-b-2 -mb-px',
-                  agentMode
-                    ? 'border-primary text-foreground bg-background'
-                    : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
-                )}
-              >
-                <Bot className="h-3.5 w-3.5" />
-                <span>Agente AI</span>
-              </button>
             </div>
           </DialogHeader>
 
