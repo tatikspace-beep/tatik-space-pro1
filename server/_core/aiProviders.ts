@@ -7,6 +7,44 @@ type ChatResult = {
   model: string;
 };
 
+class ProviderRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly retryAfterMs?: number,
+  ) {
+    super(message);
+    this.name = "ProviderRequestError";
+  }
+}
+
+function parseRetryDelay(value: string | null, unit: "seconds" | "reset" = "seconds"): number | undefined {
+  if (!value) return undefined;
+  const numeric = Number.parseFloat(value);
+  if (Number.isFinite(numeric)) {
+    if (unit === "reset" && value.trim().endsWith("ms")) return numeric;
+    if (unit === "reset" && value.trim().endsWith("m")) return numeric * 60_000;
+    return numeric * 1000;
+  }
+  const date = Date.parse(value);
+  return Number.isNaN(date) ? undefined : Math.max(0, date - Date.now());
+}
+
+async function retryGroqRateLimit<T>(request: () => Promise<T>): Promise<T> {
+  try {
+    return await request();
+  } catch (error) {
+    if (!(error instanceof ProviderRequestError) || error.status !== 429 || error.retryAfterMs === undefined) {
+      throw error;
+    }
+    if (error.retryAfterMs > 15_000) throw error;
+    if (error.retryAfterMs > 0) {
+      await new Promise(resolve => setTimeout(resolve, error.retryAfterMs));
+    }
+    return request();
+  }
+}
+
 const SYSTEM_PROMPT = `You are an expert web developer, UI/UX designer, and SEO specialist integrated into Tatik.space Pro code editor.
 Respond in the same language as the user. Always wrap code in triple backticks with a language identifier.
 When the user requests separate project files, put each path on its own Markdown heading immediately before its code block (for example, "### src/styles.css"), then output the complete file content in that block.
@@ -66,7 +104,11 @@ async function callOpenAICompatible(
       message?: string;
     } | null;
     if (!response.ok) {
-      throw new Error(providerErrorMessage(payload, response.status));
+      const retryAfterMs = response.status === 429
+        ? parseRetryDelay(response.headers.get("retry-after"))
+          ?? parseRetryDelay(response.headers.get("x-ratelimit-reset-tokens"), "reset")
+        : undefined;
+      throw new ProviderRequestError(providerErrorMessage(payload, response.status), response.status, retryAfterMs);
     }
     const choice = payload?.choices?.[0];
     const rawContent = choice?.message?.content;
@@ -96,7 +138,7 @@ async function callGemini(messages: AssistantMessage[], systemPrompt: string, ma
   if (!apiKey) throw new Error("GEMINI_API_KEY non configurata");
   const model = process.env.GEMINI_MODEL || "gemini-3.8-flash";
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30_000);
+  const timeout = setTimeout(() => controller.abort(), 45_000);
   try {
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
@@ -128,6 +170,11 @@ async function callGemini(messages: AssistantMessage[], systemPrompt: string, ma
       .trim();
     if (!content) throw new Error("Gemini ha restituito una risposta vuota");
     return { content, provider: "Gemini", model };
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("Gemini ha superato il tempo massimo di attesa (45 secondi)");
+    }
+    throw error;
   } finally {
     clearTimeout(timeout);
   }
@@ -154,7 +201,7 @@ export async function generateAssistantResponse(
     if (groqKey) {
       providers.push({
         name: "Groq",
-        run: () => callOpenAICompatible(
+        run: () => retryGroqRateLimit(() => callOpenAICompatible(
           "https://api.groq.com/openai/v1/chat/completions",
           groqKey,
           groqModel,
@@ -162,7 +209,7 @@ export async function generateAssistantResponse(
           "Groq",
           {},
           maxTokens,
-        ),
+        )),
       });
     }
   };
@@ -180,7 +227,7 @@ export async function generateAssistantResponse(
             "HTTP-Referer": "https://www.tatik.space",
             "X-Title": "Tatik.space",
           },
-          maxTokens,
+          Math.max(maxTokens, 2048),
         ),
       });
     }

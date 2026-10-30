@@ -29,7 +29,14 @@ describe("generateAssistantResponse", () => {
     process.env.GROQ_API_KEY = "test-groq-key";
     process.env.OPENROUTER_API_KEY = "test-openrouter-key";
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify({ error: "rate limit" }), { status: 429 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: "rate limit" }), {
+        status: 429,
+        headers: { "retry-after": "0" },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: "rate limit" }), {
+        status: 429,
+        headers: { "retry-after": "0" },
+      }))
       .mockResolvedValueOnce(new Response(JSON.stringify({
         choices: [{ message: { content: "Risposta" } }],
       }), { status: 200 }));
@@ -44,10 +51,30 @@ describe("generateAssistantResponse", () => {
       provider: "OpenRouter",
       model: "openrouter/free",
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock.mock.calls[0][0]).toContain("api.groq.com");
-    expect(fetchMock.mock.calls[1][0]).toContain("openrouter.ai");
+    expect(fetchMock.mock.calls[2][0]).toContain("openrouter.ai");
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).max_tokens).toBe(8192);
+  });
+
+  it("retries Groq once after the rate-limit reset and then succeeds", async () => {
+    process.env.GROQ_API_KEY = "test-groq-key";
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: "rate limit" }), {
+        status: 429,
+        headers: { "retry-after": "0" },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        choices: [{ message: { content: "Risposta dopo il retry" } }],
+      }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await generateAssistantResponse("qwen", [
+      { role: "user", content: "Ciao" },
+    ], undefined, 600);
+
+    expect(result.provider).toBe("Groq");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("extracts text blocks from OpenRouter content arrays", async () => {
@@ -59,9 +86,10 @@ describe("generateAssistantResponse", () => {
 
     const result = await generateAssistantResponse("qwen", [
       { role: "user", content: "Ciao" },
-    ]);
+    ], undefined, 600);
 
     expect(result.content).toBe("Risposta OpenRouter");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).max_tokens).toBe(2048);
   });
 
   it("includes the finish reason when a provider returns no visible content", async () => {

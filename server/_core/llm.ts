@@ -16,7 +16,7 @@ export async function invokeLLM(params: InvokeParams & { model?: string }): Prom
   const timeout = setTimeout(() => controller.abort(), 45_000);
 
   try {
-    const response = await fetch(`https://api-inference.huggingface.co/models/${model}/v1/chat/completions`, {
+    const response = await fetch("https://router.huggingface.co/v1/chat/completions", {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -35,6 +35,11 @@ export async function invokeLLM(params: InvokeParams & { model?: string }): Prom
     const content = payload?.choices?.[0]?.message?.content?.trim();
     if (!content) throw new Error("Il provider AI ha restituito una risposta vuota");
     return { choices: [{ message: { role: "assistant", content } }] };
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("Hugging Face ha superato il tempo massimo di attesa (45 secondi)");
+    }
+    throw error;
   } finally {
     clearTimeout(timeout);
   }
