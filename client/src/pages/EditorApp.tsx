@@ -16,6 +16,7 @@ import { CodeEditor } from '@/components/CodeEditor';
 import { PreviewPanel } from '@/components/PreviewPanel';
 import { PerfCheck } from '@/components/PerfCheck';
 import { AIAssistant } from '@/components/AIAssistant';
+import { ProjectCollaborators } from '@/components/ProjectCollaborators';
 import { ProjectLaunchWizard } from '@/components/ProjectLaunchWizard';
 import { TwoFactorSetup } from '@/components/TwoFactorSetup';
 import { VersionHistory } from '@/components/VersionHistory';
@@ -3033,13 +3034,17 @@ export default function EditorApp() {
               </Button>
               <VersionHistory versions={versions} onRestore={handleRestoreVersion} />
               <AIAssistant
-                projectName={projects.find(project => project.id === currentProject)?.name}
+               projectId={currentProject}
+               projectName={projects.find(project => project.id === currentProject)?.name}
                 projectFiles={previewFiles}
                 currentFilePath={currentFile?.path}
                 currentFileContent={currentFile ? editorContent : undefined}
                 onCodeInsert={handleAssistantApplyCode}
                 onCreateFiles={handleAssistantCreateFiles}
               />
+              {currentProject !== null && projects.find(project => project.id === currentProject)?.canManageMembers && (
+                <ProjectCollaborators projectId={currentProject} />
+              )}
               <ProjectLaunchWizard
                 files={previewFiles}
                 projectId={currentProject}

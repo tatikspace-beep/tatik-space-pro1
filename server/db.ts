@@ -1,9 +1,10 @@
 import { desc, eq, and, gte, lte, ne, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
-import { InsertUser, users, backups, InsertBackup, projects, files, InsertProject, InsertFile, twoFactorSettings, InsertTwoFactorSettings, contactMessages, InsertContactMessage, cookieConsents, InsertCookieConsent, bannerAdditions, InsertBannerAddition, subscriptions, InsertSubscription, subscriptionDiscounts, InsertSubscriptionDiscount, monetizationEarnings, InsertMonetizationEarning, paymentRecords, InsertPaymentRecord, templatePurchases, providerConnections, providerResources } from "../drizzle/schema";
+import { InsertUser, users, backups, InsertBackup, projects, projectMembers, files, InsertProject, InsertFile, twoFactorSettings, InsertTwoFactorSettings, contactMessages, InsertContactMessage, cookieConsents, InsertCookieConsent, bannerAdditions, InsertBannerAddition, subscriptions, InsertSubscription, subscriptionDiscounts, InsertSubscriptionDiscount, monetizationEarnings, InsertMonetizationEarning, paymentRecords, InsertPaymentRecord, templatePurchases, providerConnections, providerResources } from "../drizzle/schema";
 import { ENV } from './_core/env';
 import { normalizeEmail } from "./auth-utils";
+import { canAccessProject as canAccessProjectByPolicy, canManageProjectMembers as canManageProjectMembersByPolicy, canUseProjectAgent } from "./project-access";
 
 let _db: ReturnType<typeof drizzle> | null = null;
 const _inMemoryUsers = new Map<string, any>();
@@ -213,6 +214,114 @@ export async function getUserProjects(userId: number) {
   return db.select().from(projects).where(eq(projects.userId, userId)).orderBy(desc(projects.updatedAt));
 }
 
+export async function getProjectsForUser(userId: number, isAdmin = false, isEarlyAccessDeveloper = false) {
+  const database = await getDb();
+  if (!database) return [];
+  if (isAdmin) {
+    const allProjects = await database.select().from(projects).orderBy(desc(projects.updatedAt));
+    return allProjects.map(project => ({ ...project, canManageMembers: true, canUseAgent: true }));
+  }
+
+  const owned = await database.select().from(projects).where(eq(projects.userId, userId));
+  const shared = await database
+    .select({ project: projects })
+    .from(projectMembers)
+    .innerJoin(projects, eq(projectMembers.projectId, projects.id))
+    .where(eq(projectMembers.userId, userId));
+  const ownedIds = new Set(owned.map(project => project.id));
+  const memberProjectIds = new Set(shared.map(({ project }) => project.id));
+  const accessibleProjects = new Map([...owned, ...shared.map(({ project }) => project)].map(project => [project.id, project]));
+  return [...accessibleProjects.values()]
+    .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
+    .map(project => ({
+      ...project,
+      canManageMembers: ownedIds.has(project.id),
+      canUseAgent: canUseProjectAgent("user", memberProjectIds.has(project.id), isEarlyAccessDeveloper),
+    }));
+}
+
+export async function hasProjectAccess(projectId: number, userId: number, isAdmin = false) {
+  const database = await getDb();
+  if (!database) return false;
+  const [project] = await database.select({ id: projects.id, userId: projects.userId })
+    .from(projects).where(eq(projects.id, projectId)).limit(1);
+  if (!project) return false;
+  const [membership] = await database.select({ id: projectMembers.id })
+    .from(projectMembers)
+    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
+    .limit(1);
+  return canAccessProjectByPolicy(userId, isAdmin ? "admin" : "user", project.userId, Boolean(membership));
+}
+
+export async function hasProjectAgentAccess(
+  projectId: number,
+  userId: number,
+  isAdmin = false,
+  isEarlyAccessDeveloper = false,
+) {
+  const database = await getDb();
+  if (!database) return false;
+  const [project] = await database.select({ id: projects.id, userId: projects.userId })
+    .from(projects).where(eq(projects.id, projectId)).limit(1);
+  if (!project) return false;
+  if (isAdmin) return true;
+  const [membership] = await database.select({ id: projectMembers.id })
+    .from(projectMembers)
+    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
+    .limit(1);
+  return canUseProjectAgent("user", Boolean(membership), isEarlyAccessDeveloper);
+}
+
+export async function canManageProjectMembers(projectId: number, userId: number, isAdmin = false) {
+  const database = await getDb();
+  if (!database) return false;
+  const [project] = await database.select({ id: projects.id, userId: projects.userId })
+    .from(projects).where(eq(projects.id, projectId)).limit(1);
+  if (!project) return false;
+  return canManageProjectMembersByPolicy(userId, isAdmin ? "admin" : "user", project.userId);
+}
+
+export async function listProjectMembers(projectId: number) {
+  const database = await getDb();
+  if (!database) throw new Error("Database not available");
+  return database.select({
+    id: projectMembers.id,
+    userId: users.id,
+    name: users.name,
+    email: users.email,
+    createdAt: projectMembers.createdAt,
+  }).from(projectMembers)
+    .innerJoin(users, eq(projectMembers.userId, users.id))
+    .where(eq(projectMembers.projectId, projectId));
+}
+
+export async function addProjectMemberByEmail(projectId: number, email: string) {
+  const database = await getDb();
+  if (!database) throw new Error("Database not available");
+  const normalizedEmail = normalizeEmail(email);
+  const [member] = await database.select({ id: users.id, email: users.email })
+    .from(users).where(eq(users.email, normalizedEmail)).limit(1);
+  if (!member) return { notFound: true as const };
+  const [project] = await database.select({ userId: projects.userId })
+    .from(projects).where(eq(projects.id, projectId)).limit(1);
+  if (!project) return { missingProject: true as const };
+  if (project.userId === member.id) return { owner: true as const };
+  const [saved] = await database.insert(projectMembers)
+    .values({ projectId, userId: member.id })
+    .onConflictDoNothing()
+    .returning({ id: projectMembers.id });
+  return { alreadyMember: !saved, memberId: saved?.id, email: member.email };
+}
+
+export async function removeProjectMember(projectId: number, memberId: number) {
+  const database = await getDb();
+  if (!database) throw new Error("Database not available");
+  const deleted = await database.delete(projectMembers)
+    .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.id, memberId)))
+    .returning({ id: projectMembers.id });
+  return deleted.length > 0;
+}
+
 export async function getProjectById(projectId: number) {
   const db = await getDb();
   if (!db) return undefined;
@@ -236,18 +345,26 @@ export async function createAssistantFiles(
   userId: number,
   newFiles: Omit<InsertFile, "projectId">[],
   moves: Array<{ fromPath: string; toPath: string }> = [],
+  isAdmin = false,
 ) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
   return db.transaction(async (tx) => {
     const [project] = await tx
-      .select({ id: projects.id })
+      .select({ id: projects.id, userId: projects.userId })
       .from(projects)
-      .where(and(eq(projects.id, projectId), eq(projects.userId, userId)))
+      .where(eq(projects.id, projectId))
       .for("update")
       .limit(1);
     if (!project) return { missingProject: true as const, files: [] };
+    if (!isAdmin && project.userId !== userId) {
+      const [membership] = await tx.select({ id: projectMembers.id })
+        .from(projectMembers)
+        .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.userId, userId)))
+        .limit(1);
+      if (!membership) return { missingProject: true as const, files: [] };
+    }
 
     const existingFiles = await tx.select().from(files).where(eq(files.projectId, projectId));
     const canonicalPath = (path: string) => path.replace(/\\/g, "/").replace(/^\/+/, "").toLowerCase();
@@ -330,6 +447,13 @@ export async function getProjectFiles(projectId: number) {
   return db.select().from(files).where(eq(files.projectId, projectId));
 }
 
+export async function getFileById(fileId: number) {
+  const database = await getDb();
+  if (!database) return undefined;
+  const [file] = await database.select().from(files).where(eq(files.id, fileId)).limit(1);
+  return file;
+}
+
 export async function updateFileContent(fileId: number, content: string) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
@@ -337,18 +461,25 @@ export async function updateFileContent(fileId: number, content: string) {
   await db.update(files).set({ content, updatedAt: new Date() }).where(eq(files.id, fileId));
 }
 
-export async function updateFilePath(fileId: number, userId: number, name: string, path: string) {
+export async function updateFilePath(fileId: number, userId: number, name: string, path: string, isAdmin = false) {
   const db = await getDb();
   if (!db) throw new Error("Database not available");
 
   return db.transaction(async (tx) => {
     const [file] = await tx
-      .select({ id: files.id, projectId: files.projectId })
+      .select({ id: files.id, projectId: files.projectId, ownerUserId: projects.userId })
       .from(files)
       .innerJoin(projects, eq(files.projectId, projects.id))
-      .where(and(eq(files.id, fileId), eq(projects.userId, userId)))
+      .where(eq(files.id, fileId))
       .limit(1);
     if (!file) return { notFound: true as const };
+    if (!isAdmin && file.ownerUserId !== userId) {
+      const [membership] = await tx.select({ id: projectMembers.id })
+        .from(projectMembers)
+        .where(and(eq(projectMembers.projectId, file.projectId), eq(projectMembers.userId, userId)))
+        .limit(1);
+      if (!membership) return { notFound: true as const };
+    }
 
     const [conflict] = await tx
       .select({ id: files.id })
@@ -375,7 +506,7 @@ export async function renameProjectFolder(projectId: number, userId: number, fol
       .select({ id: files.id, name: files.name, path: files.path })
       .from(files)
       .innerJoin(projects, eq(files.projectId, projects.id))
-      .where(and(eq(files.projectId, projectId), eq(projects.userId, userId)));
+      .where(eq(files.projectId, projectId));
     const sourcePrefix = `${folderPath}/`;
     const movingFiles = projectFiles.filter(file => file.path.startsWith(sourcePrefix));
     if (movingFiles.length === 0) return { notFound: true as const };

@@ -106,6 +106,12 @@ Il progetto usa PostgreSQL. Assicurati di avere una connessione valida nel `DATA
 
 Il percorso pubblico usa link temporanei validi 10 minuti. Configura `RESEND_API_KEY` e `EMAIL_FROM` nell'ambiente server/Vercel per inviare le e-mail. `ENABLE_LEGACY_PASSWORD_AUTH` deve rimanere `false` (o assente) per mantenere nascosto il vecchio percorso password.
 
+### Agente AI e collaborazione sui progetti
+
+L'Agente AI affianca l'assistente esistente: pianifica la richiesta, la delega a specialisti e sintetizza una proposta. Non applica modifiche senza una conferma dell'utente. Durante l'accesso anticipato è disponibile agli amministratori, agli account sviluppatore autorizzati e ai membri espliciti del progetto; gli altri utenti vedono l'avviso di disponibilità Pro futura.
+
+Il proprietario del progetto o un amministratore può aggiungere e rimuovere collaboratori dall'editor. I collaboratori accedono soltanto ai progetti a cui sono stati aggiunti. Prima del rilascio, applicare `drizzle/migrations/0019_project_members.sql` al database Production corretto; la migrazione crea la tabella e gli indici senza modificare i dati esistenti.
+
 ### OAuth
 
 Configura OAuth per GitHub e Google nelle variabili d'ambiente.

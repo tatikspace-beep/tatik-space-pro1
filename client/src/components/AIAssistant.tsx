@@ -77,6 +77,7 @@ interface DailyUsage {
 }
 
 interface AIAssistantProps {
+  projectId?: number | null;
   projectName?: string;
   projectFiles?: AssistantProjectFile[];
   currentFilePath?: string;
@@ -134,7 +135,7 @@ function renderMarkdown(text: string): string {
 // Main Component
 // ---------------------------------------------------------------------------
 
-export function AIAssistant({ projectName, projectFiles = [], currentFilePath, currentFileContent, onCodeInsert, onCreateFiles }: AIAssistantProps) {
+export function AIAssistant({ projectId, projectName, projectFiles = [], currentFilePath, currentFileContent, onCodeInsert, onCreateFiles }: AIAssistantProps) {
   const { user } = useAuth({ redirectOnUnauthenticated: false });
   const { language } = useLanguage();
   const copy = getComponentCopy(language);
@@ -145,6 +146,11 @@ export function AIAssistant({ projectName, projectFiles = [], currentFilePath, c
   });
   const isPro = pricingStatus?.featureAccess.aiAssistant === true;
   const chatMutation = trpc.ai.chat.useMutation();
+  const agentMutation = trpc.ai.agent.useMutation();
+  const { data: agentAvailability } = trpc.ai.agentAvailability.useQuery(
+    { projectId: projectId ?? null },
+    { enabled: Boolean(user), retry: false },
+  );
 
   const [isOpen, setIsOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<ModelId>('qwen');
@@ -152,6 +158,7 @@ export function AIAssistant({ projectName, projectFiles = [], currentFilePath, c
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [dailyUsage, setDailyUsage] = useState<DailyUsage>(getDailyUsage);
+  const [agentMode, setAgentMode] = useState(false);
 
   // Bug fix mode states
   const [bugFixMode, setBugFixMode] = useState(false);
@@ -289,6 +296,7 @@ export function AIAssistant({ projectName, projectFiles = [], currentFilePath, c
     };
 
     const nextMessages = [...messages, userMsg];
+    if (agentMode && !agentAvailability?.available) return;
     setMessages(nextMessages);
     setInput('');
     setIsLoading(true);
@@ -315,18 +323,46 @@ export function AIAssistant({ projectName, projectFiles = [], currentFilePath, c
         });
       }
 
-      const response = await chatMutation.mutateAsync({
-        model: selectedModel === 'gemini' ? 'gemini' : selectedModel === 'deepseek' ? 'deepseek' : 'qwen',
-        messages: apiHistory,
-      });
+      const model = selectedModel === 'gemini' ? 'gemini' : selectedModel === 'deepseek' ? 'deepseek' : 'qwen';
+      const contextFiles = projectFiles.slice();
+      if (currentFilePath && currentFileContent !== undefined) {
+        const currentIndex = contextFiles.findIndex(file => file.path === currentFilePath);
+        if (currentIndex === -1) contextFiles.unshift({ path: currentFilePath, content: currentFileContent });
+        else contextFiles[currentIndex] = { ...contextFiles[currentIndex], content: currentFileContent };
+      }
+      let content: string;
+      let provider: string;
+      let providerModel: string;
+      if (agentMode) {
+        const response = await agentMutation.mutateAsync({
+          projectId: projectId ?? 0,
+          model,
+          task: trimmed,
+          history: messages
+            .filter(message => message.id !== 'welcome' && !message.id.startsWith('switch-'))
+            .slice(-12)
+            .map(message => ({ role: message.role, content: message.content.slice(0, 8000) })),
+          context: contextFiles.length > 0
+            ? buildAssistantProjectContext(projectName, contextFiles, currentFilePath, trimmed).slice(0, 45000)
+            : undefined,
+        });
+        content = `**Piano di lavoro:** ${response.plan}\n\n**Deleghe:**\n${response.delegations.map(item => `- ${item.role}: ${item.task}`).join('\n')}\n\n${response.content}`;
+        provider = response.provider;
+        providerModel = response.model;
+      } else {
+        const response = await chatMutation.mutateAsync({ model, messages: apiHistory });
+        content = response.content;
+        provider = response.provider;
+        providerModel = response.model;
+      }
       setMessages((prev) => [...prev, {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: response.content,
+        content,
         timestamp: new Date(),
         modelId: selectedModel,
-        provider: response.provider,
-        providerModel: response.model,
+        provider,
+        providerModel,
       }]);
     } catch (err: any) {
       const failedUsage = { ...dailyUsage, count: Math.max(0, dailyUsage.count) };
@@ -345,7 +381,7 @@ export function AIAssistant({ projectName, projectFiles = [], currentFilePath, c
       setIsLoading(false);
       textareaRef.current?.focus();
     }
-  }, [input, isLoading, messages, selectedModel, dailyUsage, isLimitReached, chatMutation, currentFilePath, currentFileContent, projectName, projectFiles]);
+  }, [input, isLoading, messages, selectedModel, dailyUsage, isLimitReached, chatMutation, agentMutation, agentMode, agentAvailability, projectId, currentFilePath, currentFileContent, projectName, projectFiles]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -379,14 +415,15 @@ export function AIAssistant({ projectName, projectFiles = [], currentFilePath, c
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
-  if (pricingStatus?.featureAccess.aiAssistant !== true) return null;
-
   return (
     <>
       {/* Trigger button */}
-      <Button onClick={() => setIsOpen(true)} size="sm" className="gap-1 px-2 py-1" variant="outline">
+      <Button onClick={() => {
+        setAgentMode(!isPro);
+        setIsOpen(true);
+      }} size="sm" className="gap-1 px-2 py-1" variant="outline">
         <Bot className="h-4 w-4" />
-        {copy.ai.button}
+        {isPro ? copy.ai.button : "Agente AI"}
         {remainingMessages <= 3 && remainingMessages > 0 && (
           <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4 ml-1">{remainingMessages}</Badge>
         )}
@@ -417,12 +454,16 @@ export function AIAssistant({ projectName, projectFiles = [], currentFilePath, c
 
             {/* Model tabs */}
             <div className="flex gap-0.5 border-b">
+              {isPro && <>
               {MODELS.map((model) => {
                 const isActive = selectedModel === model.id;
                 return (
                   <button
                     key={model.id}
-                    onClick={() => handleModelChange(model.id)}
+                    onClick={() => {
+                      setAgentMode(false);
+                      handleModelChange(model.id);
+                    }}
                     className={cn(
                       'relative flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-md transition-all border-b-2 -mb-px',
                       isActive && !bugFixMode
@@ -439,7 +480,10 @@ export function AIAssistant({ projectName, projectFiles = [], currentFilePath, c
 
               {/* Bug Analysis Tab */}
               <button
-                onClick={() => setBugFixMode(true)}
+                onClick={() => {
+                  setAgentMode(false);
+                  setBugFixMode(true);
+                }}
                 className={cn(
                   'relative flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-md transition-all border-b-2 -mb-px',
                   bugFixMode
@@ -453,7 +497,10 @@ export function AIAssistant({ projectName, projectFiles = [], currentFilePath, c
 
               {/* Optimization Tab */}
               <button
-                onClick={() => setOptimizationMode(true)}
+                onClick={() => {
+                  setAgentMode(false);
+                  setOptimizationMode(true);
+                }}
                 className={cn(
                   'relative flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-md transition-all border-b-2 -mb-px',
                   optimizationMode
@@ -464,6 +511,23 @@ export function AIAssistant({ projectName, projectFiles = [], currentFilePath, c
                 <Flame className="h-3.5 w-3.5" />
                 <span>{copy.ai.optimizeTab}</span>
               </button>
+              </>}
+              <button
+                onClick={() => {
+                  setAgentMode(true);
+                  setBugFixMode(false);
+                  setOptimizationMode(false);
+                }}
+                className={cn(
+                  'relative flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-md transition-all border-b-2 -mb-px',
+                  agentMode
+                    ? 'border-primary text-foreground bg-background'
+                    : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                )}
+              >
+                <Bot className="h-3.5 w-3.5" />
+                <span>Agente AI</span>
+              </button>
             </div>
           </DialogHeader>
 
@@ -471,7 +535,14 @@ export function AIAssistant({ projectName, projectFiles = [], currentFilePath, c
 
           {/* Model info strip */}
           <div className="flex items-center gap-2 px-5 py-2 bg-muted/30 border-b shrink-0 flex-wrap">
-            {!bugFixMode && !optimizationMode ? (
+            {agentMode ? (
+              <>
+                <Badge variant="outline" className="text-[10px] gap-1 px-2 bg-primary/10 text-primary border-primary/20">
+                  <Bot className="h-2.5 w-2.5" /> Agente di sviluppo
+                </Badge>
+                <span className="text-[11px] text-muted-foreground">Pianifica, delega a specialisti e sintetizza una soluzione. Le modifiche richiedono la tua conferma.</span>
+              </>
+            ) : !bugFixMode && !optimizationMode ? (
               <>
                 <Badge variant="outline" className={cn('text-[10px] gap-1 px-2', currentModel.badgeColor)}>
                   <Zap className="h-2.5 w-2.5" />
@@ -507,7 +578,14 @@ export function AIAssistant({ projectName, projectFiles = [], currentFilePath, c
           <div ref={scrollAreaRef} className="flex-1 overflow-hidden min-h-0">
             <ScrollArea className="h-full">
               <div className="flex flex-col gap-4 p-5">
-                {bugFixMode ? (
+                {agentMode && !agentAvailability?.available ? (
+                  <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm">
+                    <div className="mb-1 font-semibold">Accesso anticipato</div>
+                    <p className="text-muted-foreground">
+                      {agentAvailability?.notice || "L'Agente AI è attualmente disponibile solo per amministratori e un gruppo ristretto di collaboratori. L'accesso Pro sarà disponibile a breve."}
+                    </p>
+                  </div>
+                ) : bugFixMode ? (
                   // Bug fix form
                   <>
                     <div className="flex items-center gap-2 mb-3">
@@ -785,7 +863,7 @@ export function AIAssistant({ projectName, projectFiles = [], currentFilePath, c
                   }
                   className="flex-1 resize-none min-h-[40px] max-h-32 text-sm"
                   rows={1}
-                  disabled={isLoading || isLimitReached}
+                  disabled={isLoading || isLimitReached || (agentMode && !agentAvailability?.available)}
                 />
                 <Button
                   type="submit"

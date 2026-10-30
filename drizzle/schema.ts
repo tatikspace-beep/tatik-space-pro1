@@ -47,6 +47,18 @@ export const projects = pgTable("projects", {
 export type Project = typeof projects.$inferSelect;
 export type InsertProject = typeof projects.$inferInsert;
 
+export const projectMembers = pgTable("project_members", {
+  id: serial("id").primaryKey(),
+  projectId: integer("projectId").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  userId: integer("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  projectUserUnique: uniqueIndex("project_members_project_user_unique").on(table.projectId, table.userId),
+  userIndex: index("project_members_user_idx").on(table.userId),
+}));
+
+export type ProjectMember = typeof projectMembers.$inferSelect;
+
 /**
  * Files table - stores project files
  */

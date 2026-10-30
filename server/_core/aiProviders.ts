@@ -77,7 +77,7 @@ async function callOpenAICompatible(
   }
 }
 
-async function callGemini(messages: AssistantMessage[]): Promise<ChatResult> {
+async function callGemini(messages: AssistantMessage[], systemPrompt: string): Promise<ChatResult> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY non configurata");
   const model = "gemini-2.5-flash";
@@ -94,7 +94,7 @@ async function callGemini(messages: AssistantMessage[]): Promise<ChatResult> {
             role: message.role === "assistant" ? "model" : "user",
             parts: [{ text: message.content }],
           })),
-          systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+          systemInstruction: { parts: [{ text: systemPrompt }] },
           generationConfig: { maxOutputTokens: 8192, temperature: 0.3 },
         }),
         signal: controller.signal,
@@ -122,8 +122,9 @@ async function callGemini(messages: AssistantMessage[]): Promise<ChatResult> {
 export async function generateAssistantResponse(
   selectedModel: AssistantModel,
   history: AssistantMessage[],
+  systemPrompt = SYSTEM_PROMPT,
 ): Promise<ChatResult> {
-  const messages = [{ role: "system" as const, content: SYSTEM_PROMPT }, ...history];
+  const messages = [{ role: "system" as const, content: systemPrompt }, ...history];
   const groqKey = process.env.GROQ_API_KEY;
   const openRouterKey = process.env.OPENROUTER_API_KEY;
   const groqModel = process.env.GROQ_MODEL || "openai/gpt-oss-20b";
@@ -131,7 +132,7 @@ export async function generateAssistantResponse(
   const providers: Array<{ name: string; run: () => Promise<ChatResult> }> = [];
   const addGemini = () => {
     if (process.env.GEMINI_API_KEY) {
-      providers.push({ name: "Gemini", run: () => callGemini(history) });
+      providers.push({ name: "Gemini", run: () => callGemini(history, systemPrompt) });
     }
   };
   const addGroq = () => {
