@@ -2898,6 +2898,10 @@ export default function EditorApp() {
             </div>
 
             <div className="p-3 border-t border-slate-700" style={{ position: 'relative' }}>
+              <AdBanner position="sidebar" />
+            </div>
+
+            <div className="p-3 border-t border-slate-700" style={{ position: 'relative' }}>
               <GreenBoxHybrid
                 stats={{
                   filesCount: localFiles.length + files.length,

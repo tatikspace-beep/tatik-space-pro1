@@ -14,6 +14,7 @@ import { DeveloperTemplateListings } from '@/components/DeveloperTemplateListing
 import { commercialSeoCopy } from '@/lib/commercialSeoCopy';
 import { templateMarketplaceUiCopy } from '@/lib/templateMarketplaceUiCopy';
 import { getLocalizedTemplateDescription, getLocalizedTemplateName } from '@/lib/templateMarketplaceContentCopy';
+import { AdBanner } from '@/components/AdBanner';
 
 type MarketplaceTemplate = TemplateMetadata & { code?: string };
 
@@ -359,6 +360,7 @@ export default function TemplateMarketplace() {
                             </div>
                         </div>
                     </div>
+                    <AdBanner position="marketplace" />
                 </aside>
 
                 {/* ── MAIN ── */}

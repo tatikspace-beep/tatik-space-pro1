@@ -120,6 +120,19 @@ Configura OAuth per GitHub e Google nelle variabili d'ambiente.
 
 Integra Stripe per i pagamenti aggiungendo le chiavi API.
 
+### Pubblicità AdSense
+
+Lo script AdSense, il meta tag dell'account e `client/public/ads.txt` sono
+necessari alla verifica e vanno mantenuti. I quattro spazi pubblicitari sono
+nell'header dell'Editor, nella sidebar dell'Editor, nella sidebar del
+Marketplace e sopra il footer. Per renderizzare un'unità servono il consenso
+marketing e il relativo ID slot `VITE_GOOGLE_AD_SLOT_*`.
+
+Configura gli ID solo dopo l'approvazione AdSense e la creazione delle unità
+display. I ricavi possono dipendere dalle impressioni e dalle aste, ma non sono
+garantiti per ogni visualizzazione; l'approvazione AdSense è separata dal
+rilascio del codice.
+
 ### File Storage
 
 Usa AWS S3 per lo storage dei file.

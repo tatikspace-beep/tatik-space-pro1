@@ -203,9 +203,19 @@ Il bucket deve avere **Block all public access** attivo. L'app non imposta ACL p
 VITE_GOOGLE_ANALYTICS_ID=G-...
 VITE_GOOGLE_ADS_ID=AW-...
 VITE_GOOGLE_ADSENSE_CLIENT=ca-pub-...
+VITE_GOOGLE_AD_SLOT_EDITOR=
+VITE_GOOGLE_AD_SLOT_SIDEBAR=
+VITE_GOOGLE_AD_SLOT_MARKETPLACE=
+VITE_GOOGLE_AD_SLOT_FOOTER=
 ```
 
-Questi identificativi sono pubblici, ma gli script vengono caricati dal client solo secondo il consenso previsto. Configurare proprietà Google, domini autorizzati e conversioni separatamente.
+Conservare il tag/script AdSense già presente in `client/index.html` e il file
+`client/public/ads.txt`. I quattro ID di slot si configurano dopo l'approvazione
+dell'account e la creazione delle unità display. Gli annunci si renderizzano
+solo con consenso marketing; le posizioni collegate sono Editor, sidebar
+Editor, Marketplace e footer. Il file `ads.txt` viene pubblicato alla root del
+sito. Configurare proprietà Google, domini autorizzati e conversioni
+separatamente.
 
 ## 5. Deploy Vercel
 

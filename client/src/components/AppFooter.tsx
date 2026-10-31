@@ -1,6 +1,7 @@
 import { Link } from 'wouter';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { siteSurfaceCopy } from '@/lib/siteSurfaceCopy';
+import { AdBanner } from './AdBanner';
 
 export function AppFooter({ variant = 'light' }: { variant?: 'light' | 'dark' }) {
   const { language, t } = useLanguage();
@@ -11,6 +12,7 @@ export function AppFooter({ variant = 'light' }: { variant?: 'light' | 'dark' })
     <footer className={`py-6 border-t ${isDark ? 'bg-slate-800 border-slate-700 text-white' : 'border-border'}`}>
       <div className="container mx-auto w-full max-w-7xl px-4 sm:px-6">
         <div className="flex flex-col items-center gap-4 text-center">
+          <AdBanner position="footer" />
           <Link href="/" aria-label={copy.navbar.home} className="flex shrink-0 items-center gap-2 font-bold hover:opacity-80 transition-opacity">
             <img src="/logo.png" alt={copy.navbar.logo} className="h-8 w-8 object-contain" />
             <span>Tatik.space Pro</span>
