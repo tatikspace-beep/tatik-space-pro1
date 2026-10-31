@@ -151,6 +151,8 @@ export function AIAssistant({ projectId, projectName, projectFiles = [], current
     { projectId: projectId ?? null },
     { enabled: Boolean(user), retry: false },
   );
+  const isAdmin = user?.role === 'admin'
+    || user?.email?.trim().toLowerCase() === 'tatik.space@gmail.com';
 
   const [isOpen, setIsOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<ModelId>('qwen');
@@ -224,7 +226,7 @@ export function AIAssistant({ projectId, projectName, projectFiles = [], current
 
   const currentModel = MODELS.find((m) => m.id === selectedModel)!;
   const remainingMessages = FREE_DAILY_LIMIT - dailyUsage.count;
-  const isLimitReached = remainingMessages <= 0;
+  const isLimitReached = !isAdmin && remainingMessages <= 0;
 
   // ---------------------------------------------------------------------------
   // Scroll to bottom
@@ -301,9 +303,11 @@ export function AIAssistant({ projectId, projectName, projectFiles = [], current
     setInput('');
     setIsLoading(true);
 
-    const newUsage = { ...dailyUsage, count: dailyUsage.count + 1 };
-    setDailyUsage(newUsage);
-    saveDailyUsage(newUsage);
+    if (!isAdmin) {
+      const newUsage = { ...dailyUsage, count: dailyUsage.count + 1 };
+      setDailyUsage(newUsage);
+      saveDailyUsage(newUsage);
+    }
 
     try {
       const apiHistory = nextMessages
@@ -365,9 +369,11 @@ export function AIAssistant({ projectId, projectName, projectFiles = [], current
         providerModel,
       }]);
     } catch (err: any) {
-      const failedUsage = { ...dailyUsage, count: Math.max(0, dailyUsage.count) };
-      setDailyUsage(failedUsage);
-      saveDailyUsage(failedUsage);
+      if (!isAdmin) {
+        const failedUsage = { ...dailyUsage, count: Math.max(0, dailyUsage.count) };
+        setDailyUsage(failedUsage);
+        saveDailyUsage(failedUsage);
+      }
       setMessages((prev) => [...prev, {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -442,13 +448,17 @@ export function AIAssistant({ projectId, projectName, projectFiles = [], current
                 {copy.ai.title}
               </DialogTitle>
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <div className="h-1.5 w-16 rounded-full bg-muted overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-primary transition-all duration-300"
-                      style={{ width: `${Math.min((dailyUsage.count / FREE_DAILY_LIMIT) * 100, 100)}%` }}
-                    />
-                  </div>
-                  <span>{Math.max(remainingMessages, 0)}/{FREE_DAILY_LIMIT}</span>
+                  {!isAdmin && (
+                    <div className="h-1.5 w-16 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-primary transition-all duration-300"
+                        style={{ width: `${Math.min((dailyUsage.count / FREE_DAILY_LIMIT) * 100, 100)}%` }}
+                      />
+                    </div>
+                  )}
+                  <span title={isAdmin ? (language === 'it' ? 'Uso senza limite giornaliero' : 'No daily usage limit') : undefined}>
+                    {isAdmin ? '∞' : `${Math.max(remainingMessages, 0)}/${FREE_DAILY_LIMIT}`}
+                  </span>
               </div>
             </div>
 
