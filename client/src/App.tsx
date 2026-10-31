@@ -266,6 +266,7 @@ function App() {
                   <Toaster />
                   <GlobalNavbar />
                   <div className="site-content pt-16 min-h-screen">
+                    <AffiliatePartnerStrip />
                     <Router />
                     {/* show beta banner on all pages except editor/dashboard */}
                     <BetaNoticeWrapper />
@@ -274,7 +275,6 @@ function App() {
                   {/* Promo banner placed above the global footer for selected pages */}
                   <PromoPlacement />
 
-                  <AffiliatePartnerStrip />
                   <AppFooter />
                   <CookieConsent />
                 </TooltipProvider>
