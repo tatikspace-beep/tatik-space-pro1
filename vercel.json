@@ -5,6 +5,13 @@
   "env": {
     "NODE_OPTIONS": "--experimental-modules"
   },
+  "redirects": [
+    {
+      "source": "/privacy.html",
+      "destination": "/privacy",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     {
       "source": "/__admin_login",
