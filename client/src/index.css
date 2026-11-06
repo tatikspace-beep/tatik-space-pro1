@@ -91,12 +91,12 @@ html body #ez-cookie-dialog-wrapper #ez-cookie-dialog.ez_banner {
   box-sizing: border-box !important;
   position: fixed !important;
   top: auto !important;
-  right: auto !important;
+  right: 12px !important;
   bottom: 12px !important;
-  left: 50% !important;
-  transform: translateX(-50%) !important;
-  width: min(640px, calc(100vw - 24px)) !important;
-  max-width: 640px !important;
+  left: auto !important;
+  transform: none !important;
+  width: min(390px, calc(100vw - 40px)) !important;
+  max-width: 390px !important;
   border-radius: 14px !important;
   box-shadow: 0 8px 28px rgba(15, 23, 42, 0.22) !important;
   pointer-events: auto !important;
@@ -116,6 +116,22 @@ html body #ez-cookie-dialog #main-ezcmp p {
   line-height: 1.45 !important;
   margin-top: 6px !important;
   margin-bottom: 6px !important;
+}
+
+html body #ez-cookie-dialog .tatik-ezoic-consent-disclosure {
+  margin: 0 12px;
+  font-size: 12px;
+}
+
+html body #ez-cookie-dialog .tatik-ezoic-consent-disclosure summary {
+  padding: 2px 0 8px;
+  color: #2563eb;
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+html body #ez-cookie-dialog .tatik-ezoic-consent-disclosure p {
+  margin: 0 0 8px !important;
 }
 
 html body #ez-cookie-dialog .ez-btn-row-container {

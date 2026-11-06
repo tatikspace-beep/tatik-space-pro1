@@ -5,6 +5,7 @@ import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { CookieConsent } from "./components/CookieConsent";
+import { EzoicConsentDisclosure } from "./components/EzoicConsentDisclosure";
 import Home from "./pages/Home";
 import EditorApp from "./pages/EditorApp";
 import Files from "./pages/Files";
@@ -276,6 +277,7 @@ function App() {
 
                   <AffiliatePartnerStrip />
                   <AppFooter />
+                  <EzoicConsentDisclosure />
                   <CookieConsent />
                 </TooltipProvider>
               </ProjectProvider>

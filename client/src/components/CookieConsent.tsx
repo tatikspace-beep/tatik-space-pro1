@@ -22,6 +22,21 @@ interface CookiePreferences {
   expiresAt: string;
 }
 
+function isEzoicConsentVisible() {
+  const dialog = document.querySelector<HTMLElement>('#ez-cookie-dialog');
+  if (!dialog) return false;
+
+  for (let element: HTMLElement | null = dialog; element; element = element.parentElement) {
+    const style = window.getComputedStyle(element);
+    if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0) {
+      return false;
+    }
+  }
+
+  const bounds = dialog.getBoundingClientRect();
+  return bounds.width > 0 && bounds.height > 0;
+}
+
 export function CookieConsent() {
   const { language, t } = useLanguage();
   const copy = siteSurfaceCopy[language].cookies;
@@ -40,14 +55,41 @@ export function CookieConsent() {
   const saveConsentMutation = trpc.cookieConsent.save.useMutation();
 
   useEffect(() => {
+    const scheduleBanner = () => {
+      let isReadyToShow = false;
+      let observer: MutationObserver;
+      const updateVisibility = () => {
+        if (!isReadyToShow) return;
+        if (localStorage.getItem(COOKIE_CONSENT_KEY)) {
+          observer.disconnect();
+          return;
+        }
+        setShowBanner(!isEzoicConsentVisible());
+      };
+
+      observer = new MutationObserver(updateVisibility);
+      observer.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'hidden', 'aria-hidden'],
+        childList: true,
+        subtree: true,
+      });
+
+      const timer = setTimeout(() => {
+        isReadyToShow = true;
+        updateVisibility();
+      }, 1000);
+
+      return () => {
+        clearTimeout(timer);
+        observer.disconnect();
+      };
+    };
+
     // Check if user has already made a choice
     const consent = localStorage.getItem(COOKIE_CONSENT_KEY);
     if (!consent) {
-      // Show banner after a short delay for better UX
-      const timer = setTimeout(() => {
-        setShowBanner(true);
-      }, 1000);
-      return () => clearTimeout(timer);
+      return scheduleBanner();
     } else {
       // Check if consent has expired
       const details = localStorage.getItem(COOKIE_CONSENT_DETAILS);
@@ -60,10 +102,7 @@ export function CookieConsent() {
             // Consent expired, show banner again
             localStorage.removeItem(COOKIE_CONSENT_KEY);
             localStorage.removeItem(COOKIE_CONSENT_DETAILS);
-            const timer = setTimeout(() => {
-              setShowBanner(true);
-            }, 1000);
-            return () => clearTimeout(timer);
+            return scheduleBanner();
           }
         } catch (e) {
           console.error('Error parsing cookie consent details:', e);
