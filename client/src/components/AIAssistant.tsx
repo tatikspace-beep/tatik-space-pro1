@@ -786,8 +786,8 @@ export function AIAssistant({ projectId, projectName, projectFiles = [], current
                               );
                               if (unverifiedMaps.length > 0) {
                                 toast.error(language === 'it'
-                                  ? 'Codice non inserito: la mappa contiene coordinate o un ID Google non forniti nel brief/progetto. Richiedi una mappa basata sull’indirizzo.'
-                                  : 'Code not inserted: the map contains coordinates or a Google ID absent from the request/project. Request an address-based map.');
+                                  ? 'Codice non inserito: la mappa contiene coordinate, un ID o una chiave Google non forniti nel brief/progetto. Richiedi una mappa basata sull’indirizzo.'
+                                  : 'Code not inserted: the map contains coordinates, a Google ID, or an API key absent from the request/project. Request an address-based map.');
                                 return;
                               }
                               try {
@@ -813,8 +813,8 @@ export function AIAssistant({ projectId, projectName, projectFiles = [], current
                                 const unverifiedMaps = findUnverifiedGoogleMapEmbeds(files, sourceContext);
                                 if (unverifiedMaps.length > 0) {
                                   toast.error(language === 'it'
-                                    ? `File non applicati: coordinate o ID Google non verificati in ${unverifiedMaps.join(', ')}. Richiedi una mappa basata sull’indirizzo fornito.`
-                                    : `Files not applied: unverified coordinates or Google IDs in ${unverifiedMaps.join(', ')}. Request a map based on the supplied address.`);
+                                    ? `File non applicati: coordinate, ID o chiave Google non verificati in ${unverifiedMaps.join(', ')}. Richiedi una mappa basata sull’indirizzo fornito.`
+                                    : `Files not applied: unverified coordinates, Google IDs, or API keys in ${unverifiedMaps.join(', ')}. Request a map based on the supplied address.`);
                                   return;
                                 }
                                 const moves = extractAssistantProjectMoves(msg.content);

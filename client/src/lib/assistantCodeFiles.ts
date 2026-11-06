@@ -156,8 +156,15 @@ export function findUnverifiedGoogleMapEmbeds(files: AssistantCodeFile[], source
       );
       const placeIds = [...url.matchAll(/!1s(0x[0-9a-f]+(?::0x[0-9a-f]+)?)/gi)];
       const hasUnverifiedPlaceId = placeIds.some(placeId => !source.includes(placeId[1].toLowerCase()));
+      let hasUnverifiedEmbedApiKey = false;
+      if (/\/maps\/embed\/v1\//i.test(url)) {
+        const apiKey = new URL(url, "https://www.google.com").searchParams.get("key")?.trim();
+        hasUnverifiedEmbedApiKey = !apiKey
+          || /^(?:YOUR|REPLACE|INSERT|ADD|API_KEY|MAPS_API_KEY)/i.test(apiKey)
+          || !source.includes(apiKey.toLowerCase());
+      }
 
-      if (hasUnverifiedCoordinates || hasUnverifiedPlaceId) {
+      if (hasUnverifiedCoordinates || hasUnverifiedPlaceId || hasUnverifiedEmbedApiKey) {
         flaggedPaths.add(file.path);
       }
     }

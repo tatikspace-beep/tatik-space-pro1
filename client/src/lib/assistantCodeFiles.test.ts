@@ -153,4 +153,25 @@ describe("assistant code response parsing", () => {
       },
     ], "Coordinate verificate: 12.123456, 44.123456")).toEqual([]);
   });
+
+  it("blocks Google Maps Embed API URLs with missing, placeholder, or unverified keys", () => {
+    for (const src of [
+      "https://www.google.com/maps/embed/v1/search?q=Santa+Ninfa",
+      "https://www.google.com/maps/embed/v1/search?key=YOUR_API_KEY&q=Santa+Ninfa",
+      "https://www.google.com/maps/embed/v1/search?key=unprovided-key&q=Santa+Ninfa",
+    ]) {
+      expect(findUnverifiedGoogleMapEmbeds([
+        { path: "index.html", content: `<iframe src="${src}"></iframe>` },
+      ], "Ristorante Due Palme, Santa Ninfa")).toEqual(["index.html"]);
+    }
+  });
+
+  it("allows a Maps Embed API key only when the project context provides it", () => {
+    expect(findUnverifiedGoogleMapEmbeds([
+      {
+        path: "index.html",
+        content: '<iframe src="https://www.google.com/maps/embed/v1/search?key=provided-test-key&q=Santa+Ninfa"></iframe>',
+      },
+    ], "Google Maps API key: provided-test-key")).toEqual([]);
+  });
 });
