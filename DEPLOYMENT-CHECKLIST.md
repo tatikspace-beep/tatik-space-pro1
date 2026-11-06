@@ -181,6 +181,7 @@ GEMINI_MODEL=gemini-3.8-flash
 
 Sono chiavi server-only. Non usare mai `VITE_HF_API_KEY` o `VITE_GEMINI_API_KEY`.
 `GEMINI_MODEL` è facoltativa; se omessa, l'app usa il modello Gemini Flash corrente predefinito.
+Groq GPT-OSS usa `max_completion_tokens` e `reasoning_effort=low`; le risposte interrotte o vuote vengono scartate e il fallback passa al provider successivo. Hugging Face viene usato come fallback solo se `HF_API_KEY` è configurata e abilitata per Inference Providers.
 
 ### Storage marketplace e file
 

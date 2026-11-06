@@ -136,3 +136,41 @@ export function extractAssistantCodeFiles(response: string): AssistantCodeFile[]
   }
   return files;
 }
+
+export function findUnverifiedGoogleMapEmbeds(files: AssistantCodeFile[], sourceContext: string) {
+  const source = decodeMapValue(sourceContext).toLowerCase();
+  const flaggedPaths = new Set<string>();
+
+  for (const file of files) {
+    const iframePattern = /<iframe\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi;
+    for (const match of file.content.matchAll(iframePattern)) {
+      const url = decodeMapValue(match[1]);
+      if (!/google\.[^/]+\/maps/i.test(url)) continue;
+
+      const coordinates = [
+        ...url.matchAll(/!2d(-?\d+(?:\.\d+)?)!3d(-?\d+(?:\.\d+)?)/gi),
+        ...url.matchAll(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/gi),
+      ];
+      const hasUnverifiedCoordinates = coordinates.some(coordinate =>
+        !source.includes(coordinate[1].toLowerCase()) || !source.includes(coordinate[2].toLowerCase()),
+      );
+      const placeIds = [...url.matchAll(/!1s(0x[0-9a-f]+(?::0x[0-9a-f]+)?)/gi)];
+      const hasUnverifiedPlaceId = placeIds.some(placeId => !source.includes(placeId[1].toLowerCase()));
+
+      if (hasUnverifiedCoordinates || hasUnverifiedPlaceId) {
+        flaggedPaths.add(file.path);
+      }
+    }
+  }
+
+  return [...flaggedPaths];
+}
+
+function decodeMapValue(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch (error) {
+    if (error instanceof URIError) return value;
+    throw error;
+  }
+}

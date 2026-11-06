@@ -3,6 +3,7 @@ import {
   extractAssistantCodeBlocks,
   extractAssistantCodeFiles,
   extractAssistantProjectMoves,
+  findUnverifiedGoogleMapEmbeds,
   hasAssistantProjectOperationsBlock,
 } from "./assistantCodeFiles";
 
@@ -127,5 +128,29 @@ describe("assistant code response parsing", () => {
     ].join("\n"))).toThrow("destinazione duplicati");
     expect(() => extractAssistantProjectMoves("```tatik-project-operations\n{bad json}\n```"))
       .toThrow("JSON valido");
+  });
+
+  it("blocks map iframes with coordinates or place IDs absent from the source context", () => {
+    expect(findUnverifiedGoogleMapEmbeds([
+      {
+        path: "index.html",
+        content: '<iframe src="https://www.google.com/maps/embed?pb=!2d12.123456!3d44.123456!1s0x1234567890abcdef:0x1234567890abcdef"></iframe>',
+      },
+    ], "Ristorante Due Palme, S.S. 119 km 42,700, Santa Ninfa")).toEqual(["index.html"]);
+  });
+
+  it("allows address-search embeds and map coordinates explicitly provided in context", () => {
+    expect(findUnverifiedGoogleMapEmbeds([
+      {
+        path: "index.html",
+        content: '<iframe src="https://maps.google.com/maps?q=Ristorante%20Due%20Palme&output=embed"></iframe>',
+      },
+    ], "Ristorante Due Palme, Santa Ninfa")).toEqual([]);
+    expect(findUnverifiedGoogleMapEmbeds([
+      {
+        path: "index.html",
+        content: '<iframe src="https://www.google.com/maps/embed?pb=!2d12.123456!3d44.123456"></iframe>',
+      },
+    ], "Coordinate verificate: 12.123456, 44.123456")).toEqual([]);
   });
 });

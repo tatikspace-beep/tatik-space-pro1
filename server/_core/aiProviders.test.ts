@@ -54,7 +54,8 @@ describe("generateAssistantResponse", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock.mock.calls[0][0]).toContain("api.groq.com");
     expect(fetchMock.mock.calls[2][0]).toContain("openrouter.ai");
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body).max_tokens).toBe(8192);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).max_completion_tokens).toBe(8192);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).reasoning_effort).toBe("low");
   });
 
   it("retries Groq once after the rate-limit reset and then succeeds", async () => {
@@ -92,16 +93,37 @@ describe("generateAssistantResponse", () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).max_tokens).toBe(2048);
   });
 
-  it("includes the finish reason when a provider returns no visible content", async () => {
+  it("rejects truncated output even when a provider returns partial content", async () => {
     process.env.OPENROUTER_API_KEY = "test-openrouter-key";
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
-      choices: [{ message: { content: null }, finish_reason: "length" }],
+      choices: [{ message: { content: "Risposta tagliata" }, finish_reason: "length" }],
     }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(generateAssistantResponse("qwen", [
       { role: "user", content: "Ciao" },
-    ])).rejects.toThrow(/finish_reason: length/);
+    ])).rejects.toThrow(/interrotto la risposta al limite di output/i);
+  });
+
+  it("falls back when Groq reaches its output limit before completing", async () => {
+    process.env.GROQ_API_KEY = "test-groq-key";
+    process.env.OPENROUTER_API_KEY = "test-openrouter-key";
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        choices: [{ message: { content: "" }, finish_reason: "length" }],
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        choices: [{ message: { content: "Risposta completa" } }],
+      }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await generateAssistantResponse("qwen", [
+      { role: "user", content: "Crea una pagina" },
+    ]);
+
+    expect(result.provider).toBe("OpenRouter");
+    expect(result.content).toBe("Risposta completa");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("uses Hugging Face as the fallback for a Gemini selection when only HF_API_KEY is configured", async () => {
@@ -149,6 +171,7 @@ describe("generateAssistantResponse", () => {
       { role: "user", content: "Ciao" },
     ], "Coordinatore", 600);
 
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body).max_tokens).toBe(600);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).max_completion_tokens).toBe(600);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).reasoning_effort).toBe("low");
   });
 });
