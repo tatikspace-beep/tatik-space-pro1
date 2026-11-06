@@ -147,16 +147,16 @@ export function CookieConsent() {
 
   return (
     <>
-      <div className="fixed bottom-0 left-0 right-0 z-50 p-4 animate-in slide-in-from-bottom duration-300">
-        <Card className="max-w-4xl mx-auto shadow-lg border-2">
-          <div className="p-6">
-            <div className="flex items-start gap-4">
-              <Cookie className="h-6 w-6 text-primary flex-shrink-0 mt-1" />
+      <div className="fixed bottom-4 right-4 z-50 w-[calc(100%-2rem)] max-w-md animate-in slide-in-from-bottom duration-300">
+        <Card className="shadow-xl">
+          <div className="p-4">
+            <div className="flex items-start gap-3">
+              <Cookie className="mt-0.5 h-5 w-5 flex-shrink-0 text-primary" />
               <div className="flex-1">
-                <h3 className="font-semibold text-lg mb-2">{copy.title}</h3>
+                <h3 className="mb-1 text-base font-semibold">{copy.title}</h3>
                 
                 {/* Cookie Types Description */}
-                <div className="space-y-2 mb-4 text-sm text-muted-foreground">
+                <div className="mb-3 space-y-2 text-xs text-muted-foreground">
                   <button 
                     onClick={() => setShowDetails(!showDetails)}
                     aria-expanded={showDetails}
@@ -185,7 +185,7 @@ export function CookieConsent() {
                   )}
                 </div>
 
-                <p className="text-sm text-muted-foreground mb-4">
+                <p className="mb-3 text-xs text-muted-foreground">
                   {copy.intro}{' '}
                   <Link href="/cookies" className="text-primary hover:underline">{t.cookiePolicy}</Link>
                   {' '}{copy.and}{' '}
@@ -193,14 +193,14 @@ export function CookieConsent() {
                   {' '}{copy.duration}
                 </p>
 
-                <div className="flex flex-wrap gap-3">
-                  <Button onClick={handleAccept} size="sm">
+                <div className="flex flex-wrap gap-2">
+                  <Button onClick={handleAccept} size="sm" className="flex-1 whitespace-nowrap px-2 text-xs">
                     {t.acceptAll}
                   </Button>
-                  <Button onClick={handleNecessaryOnly} variant="outline" size="sm">
+                  <Button onClick={handleNecessaryOnly} variant="outline" size="sm" className="flex-1 whitespace-nowrap px-2 text-xs">
                     {t.necessaryOnly}
                   </Button>
-                  <Button onClick={handleCustomize} variant="outline" size="sm">
+                  <Button onClick={handleCustomize} variant="outline" size="sm" className="flex-1 whitespace-nowrap px-2 text-xs">
                     {t.customize}
                   </Button>
                 </div>

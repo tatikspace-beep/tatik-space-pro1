@@ -79,6 +79,60 @@
   @apply bg-primary text-primary-foreground px-4 py-2 rounded-md;
 }
 
+/* Keep Ezoic's consent prompt compact without changing its consent controls. */
+html body #ez-cookie-dialog-wrapper {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  pointer-events: none !important;
+}
+
+html body #ez-cookie-dialog-wrapper #ez-cookie-dialog.ez_banner {
+  box-sizing: border-box !important;
+  position: fixed !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: 12px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  width: min(640px, calc(100vw - 24px)) !important;
+  max-width: 640px !important;
+  border-radius: 14px !important;
+  box-shadow: 0 8px 28px rgba(15, 23, 42, 0.22) !important;
+  pointer-events: auto !important;
+}
+
+html body #ez-cookie-dialog #ez-cookie-form {
+  padding-top: 8px !important;
+}
+
+html body #ez-cookie-dialog #ez-cmp-title {
+  font-size: 15px !important;
+  margin-bottom: 6px !important;
+}
+
+html body #ez-cookie-dialog #main-ezcmp p {
+  font-size: 12px !important;
+  line-height: 1.45 !important;
+  margin-top: 6px !important;
+  margin-bottom: 6px !important;
+}
+
+html body #ez-cookie-dialog .ez-btn-row-container {
+  padding: 8px 12px !important;
+}
+
+html body #ez-cookie-dialog #ez-accept-all {
+  background-color: #2563eb !important;
+  border-radius: 8px !important;
+  padding: 10px 14px !important;
+}
+
+html body #ez-cookie-dialog #ez-manage-settings {
+  border-radius: 8px !important;
+  padding: 10px 14px !important;
+}
+
 nav[data-compact-menu="true"] + .site-content {
   padding-top: 110px !important;
 }
