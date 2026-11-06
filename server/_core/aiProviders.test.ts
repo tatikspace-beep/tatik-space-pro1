@@ -174,4 +174,21 @@ describe("generateAssistantResponse", () => {
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).max_completion_tokens).toBe(600);
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).reasoning_effort).toBe("low");
   });
+
+  it("includes factuality and keyless map guidance in the default assistant prompt", async () => {
+    process.env.GROQ_API_KEY = "test-groq-key";
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      choices: [{ message: { content: "Risposta" } }],
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await generateAssistantResponse("qwen", [
+      { role: "user", content: "Crea una pagina per un ristorante" },
+    ]);
+
+    const messages = JSON.parse(fetchMock.mock.calls[0][1].body).messages;
+    expect(messages[0].content).toContain("never invent examples");
+    expect(messages[0].content).toContain("keyless address-based URL");
+    expect(messages[0].content).toContain("standard Tatik.space footer");
+  });
 });
