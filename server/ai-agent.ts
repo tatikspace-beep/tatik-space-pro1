@@ -47,6 +47,11 @@ export function validateAgentFinalResponse(response: string, task: string) {
   return content;
 }
 
+export function isAgentOutputLimitError(error: unknown) {
+  return error instanceof Error
+    && /interrotto la risposta al limite di output|troncata.*limite di output|MAX_TOKENS|finish_reason:\s*length/i.test(error.message);
+}
+
 export function parseAgentPlan(response: string) {
   const jsonCandidate = response.match(/\{[\s\S]*\}/)?.[0];
   if (!jsonCandidate) throw new Error("L'agente pianificatore non ha restituito un piano valido. Riprova con una richiesta più specifica.");

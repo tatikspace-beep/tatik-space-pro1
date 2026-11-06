@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { parseAgentPlan, validateAgentFinalResponse } from "./ai-agent";
+import { isAgentOutputLimitError, parseAgentPlan, validateAgentFinalResponse } from "./ai-agent";
+
+describe("AI agent output recovery", () => {
+  it("recognizes provider output truncation for a concise retry", () => {
+    expect(isAgentOutputLimitError(new Error(
+      "Nessun provider AI disponibile. Groq: Groq ha interrotto la risposta al limite di output.",
+    ))).toBe(true);
+    expect(isAgentOutputLimitError(new Error("Gemini è temporaneamente occupato."))).toBe(false);
+  });
+});
 
 describe("AI agent planner output", () => {
   it("parses a bounded plan with specialist tasks", () => {
