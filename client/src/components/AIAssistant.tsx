@@ -443,7 +443,9 @@ export function AIAssistant({ projectId, projectName, projectFiles = [], current
           saveDailyUsage(updatedUsage);
         }
         agentResponse = response.content;
-        content = `**Piano di lavoro:** ${response.plan}\n\n**Deleghe:**\n${response.delegations.map(item => `- ${item.role}: ${item.task}`).join('\n')}\n\n${response.content}`;
+        content = informationalAgentRequest
+          ? response.content
+          : `**Piano di lavoro:** ${response.plan}\n\n**Deleghe:**\n${response.delegations.map(item => `- ${item.role}: ${item.task}`).join('\n')}\n\n${response.content}`;
         provider = response.provider;
         providerModel = response.model;
       } else {

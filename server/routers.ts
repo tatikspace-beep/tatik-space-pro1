@@ -1260,7 +1260,7 @@ export const appRouter = router({
         const informationalRequest = isInformationalAgentRequest(input.task);
         const agentContext = informationalRequest ? "" : context;
         const informationalGuidance = informationalRequest
-          ? " The user requests an explanation only, not implementation. Do not propose code, files, tests, workflows, or project changes; answer in the user's requested format."
+          ? " The user requests information only, not implementation. Answer only the question and follow the requested length and format exactly. Do not add code, files, tests, workflows, implementation suggestions, tables, or extra sections unless asked. If the user asks for two points, return exactly two numbered points with no preamble."
           : "";
         const conversation = input.history
           .map(message => `${message.role === "user" ? "Utente" : "Agente"}: ${message.content}`)
