@@ -112,7 +112,7 @@ describe("generateAssistantResponse", () => {
 
     const result = await generateAssistantResponse("gemini", [
       { role: "user", content: "Ciao" },
-    ]);
+    ], undefined, 8192, [], "json");
 
     expect(result).toEqual({
       content: "Risposta Hugging Face",
@@ -121,6 +121,7 @@ describe("generateAssistantResponse", () => {
     });
     expect(invokeLLM).toHaveBeenCalledWith(expect.objectContaining({
       model: "Qwen/Qwen2.5-Coder-32B-Instruct",
+      responseFormat: "json",
     }));
   });
 
@@ -133,12 +134,13 @@ describe("generateAssistantResponse", () => {
 
     const result = await generateAssistantResponse("gemini", [
       { role: "user", content: "Ciao" },
-    ]);
+    ], undefined, 8192, [], "json");
 
     expect(result.provider).toBe("Gemini");
     expect(result.model).toBe("gemini-3.8-flash");
     expect(fetchMock.mock.calls[0][0]).toContain("gemini-3.8-flash");
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).generationConfig.maxOutputTokens).toBe(8192);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).generationConfig.responseMimeType).toBe("application/json");
   });
 
   it("uses the requested output budget across providers", async () => {
@@ -150,9 +152,10 @@ describe("generateAssistantResponse", () => {
 
     await generateAssistantResponse("qwen", [
       { role: "user", content: "Ciao" },
-    ], "Coordinatore", 600);
+    ], "Coordinatore", 600, [], "json");
 
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).max_tokens).toBe(600);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).response_format).toEqual({ type: "json_object" });
   });
 
   it("uses protected Ollama as a final fallback and sends approved examples only to Ollama", async () => {
@@ -173,6 +176,7 @@ describe("generateAssistantResponse", () => {
       "Sei un agente.",
       1200,
       [{ task: "Allinea le schede", response: "Usa flexbox e mantieni il layout." }],
+      "json",
     );
 
     expect(result).toEqual({
@@ -187,6 +191,7 @@ describe("generateAssistantResponse", () => {
     expect(cloudBody).not.toContain("Usa flexbox");
     expect(ollamaRequest.messages[0].content).toContain("Usa flexbox");
     expect(ollamaRequest.options.num_predict).toBe(1200);
+    expect(ollamaRequest.format).toBe("json");
     expect(fetchMock.mock.calls[1][1].headers.Authorization).toBe("Bearer test-ollama-key");
     expect(fetchMock.mock.calls[1][1].redirect).toBe("error");
   });

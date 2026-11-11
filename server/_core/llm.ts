@@ -2,7 +2,7 @@ import { ENV } from "./env";
 
 export type Role = "system" | "user" | "assistant";
 export type Message = { role: Role; content: string };
-export type InvokeParams = { messages: Message[]; maxTokens?: number; temperature?: number };
+export type InvokeParams = { messages: Message[]; maxTokens?: number; temperature?: number; responseFormat?: "json" };
 export type InvokeResult = {
   choices: Array<{ message: { role: Role; content: string } }>;
 };
@@ -11,7 +11,7 @@ const DEFAULT_HF_MODEL = "mistralai/Mistral-7B-Instruct-v0.3";
 
 export async function invokeLLM(params: InvokeParams & { model?: string }): Promise<InvokeResult> {
   if (!ENV.hfApiKey) throw new Error("HF_API_KEY is not configured");
-  const { messages, maxTokens = 2048, temperature = 0.2, model = DEFAULT_HF_MODEL } = params;
+  const { messages, maxTokens = 2048, temperature = 0.2, model = DEFAULT_HF_MODEL, responseFormat } = params;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 45_000);
 
@@ -23,7 +23,13 @@ export async function invokeLLM(params: InvokeParams & { model?: string }): Prom
         authorization: `Bearer ${ENV.hfApiKey}`,
       },
       signal: controller.signal,
-      body: JSON.stringify({ model, messages, max_tokens: maxTokens, temperature }),
+      body: JSON.stringify({
+        model,
+        messages,
+        max_tokens: maxTokens,
+        temperature,
+        ...(responseFormat === "json" ? { response_format: { type: "json_object" } } : {}),
+      }),
     });
     const payload = await response.json().catch(() => null) as {
       choices?: Array<{ message?: { content?: string } }>;

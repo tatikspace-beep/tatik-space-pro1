@@ -19,10 +19,12 @@ describe("invokeLLM", () => {
     const result = await invokeLLM({
       model: "Qwen/Qwen2.5-Coder-32B-Instruct",
       messages: [{ role: "user", content: "Ciao" }],
+      responseFormat: "json",
     });
 
     expect(fetchMock.mock.calls[0][0]).toBe("https://router.huggingface.co/v1/chat/completions");
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).model).toBe("Qwen/Qwen2.5-Coder-32B-Instruct");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).response_format).toEqual({ type: "json_object" });
     expect(result.choices[0].message.content).toBe("Risposta Hugging Face");
   });
 });

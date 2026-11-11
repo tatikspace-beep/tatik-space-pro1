@@ -7,6 +7,8 @@ type ChatResult = {
   model: string;
 };
 
+type ResponseFormat = "json";
+
 export interface ApprovedAgentExample {
   task: string;
   response: string;
@@ -83,6 +85,7 @@ async function callOpenAICompatible(
   provider: string,
   extraHeaders: Record<string, string> = {},
   maxTokens = 8192,
+  responseFormat?: ResponseFormat,
 ): Promise<ChatResult> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30_000);
@@ -100,6 +103,7 @@ async function callOpenAICompatible(
         max_tokens: maxTokens,
         temperature: 0.3,
         stream: false,
+        ...(responseFormat === "json" ? { response_format: { type: "json_object" } } : {}),
       }),
       signal: controller.signal,
     });
@@ -138,7 +142,12 @@ async function callOpenAICompatible(
   }
 }
 
-async function callGemini(messages: AssistantMessage[], systemPrompt: string, maxTokens: number): Promise<ChatResult> {
+async function callGemini(
+  messages: AssistantMessage[],
+  systemPrompt: string,
+  maxTokens: number,
+  responseFormat?: ResponseFormat,
+): Promise<ChatResult> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("GEMINI_API_KEY non configurata");
   const model = process.env.GEMINI_MODEL || "gemini-3.8-flash";
@@ -156,7 +165,11 @@ async function callGemini(messages: AssistantMessage[], systemPrompt: string, ma
             parts: [{ text: message.content }],
           })),
           systemInstruction: { parts: [{ text: systemPrompt }] },
-          generationConfig: { maxOutputTokens: maxTokens, temperature: 0.3 },
+          generationConfig: {
+            maxOutputTokens: maxTokens,
+            temperature: 0.3,
+            ...(responseFormat === "json" ? { responseMimeType: "application/json" } : {}),
+          },
         }),
         signal: controller.signal,
       },
@@ -227,6 +240,7 @@ async function callOllama(
   systemPrompt: string,
   maxTokens: number,
   approvedExamples: ApprovedAgentExample[],
+  responseFormat?: ResponseFormat,
 ): Promise<ChatResult> {
   const config = getOllamaConfig();
   if (!config) throw new Error("OLLAMA_BASE_URL non configurato");
@@ -255,6 +269,7 @@ async function callOllama(
           ...history,
         ],
         stream: false,
+        ...(responseFormat === "json" ? { format: "json" } : {}),
         options: { temperature: 0.3, num_predict: maxTokens },
       }),
       signal: controller.signal,
@@ -287,6 +302,7 @@ export async function generateAssistantResponse(
   systemPrompt = SYSTEM_PROMPT,
   maxTokens = 8192,
   approvedExamples: ApprovedAgentExample[] = [],
+  responseFormat?: ResponseFormat,
 ): Promise<ChatResult> {
   const messages = [{ role: "system" as const, content: systemPrompt }, ...history];
   const groqKey = process.env.GROQ_API_KEY;
@@ -296,7 +312,7 @@ export async function generateAssistantResponse(
   const providers: Array<{ name: string; run: () => Promise<ChatResult> }> = [];
   const addGemini = () => {
     if (process.env.GEMINI_API_KEY) {
-      providers.push({ name: "Gemini", run: () => callGemini(history, systemPrompt, maxTokens) });
+      providers.push({ name: "Gemini", run: () => callGemini(history, systemPrompt, maxTokens, responseFormat) });
     }
   };
   const addGroq = () => {
@@ -311,6 +327,7 @@ export async function generateAssistantResponse(
           "Groq",
           {},
           maxTokens,
+          responseFormat,
         )),
       });
     }
@@ -330,6 +347,7 @@ export async function generateAssistantResponse(
             "X-Title": "Tatik.space",
           },
           Math.max(maxTokens, 2048),
+          responseFormat,
         ),
       });
     }
@@ -356,6 +374,7 @@ export async function generateAssistantResponse(
           messages,
           maxTokens,
           temperature: 0.3,
+          ...(responseFormat === "json" ? { responseFormat } : {}),
         });
         const content = result.choices[0]?.message.content.trim();
         if (!content) throw new Error("Hugging Face ha restituito una risposta vuota");
@@ -367,7 +386,7 @@ export async function generateAssistantResponse(
   if (process.env.OLLAMA_BASE_URL?.trim()) {
     providers.push({
       name: "Ollama",
-      run: () => callOllama(history, systemPrompt, maxTokens, approvedExamples),
+      run: () => callOllama(history, systemPrompt, maxTokens, approvedExamples, responseFormat),
     });
   }
 
