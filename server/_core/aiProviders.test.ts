@@ -80,6 +80,25 @@ describe("generateAssistantResponse", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("uses Groq's retry delay from the error message when no retry header is returned", async () => {
+    process.env.GROQ_API_KEY = "test-groq-key";
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        error: "Rate limit reached. Please try again in 0.01s.",
+      }), { status: 429 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        choices: [{ message: { content: "Risposta dopo il retry" } }],
+      }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await generateAssistantResponse("qwen", [
+      { role: "user", content: "Ciao" },
+    ]);
+
+    expect(result.provider).toBe("Groq");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it("extracts text blocks from OpenRouter content arrays", async () => {
     process.env.OPENROUTER_API_KEY = "test-openrouter-key";
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({

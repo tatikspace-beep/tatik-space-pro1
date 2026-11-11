@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { parseAgentPlan, validateAgentFinalResponse } from "./ai-agent";
+import { isInformationalAgentRequest, parseAgentPlan, validateAgentFinalResponse } from "./ai-agent";
+
+describe("AI agent request intent", () => {
+  it("recognizes explanation requests so they are not turned into file changes", () => {
+    expect(isInformationalAgentRequest("Spiega in due punti cosa significa fare un test funzionale")).toBe(true);
+    expect(isInformationalAgentRequest("Explain why functional tests matter")).toBe(true);
+    expect(isInformationalAgentRequest("Rispondi in due punti, senza creare file")).toBe(true);
+    expect(isInformationalAgentRequest("Implementa un test funzionale")).toBe(false);
+  });
+});
 
 describe("AI agent planner output", () => {
   it("parses a bounded plan with specialist tasks", () => {
@@ -69,5 +78,9 @@ describe("AI agent planner output", () => {
   it("allows a complete non-code answer to an informational task", () => {
     expect(validateAgentFinalResponse("Il problema dipende dal percorso.", "Spiega il problema"))
       .toBe("Il problema dipende dal percorso.");
+    expect(validateAgentFinalResponse(
+      "1. Un test funzionale verifica il comportamento visibile richiesto.\n2. Prima del rilascio aiuta a trovare regressioni.",
+      "Rispondi in due punti, senza creare file",
+    )).toContain("Un test funzionale");
   });
 });

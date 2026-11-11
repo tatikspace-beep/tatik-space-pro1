@@ -25,7 +25,7 @@ class ProviderRequestError extends Error {
   }
 }
 
-function parseRetryDelay(value: string | null, unit: "seconds" | "reset" = "seconds"): number | undefined {
+function parseRetryDelay(value: string | null | undefined, unit: "seconds" | "reset" = "seconds"): number | undefined {
   if (!value) return undefined;
   const numeric = Number.parseFloat(value);
   if (Number.isFinite(numeric)) {
@@ -113,11 +113,13 @@ async function callOpenAICompatible(
       message?: string;
     } | null;
     if (!response.ok) {
+      const errorMessage = providerErrorMessage(payload, response.status);
       const retryAfterMs = response.status === 429
         ? parseRetryDelay(response.headers.get("retry-after"))
           ?? parseRetryDelay(response.headers.get("x-ratelimit-reset-tokens"), "reset")
+          ?? parseRetryDelay(errorMessage.match(/try again in\s+([\d.]+)\s*s(?:ec(?:onds?)?)?/i)?.[1])
         : undefined;
-      throw new ProviderRequestError(providerErrorMessage(payload, response.status), response.status, retryAfterMs);
+      throw new ProviderRequestError(errorMessage, response.status, retryAfterMs);
     }
     const choice = payload?.choices?.[0];
     const rawContent = choice?.message?.content;
