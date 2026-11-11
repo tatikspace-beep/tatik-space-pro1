@@ -32,6 +32,7 @@ import {
   selectRelevantAgentExamples,
   type ApprovedAgentExample,
 } from '@/lib/agentMemory';
+import { isInformationalAgentRequest } from '@shared/agentRequestIntent';
 
 // ---------------------------------------------------------------------------
 // Constants & Configuration
@@ -169,6 +170,7 @@ export function AIAssistant({ projectId, projectName, projectFiles = [], current
   const [selectedModel, setSelectedModel] = useState<ModelId>('qwen');
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
+  const [contextDisclosure, setContextDisclosure] = useState<'pending' | 'sent' | 'not-sent'>('pending');
   const [isLoading, setIsLoading] = useState(false);
   const [dailyUsage, setDailyUsage] = useState<DailyUsage>(getDailyUsage);
   const [agentMode, setAgentMode] = useState(false);
@@ -372,7 +374,12 @@ export function AIAssistant({ projectId, projectName, projectFiles = [], current
     };
 
     const nextMessages = [...messages, userMsg];
+    const hasProjectContext = projectFiles.length > 0 || (currentFilePath && currentFileContent !== undefined);
+    const informationalAgentRequest = agentMode && isInformationalAgentRequest(trimmed);
     if (agentMode && !agentAvailability?.available) return;
+    if (hasProjectContext) {
+      setContextDisclosure(informationalAgentRequest ? 'not-sent' : 'sent');
+    }
     setMessages(nextMessages);
     setInput('');
     setIsLoading(true);
@@ -988,8 +995,16 @@ export function AIAssistant({ projectId, projectName, projectFiles = [], current
               {(projectFiles.length > 0 || (currentFilePath && currentFileContent !== undefined)) && (
                 <p className="px-4 pt-2 text-[10px] text-muted-foreground">
                   {language === 'it'
-                    ? `Contesto del progetto inviato al modello IA selezionato (${projectFiles.length} file${currentFilePath ? ` · attivo: ${currentFilePath}` : ''})`
-                    : `Project context sent to the selected AI model (${projectFiles.length} files${currentFilePath ? ` · active: ${currentFilePath}` : ''})`}
+                    ? contextDisclosure === 'not-sent'
+                      ? 'Contesto del progetto non inviato per questa richiesta informativa.'
+                      : contextDisclosure === 'sent'
+                        ? `Contesto del progetto inviato al modello IA selezionato (${projectFiles.length} file${currentFilePath ? ` · attivo: ${currentFilePath}` : ''})`
+                        : 'Il contesto del progetto può essere inviato al modello IA quando pertinente.'
+                    : contextDisclosure === 'not-sent'
+                      ? 'Project context was not sent for this informational request.'
+                      : contextDisclosure === 'sent'
+                        ? `Project context sent to the selected AI model (${projectFiles.length} files${currentFilePath ? ` · active: ${currentFilePath}` : ''})`
+                        : 'Project context may be sent to the selected AI model when relevant.'}
                 </p>
               )}
               <form

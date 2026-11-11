@@ -45,7 +45,8 @@ import { getAuthBaseUrl } from "./_core/authUrls";
 import { PREMIUM_TEMPLATES } from "../client/src/data/templates";
 import { assertProviderCredentialStorageConfigured, decryptProviderCredential, encryptProviderCredential, PROVIDER_IDS, verifyProviderCredential } from "./provider-credentials";
 import { createDatabaseProject, deployStaticProject } from "./provider-operations";
-import { isInformationalAgentRequest, parseAgentPlan, validateAgentFinalResponse } from "./ai-agent";
+import { parseAgentPlan, validateAgentFinalResponse } from "./ai-agent";
+import { isInformationalAgentRequest } from "../shared/agentRequestIntent";
 import { isLocalizedAgentEditRequest, LOCALIZED_AGENT_EDIT_GUIDANCE } from "../shared/agentEditScope";
 
 async function sendAuthEmail(to: string, subject: string, text: string) {

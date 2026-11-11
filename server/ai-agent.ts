@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { isAgentFileCreationRequest, isInformationalAgentRequest } from "../shared/agentRequestIntent";
+
+export { isInformationalAgentRequest } from "../shared/agentRequestIntent";
 
 export const agentPlanSchema = z.object({
   plan: z.string().min(1).max(4000),
@@ -7,15 +10,6 @@ export const agentPlanSchema = z.object({
     task: z.string().min(1).max(800),
   })).length(2),
 });
-
-const FILE_CREATION_REQUEST = /\b(?:create|build|generate|implement|write|develop|add|fix|update)\b|crea|costru|genera|implement|scriv|svilupp|aggiung|corregg|aggiorn/i;
-const NO_IMPLEMENTATION_REQUEST = /\b(?:do not|don't|never)\s+(?:create|build|generate|implement|write|develop|add|fix|update)\b|(?:non|senza)\s+(?:creare|costruire|generare|implementare|scrivere|sviluppare|aggiungere|correggere|aggiornare)\b/i;
-const INFORMATIONAL_AGENT_REQUEST = /^(?:please\s+)?(?:explain|what is|why|how does|describe|define|compare|summarize|translate|answer|tell me)\b|^(?:spiega|rispondi|dimmi|cos[’']?è|perché|come funziona|descrivi|definisci|confronta|riassumi|traduci)\b/i;
-
-export function isInformationalAgentRequest(task: string) {
-  const requestsImplementation = FILE_CREATION_REQUEST.test(task) && !NO_IMPLEMENTATION_REQUEST.test(task);
-  return INFORMATIONAL_AGENT_REQUEST.test(task.trim()) && !requestsImplementation;
-}
 
 export function validateAgentFinalResponse(response: string, task: string) {
   const content = response.trim();
@@ -33,7 +27,7 @@ export function validateAgentFinalResponse(response: string, task: string) {
     throw new Error("La revisione finale contiene un blocco di codice vuoto.");
   }
 
-  if (!isInformationalAgentRequest(task) && FILE_CREATION_REQUEST.test(task)) {
+  if (!isInformationalAgentRequest(task) && isAgentFileCreationRequest(task)) {
     const hasNamedFile = codeBlocks.some(block => {
       if (/(?:filename|file|path)\s*=\s*["']?[^"'`\s]+\.[a-z0-9]+/i.test(block[1])) return true;
       const beforeBlock = content.slice(0, block.index ?? 0).trimEnd().split(/\r?\n/).slice(-6);
