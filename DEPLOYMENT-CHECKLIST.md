@@ -177,10 +177,17 @@ Le variabili SMTP sono necessarie solo se viene implementato e attivato un perco
 HF_API_KEY=...
 GEMINI_API_KEY=...
 GEMINI_MODEL=gemini-3.8-flash
+OLLAMA_BASE_URL=https://ollama.example.com
+OLLAMA_API_KEY=...
+OLLAMA_MODEL=qwen2.5-coder:32b
 ```
 
 Sono chiavi server-only. Non usare mai `VITE_HF_API_KEY` o `VITE_GEMINI_API_KEY`.
 `GEMINI_MODEL` è facoltativa; se omessa, l'app usa il modello Gemini Flash corrente predefinito.
+
+Ollama è un fallback facoltativo, disattivato se `OLLAMA_BASE_URL` manca. In Production usare HTTPS e un token `OLLAMA_API_KEY` configurato solo in Vercel; l'endpoint deve essere raggiungibile in uscita dai runtime Vercel. Proteggere l'origine Ollama con autenticazione e, se possibile, un proxy/tunnel con accesso limitato. Non esporre la porta Ollama anonimamente su Internet. `OLLAMA_MODEL` è facoltativo e predefinito a `qwen2.5-coder:32b`.
+
+L'Agente può conservare esempi solo dopo l'approvazione esplicita dell'utente; sono salvati nel browser e separati per utente e progetto. Gli esempi non addestrano i pesi del modello: sono recuperati per richieste simili e inviati solo al fallback Ollama configurato, mai ai provider AI ospitati. Non approvare esempi con segreti o dati personali.
 
 ### Storage marketplace e file
 

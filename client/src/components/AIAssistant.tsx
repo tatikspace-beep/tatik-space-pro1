@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { toast } from 'sonner';
 import {
   Bot, Send, Loader2, User, Sparkles, Zap,
-  AlertCircle, Copy, Check, Bug, ArrowLeft, Flame
+  AlertCircle, Copy, Check, Bug, ArrowLeft, Flame, BookmarkPlus
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { trpc } from '@/lib/trpc';
@@ -19,10 +19,19 @@ import {
   extractAssistantCodeBlocks,
   extractAssistantCodeFiles,
   extractAssistantProjectMoves,
+  findAgentFilesWithExcessiveScopeLoss,
+  findUnverifiedGoogleMapEmbeds,
   hasAssistantProjectOperationsBlock,
   type AssistantProjectMove,
 } from '@/lib/assistantCodeFiles';
 import { buildAssistantProjectContext, type AssistantProjectFile } from '@/lib/assistantProjectContext';
+import {
+  addApprovedAgentExample,
+  agentMemoryStorageKey,
+  parseApprovedAgentExamples,
+  selectRelevantAgentExamples,
+  type ApprovedAgentExample,
+} from '@/lib/agentMemory';
 
 // ---------------------------------------------------------------------------
 // Constants & Configuration
@@ -68,6 +77,8 @@ interface Message {
   modelId?: ModelId;
   provider?: string;
   providerModel?: string;
+  agentTask?: string;
+  agentResponse?: string;
   error?: boolean;
 }
 
@@ -161,6 +172,14 @@ export function AIAssistant({ projectId, projectName, projectFiles = [], current
   const [isLoading, setIsLoading] = useState(false);
   const [dailyUsage, setDailyUsage] = useState<DailyUsage>(getDailyUsage);
   const [agentMode, setAgentMode] = useState(false);
+  const agentMemoryKey = user && projectId !== undefined && projectId !== null
+    ? agentMemoryStorageKey(user.id, projectId)
+    : null;
+  const [agentMemory, setAgentMemory] = useState<{
+    key: string | null;
+    examples: ApprovedAgentExample[];
+  }>({ key: null, examples: [] });
+  const approvedAgentExamples = agentMemory.key === agentMemoryKey ? agentMemory.examples : [];
 
   // Bug fix mode states
   const [bugFixMode, setBugFixMode] = useState(false);
@@ -227,6 +246,55 @@ export function AIAssistant({ projectId, projectName, projectFiles = [], current
   const currentModel = MODELS.find((m) => m.id === selectedModel)!;
   const remainingMessages = FREE_DAILY_LIMIT - dailyUsage.count;
   const isLimitReached = !isAdmin && remainingMessages <= 0;
+  const canRunAgent = isAdmin || remainingMessages >= 5;
+
+  useEffect(() => {
+    if (!agentMemoryKey) {
+      setAgentMemory({ key: null, examples: [] });
+      return;
+    }
+    try {
+      setAgentMemory({
+        key: agentMemoryKey,
+        examples: parseApprovedAgentExamples(localStorage.getItem(agentMemoryKey)),
+      });
+    } catch (error) {
+      setAgentMemory({ key: agentMemoryKey, examples: [] });
+      toast.error(error instanceof Error ? error.message : 'Impossibile leggere la memoria locale dell’Agente.');
+    }
+  }, [agentMemoryKey]);
+
+  const handleApproveAgentExample = (task: string, response: string) => {
+    if (!agentMemoryKey) return;
+    const confirmed = window.confirm(language === 'it'
+      ? 'Salvare richiesta e risposta come esempio approvato in questo browser per il progetto? Saranno inviati solo al servizio Ollama self-hosted se viene usato come fallback. Non salvare segreti o dati personali. Continuare?'
+      : 'Save this request and response as an approved example in this browser for this project? It will only be sent to self-hosted Ollama when that fallback is used. Do not save secrets or personal data. Continue?');
+    if (!confirmed) return;
+
+    try {
+      const updated = addApprovedAgentExample(approvedAgentExamples, task, response);
+      localStorage.setItem(agentMemoryKey, JSON.stringify(updated));
+      setAgentMemory({ key: agentMemoryKey, examples: updated });
+      toast.success(language === 'it' ? 'Esempio approvato salvato nel browser.' : 'Approved example saved in this browser.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Impossibile salvare l’esempio approvato.');
+    }
+  };
+
+  const handleClearAgentMemory = () => {
+    if (!agentMemoryKey || approvedAgentExamples.length === 0) return;
+    const confirmed = window.confirm(language === 'it'
+      ? 'Eliminare tutti gli esempi approvati salvati in questo browser per il progetto?'
+      : 'Delete all approved examples saved in this browser for this project?');
+    if (!confirmed) return;
+    try {
+      localStorage.removeItem(agentMemoryKey);
+      setAgentMemory({ key: agentMemoryKey, examples: [] });
+      toast.success(language === 'it' ? 'Memoria dell’Agente eliminata.' : 'Agent memory deleted.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Impossibile eliminare la memoria dell’Agente.');
+    }
+  };
 
   // ---------------------------------------------------------------------------
   // Scroll to bottom
@@ -289,6 +357,12 @@ export function AIAssistant({ projectId, projectName, projectFiles = [], current
     const trimmed = input.trim();
     if (!trimmed || isLoading) return;
     if (isLimitReached) return;
+    if (agentMode && !canRunAgent) {
+      toast.error(language === 'it'
+        ? 'L’Agente può richiedere fino a cinque chiamate AI. Riprova quando il limite giornaliero si rinnova.'
+        : 'The Agent may use up to five AI calls. Try again when the daily limit resets.');
+      return;
+    }
 
     const userMsg: Message = {
       id: Date.now().toString(),
@@ -337,6 +411,7 @@ export function AIAssistant({ projectId, projectName, projectFiles = [], current
       let content: string;
       let provider: string;
       let providerModel: string;
+      let agentResponse: string | undefined;
       if (agentMode) {
         const response = await agentMutation.mutateAsync({
           projectId: projectId ?? 0,
@@ -349,7 +424,18 @@ export function AIAssistant({ projectId, projectName, projectFiles = [], current
           context: contextFiles.length > 0
             ? buildAssistantProjectContext(projectName, contextFiles, currentFilePath, trimmed).slice(0, 12000)
             : undefined,
+          approvedExamples: selectRelevantAgentExamples(approvedAgentExamples, trimmed),
         });
+        if (!isAdmin) {
+          const used = Math.min(
+            FREE_DAILY_LIMIT,
+            Math.max(dailyUsage.count + response.usageCalls, response.usage.used),
+          );
+          const updatedUsage = { ...dailyUsage, count: used };
+          setDailyUsage(updatedUsage);
+          saveDailyUsage(updatedUsage);
+        }
+        agentResponse = response.content;
         content = `**Piano di lavoro:** ${response.plan}\n\n**Deleghe:**\n${response.delegations.map(item => `- ${item.role}: ${item.task}`).join('\n')}\n\n${response.content}`;
         provider = response.provider;
         providerModel = response.model;
@@ -367,6 +453,8 @@ export function AIAssistant({ projectId, projectName, projectFiles = [], current
         modelId: selectedModel,
         provider,
         providerModel,
+        agentTask: agentMode ? trimmed : undefined,
+        agentResponse,
       }]);
     } catch (err: any) {
       if (!isAdmin) {
@@ -387,7 +475,7 @@ export function AIAssistant({ projectId, projectName, projectFiles = [], current
       setIsLoading(false);
       textareaRef.current?.focus();
     }
-  }, [input, isLoading, messages, selectedModel, dailyUsage, isLimitReached, chatMutation, agentMutation, agentMode, agentAvailability, projectId, currentFilePath, currentFileContent, projectName, projectFiles]);
+  }, [input, isLoading, messages, selectedModel, dailyUsage, isLimitReached, chatMutation, agentMutation, agentMode, agentAvailability, projectId, currentFilePath, currentFileContent, projectName, projectFiles, approvedAgentExamples]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -763,11 +851,19 @@ export function AIAssistant({ projectId, projectName, projectFiles = [], current
                 ) : (
                   // Chat messages
                   <>
-                    {messages.map((msg) => (
+                    {messages.map((msg, messageIndex) => (
                       <MessageBubble
                         key={msg.id}
                         message={msg}
                         model={MODELS.find((m) => m.id === msg.modelId)}
+                        onApproveAgentExample={
+                          msg.agentTask && msg.agentResponse && agentMemoryKey
+                            ? () => handleApproveAgentExample(msg.agentTask!, msg.agentResponse!)
+                            : undefined
+                        }
+                        agentExampleApproved={Boolean(msg.agentTask && approvedAgentExamples.some(example =>
+                          example.task === msg.agentTask && example.response === msg.agentResponse,
+                        ))}
                         onInsertCode={
                           onCodeInsert && msg.role === 'assistant' && extractAssistantCodeBlocks(msg.content).length > 0
                             ? async () => {
@@ -790,6 +886,31 @@ export function AIAssistant({ projectId, projectName, projectFiles = [], current
                               try {
                                 const files = extractAssistantCodeFiles(msg.content);
                                 const moves = extractAssistantProjectMoves(msg.content);
+                                const request = msg.agentTask
+                                  || [...messages.slice(0, messageIndex)].reverse().find(item => item.role === 'user')?.content
+                                  || '';
+                                const existingFiles = projectFiles.slice();
+                                if (currentFilePath && currentFileContent !== undefined) {
+                                  const currentIndex = existingFiles.findIndex(file => file.path === currentFilePath);
+                                  const current = { path: currentFilePath, content: currentFileContent };
+                                  if (currentIndex === -1) existingFiles.unshift(current);
+                                  else existingFiles[currentIndex] = current;
+                                }
+                                const filesWithScopeLoss = findAgentFilesWithExcessiveScopeLoss(files, existingFiles, request);
+                                if (filesWithScopeLoss.length > 0) {
+                                  throw new Error(language === 'it'
+                                    ? `Modifica non applicata: ${filesWithScopeLoss.join(', ')} rimuoverebbe gran parte del contenuto esistente. Chiedi una modifica locale che mantenga le altre sezioni.`
+                                    : `Change not applied: ${filesWithScopeLoss.join(', ')} would remove most existing content. Request a local edit that preserves the other sections.`);
+                                }
+                                const unverifiedMaps = findUnverifiedGoogleMapEmbeds(files, [
+                                  request,
+                                  ...existingFiles.map(file => file.content || ''),
+                                ].join('\n'));
+                                if (unverifiedMaps.length > 0) {
+                                  throw new Error(language === 'it'
+                                    ? `Mappa non applicata: coordinate o ID Google non verificati in ${unverifiedMaps.join(', ')}. Chiedi una mappa basata sull’indirizzo fornito.`
+                                    : `Map not applied: unverified coordinates or Google IDs in ${unverifiedMaps.join(', ')}. Request a map based on the supplied address.`);
+                                }
                                 const result = await onCreateFiles(files, moves);
                                 if (result) {
                                   const summary = language === 'it'
@@ -850,6 +971,20 @@ export function AIAssistant({ projectId, projectName, projectFiles = [], current
           {/* Input / Analyze Button */}
           {!bugFixMode && !optimizationMode ? (
             <div className="border-t bg-background/60 shrink-0">
+              {agentMode && agentMemoryKey && (
+                <div className="flex items-center justify-between gap-2 px-4 pt-2 text-[10px] text-muted-foreground">
+                  <span>
+                    {language === 'it'
+                      ? `${approvedAgentExamples.length} esempi approvati salvati solo in questo browser; vengono inviati solo a Ollama self-hosted se usato come fallback.`
+                      : `${approvedAgentExamples.length} approved examples saved only in this browser; sent only to self-hosted Ollama when used as a fallback.`}
+                  </span>
+                  {approvedAgentExamples.length > 0 && (
+                    <button type="button" onClick={handleClearAgentMemory} className="shrink-0 hover:text-foreground">
+                      {language === 'it' ? 'Elimina' : 'Clear'}
+                    </button>
+                  )}
+                </div>
+              )}
               {(projectFiles.length > 0 || (currentFilePath && currentFileContent !== undefined)) && (
                 <p className="px-4 pt-2 text-[10px] text-muted-foreground">
                   {language === 'it'
@@ -873,12 +1008,12 @@ export function AIAssistant({ projectId, projectName, projectFiles = [], current
                   }
                   className="flex-1 resize-none min-h-[40px] max-h-32 text-sm"
                   rows={1}
-                  disabled={isLoading || isLimitReached || (agentMode && !agentAvailability?.available)}
+                  disabled={isLoading || isLimitReached || (agentMode && (!agentAvailability?.available || !canRunAgent))}
                 />
                 <Button
                   type="submit"
                   size="icon"
-                  disabled={!input.trim() || isLoading || isLimitReached}
+                  disabled={!input.trim() || isLoading || isLimitReached || (agentMode && !canRunAgent)}
                   className="h-10 w-10 shrink-0"
                 >
                   {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
@@ -988,11 +1123,13 @@ export function AIAssistant({ projectId, projectName, projectFiles = [], current
 interface MessageBubbleProps {
   message: Message;
   model?: (typeof MODELS)[number];
+  onApproveAgentExample?: () => void;
+  agentExampleApproved?: boolean;
   onInsertCode?: () => void;
   onCreateFiles?: () => void;
 }
 
-function MessageBubble({ message, model, onInsertCode, onCreateFiles }: MessageBubbleProps) {
+function MessageBubble({ message, model, onApproveAgentExample, agentExampleApproved, onInsertCode, onCreateFiles }: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const { language } = useLanguage();
   const copy = getComponentCopy(language);
@@ -1062,6 +1199,17 @@ function MessageBubble({ message, model, onInsertCode, onCreateFiles }: MessageB
           {onCreateFiles && (
             <button onClick={onCreateFiles} className="text-[10px] text-primary hover:underline font-medium">
               {language === 'it' ? 'Crea file nel progetto' : 'Create project files'}
+            </button>
+          )}
+          {onApproveAgentExample && (
+            <button
+              onClick={onApproveAgentExample}
+              disabled={agentExampleApproved}
+              className="text-[10px] text-primary hover:underline font-medium disabled:text-muted-foreground disabled:no-underline"
+            >
+              {agentExampleApproved
+                ? (language === 'it' ? 'Esempio salvato' : 'Example saved')
+                : <><BookmarkPlus className="mr-1 inline h-3 w-3" />{language === 'it' ? 'Approva esempio' : 'Approve example'}</>}
             </button>
           )}
         </div>

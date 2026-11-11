@@ -1,3 +1,6 @@
+import { isLocalizedAgentEditRequest } from "@shared/agentEditScope";
+import { normalizeAssistantProjectPath, type AssistantProjectFile } from "./assistantProjectContext";
+
 export interface AssistantCodeFile {
   path: string;
   content: string;
@@ -135,4 +138,68 @@ export function extractAssistantCodeFiles(response: string): AssistantCodeFile[]
     files.push({ path, content });
   }
   return files;
+}
+
+export function findAgentFilesWithExcessiveScopeLoss(
+  files: AssistantCodeFile[],
+  existingFiles: AssistantProjectFile[],
+  task: string,
+) {
+  if (!isLocalizedAgentEditRequest(task)) return [];
+
+  const existingByPath = new Map<string, string>();
+  for (const file of existingFiles) {
+    const path = normalizeAssistantProjectPath(file.path);
+    if (path && file.content) existingByPath.set(path.toLowerCase(), file.content);
+  }
+
+  return files.flatMap(file => {
+    const path = normalizeAssistantProjectPath(file.path);
+    const original = path ? existingByPath.get(path.toLowerCase()) : undefined;
+    if (!original || original.length < 1_000) return [];
+
+    const originalSections = (original.match(/<section\b/gi) || []).length;
+    const updatedSections = (file.content.match(/<section\b/gi) || []).length;
+    const removedMostSections = originalSections >= 3
+      && updatedSections < Math.ceil(originalSections * 0.7);
+    const removedMostContent = file.content.length < original.length * 0.6;
+
+    return removedMostSections || removedMostContent ? [file.path] : [];
+  });
+}
+
+export function findUnverifiedGoogleMapEmbeds(files: AssistantCodeFile[], sourceContext: string) {
+  const source = decodeMapValue(sourceContext).toLowerCase();
+  const flaggedPaths = new Set<string>();
+
+  for (const file of files) {
+    const iframePattern = /<iframe\b[^>]*\bsrc\s*=\s*["']([^"']+)["'][^>]*>/gi;
+    for (const match of file.content.matchAll(iframePattern)) {
+      const url = decodeMapValue(match[1]);
+      if (!/google\.[^/]+\/maps/i.test(url)) continue;
+
+      const coordinates = [
+        ...url.matchAll(/!2d(-?\d+(?:\.\d+)?)!3d(-?\d+(?:\.\d+)?)/gi),
+        ...url.matchAll(/@(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)/gi),
+      ];
+      const hasUnverifiedCoordinates = coordinates.some(coordinate =>
+        !source.includes(coordinate[1].toLowerCase()) || !source.includes(coordinate[2].toLowerCase()),
+      );
+      const placeIds = [...url.matchAll(/!1s(0x[0-9a-f]+(?::0x[0-9a-f]+)?)/gi)];
+      const hasUnverifiedPlaceId = placeIds.some(placeId => !source.includes(placeId[1].toLowerCase()));
+
+      if (hasUnverifiedCoordinates || hasUnverifiedPlaceId) flaggedPaths.add(file.path);
+    }
+  }
+
+  return [...flaggedPaths];
+}
+
+function decodeMapValue(value: string) {
+  try {
+    return decodeURIComponent(value);
+  } catch (error) {
+    if (error instanceof URIError) return value;
+    throw error;
+  }
 }

@@ -17,6 +17,9 @@ describe("generateAssistantResponse", () => {
     delete process.env.OPENROUTER_API_KEY;
     delete process.env.HF_API_KEY;
     delete process.env.GROQ_MODEL;
+    delete process.env.OLLAMA_BASE_URL;
+    delete process.env.OLLAMA_API_KEY;
+    delete process.env.OLLAMA_MODEL;
     vi.clearAllMocks();
   });
 
@@ -150,5 +153,81 @@ describe("generateAssistantResponse", () => {
     ], "Coordinatore", 600);
 
     expect(JSON.parse(fetchMock.mock.calls[0][1].body).max_tokens).toBe(600);
+  });
+
+  it("uses protected Ollama as a final fallback and sends approved examples only to Ollama", async () => {
+    process.env.GROQ_API_KEY = "test-groq-key";
+    process.env.OLLAMA_BASE_URL = "https://ollama.example.test";
+    process.env.OLLAMA_API_KEY = "test-ollama-key";
+    process.env.OLLAMA_MODEL = "qwen2.5-coder:14b";
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ error: "unavailable" }), { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        message: { content: "Risposta dal modello locale" },
+      }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await generateAssistantResponse(
+      "qwen",
+      [{ role: "user", content: "Allinea le schede" }],
+      "Sei un agente.",
+      1200,
+      [{ task: "Allinea le schede", response: "Usa flexbox e mantieni il layout." }],
+    );
+
+    expect(result).toEqual({
+      content: "Risposta dal modello locale",
+      provider: "Ollama",
+      model: "qwen2.5-coder:14b",
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0]).toBe("https://ollama.example.test/api/chat");
+    const cloudBody = JSON.stringify(JSON.parse(fetchMock.mock.calls[0][1].body));
+    const ollamaRequest = JSON.parse(fetchMock.mock.calls[1][1].body);
+    expect(cloudBody).not.toContain("Usa flexbox");
+    expect(ollamaRequest.messages[0].content).toContain("Usa flexbox");
+    expect(ollamaRequest.options.num_predict).toBe(1200);
+    expect(fetchMock.mock.calls[1][1].headers.Authorization).toBe("Bearer test-ollama-key");
+    expect(fetchMock.mock.calls[1][1].redirect).toBe("error");
+  });
+
+  it("uses Ollama by itself when no hosted provider key is configured", async () => {
+    process.env.OLLAMA_BASE_URL = "https://ollama.example.test";
+    process.env.OLLAMA_API_KEY = "test-ollama-key";
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      message: { content: "Risposta Ollama" },
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await generateAssistantResponse("qwen", [
+      { role: "user", content: "Ciao" },
+    ]);
+
+    expect(result.provider).toBe("Ollama");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not call an unauthenticated Ollama endpoint in production", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.OLLAMA_BASE_URL = "https://ollama.example.test";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(generateAssistantResponse("qwen", [
+      { role: "user", content: "Ciao" },
+    ])).rejects.toThrow(/OLLAMA_API_KEY è obbligatoria/i);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects insecure non-local Ollama endpoints", async () => {
+    process.env.OLLAMA_BASE_URL = "http://ollama.example.test";
+    process.env.OLLAMA_API_KEY = "test-ollama-key";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(generateAssistantResponse("qwen", [
+      { role: "user", content: "Ciao" },
+    ])).rejects.toThrow(/richiede HTTPS/i);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

@@ -3,6 +3,8 @@ import {
   extractAssistantCodeBlocks,
   extractAssistantCodeFiles,
   extractAssistantProjectMoves,
+  findAgentFilesWithExcessiveScopeLoss,
+  findUnverifiedGoogleMapEmbeds,
   hasAssistantProjectOperationsBlock,
 } from "./assistantCodeFiles";
 
@@ -127,5 +129,62 @@ describe("assistant code response parsing", () => {
     ].join("\n"))).toThrow("destinazione duplicati");
     expect(() => extractAssistantProjectMoves("```tatik-project-operations\n{bad json}\n```"))
       .toThrow("JSON valido");
+  });
+
+  it("blocks unverified Google Maps coordinates or place IDs", () => {
+    expect(findUnverifiedGoogleMapEmbeds([{
+      path: "index.html",
+      content: '<iframe src="https://www.google.com/maps/embed?pb=!2d12.123456!3d44.123456!1s0x1234567890abcdef:0x1234567890abcdef"></iframe>',
+    }], "Ristorante Due Palme, Santa Ninfa")).toEqual(["index.html"]);
+  });
+
+  it("allows address-search embeds and coordinates explicitly supplied by the user", () => {
+    expect(findUnverifiedGoogleMapEmbeds([{
+      path: "index.html",
+      content: '<iframe src="https://maps.google.com/maps?q=Ristorante%20Due%20Palme&output=embed"></iframe>',
+    }], "Ristorante Due Palme, Santa Ninfa")).toEqual([]);
+    expect(findUnverifiedGoogleMapEmbeds([{
+      path: "index.html",
+      content: '<iframe src="https://www.google.com/maps/embed?pb=!2d12.123456!3d44.123456"></iframe>',
+    }], "Coordinate verificate: 12.123456, 44.123456")).toEqual([]);
+  });
+
+  it("blocks a localized edit that would discard most of the existing page", () => {
+    const original = [
+      "<header><h1>Restaurant</h1></header>",
+      ...Array.from({ length: 7 }, (_, index) =>
+        `<section id="section-${index}"><h2>Existing section ${index}</h2><p>${"Existing content ".repeat(20)}</p></section>`,
+      ),
+      "<footer>Existing footer</footer>",
+    ].join("\n");
+    const replacement = '<section><h2>Valutazioni dei clienti</h2><div class="ratings"></div></section>';
+
+    expect(findAgentFilesWithExcessiveScopeLoss(
+      [{ path: "index.html", content: replacement }],
+      [{ path: "index.html", content: original }],
+      "Allinea le valutazioni dei clienti",
+    )).toEqual(["index.html"]);
+  });
+
+  it("allows complete local edits and explicit full-page rewrites", () => {
+    const original = [
+      "<header><h1>Restaurant</h1></header>",
+      ...Array.from({ length: 7 }, (_, index) =>
+        `<section id="section-${index}"><h2>Existing section ${index}</h2><p>${"Existing content ".repeat(20)}</p></section>`,
+      ),
+      "<footer>Existing footer</footer>",
+    ].join("\n");
+    const updated = original.replace("<h2>Existing section 3</h2>", '<h2 class="centered">Existing section 3</h2>');
+
+    expect(findAgentFilesWithExcessiveScopeLoss(
+      [{ path: "index.html", content: updated }],
+      [{ path: "index.html", content: original }],
+      "Allinea le valutazioni dei clienti",
+    )).toEqual([]);
+    expect(findAgentFilesWithExcessiveScopeLoss(
+      [{ path: "index.html", content: "<section>New design</section>" }],
+      [{ path: "index.html", content: original }],
+      "Riprogetta tutta la pagina da zero",
+    )).toEqual([]);
   });
 });
