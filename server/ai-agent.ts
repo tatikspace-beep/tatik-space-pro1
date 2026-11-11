@@ -48,19 +48,57 @@ export function validateAgentFinalResponse(response: string, task: string) {
 }
 
 export function parseAgentPlan(response: string) {
-  const jsonCandidate = response.match(/\{[\s\S]*\}/)?.[0];
-  if (!jsonCandidate) throw new Error("L'agente pianificatore non ha restituito un piano valido. Riprova con una richiesta più specifica.");
+  const candidates: string[] = [];
+  const fencedBlocks = Array.from(response.matchAll(/```(?:json)?\s*\r?\n([\s\S]*?)```/gi));
+  const sources = fencedBlocks.length > 0 ? fencedBlocks.map(block => block[1]) : [response];
 
-  let value: unknown;
-  try {
-    value = JSON.parse(jsonCandidate);
-  } catch {
-    throw new Error("Il piano dell'Agente non è JSON valido. Riprova con una richiesta più specifica.");
+  for (const source of sources) {
+    let start = -1;
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let index = 0; index < source.length; index += 1) {
+      const character = source[index];
+      if (inString) {
+        if (escaped) escaped = false;
+        else if (character === "\\") escaped = true;
+        else if (character === '"') inString = false;
+        continue;
+      }
+      if (character === '"') {
+        inString = true;
+      } else if (character === "{") {
+        if (depth === 0) start = index;
+        depth += 1;
+      } else if (character === "}" && depth > 0) {
+        depth -= 1;
+        if (depth === 0 && start >= 0) {
+          candidates.push(source.slice(start, index + 1));
+          start = -1;
+        }
+      }
+    }
   }
 
-  const plan = agentPlanSchema.safeParse(value);
-  if (!plan.success) {
+  let validJsonFound = false;
+  for (const candidate of candidates) {
+    let value: unknown;
+    try {
+      value = JSON.parse(candidate);
+    } catch (error) {
+      if (error instanceof SyntaxError) continue;
+      throw error;
+    }
+    validJsonFound = true;
+    const plan = agentPlanSchema.safeParse(value);
+    if (plan.success) return plan.data;
+  }
+
+  if (validJsonFound) {
     throw new Error("Il piano dell'Agente non rispetta il formato previsto. Riprova con una richiesta più specifica.");
   }
-  return plan.data;
+  if (candidates.length > 0) {
+    throw new Error("Il piano dell'Agente non è JSON valido. Riprova con una richiesta più specifica.");
+  }
+  throw new Error("L'agente pianificatore non ha restituito un piano valido. Riprova con una richiesta più specifica.");
 }

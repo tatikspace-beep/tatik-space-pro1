@@ -13,8 +13,32 @@ describe("AI agent planner output", () => {
       });
   });
 
+  it("parses JSON fences and ignores explanatory braces and nested object braces", () => {
+    expect(parseAgentPlan([
+      "Ecco il piano richiesto (il formato è {piano, attività}):",
+      "```json",
+      '{"plan":"Aggiornare la pagina {home}","tasks":[{"role":"frontend","task":"Integrare {header}"},{"role":"qa","task":"Verificare il flusso"}]}',
+      "```",
+      "Fine.",
+    ].join("\n"))).toEqual({
+      plan: "Aggiornare la pagina {home}",
+      tasks: [
+        { role: "frontend", task: "Integrare {header}" },
+        { role: "qa", task: "Verificare il flusso" },
+      ],
+    });
+  });
+
+  it("skips malformed JSON candidates before a valid plan", () => {
+    expect(parseAgentPlan([
+      "Esempio non valido: {not JSON}",
+      '{"plan":"Piano valido","tasks":[{"role":"backend","task":"Verificare API"},{"role":"qa","task":"Provare flusso"}]}',
+    ].join("\n")).plan).toBe("Piano valido");
+  });
+
   it("rejects malformed or oversized delegation plans", () => {
     expect(() => parseAgentPlan("nessun json")).toThrow(/piano valido/i);
+    expect(() => parseAgentPlan("{broken}")).toThrow(/JSON valido/i);
     expect(() => parseAgentPlan('{"plan":"ok","tasks":[{"role":"attacker","task":"x"}]}')).toThrow(/formato previsto/i);
     expect(() => parseAgentPlan('{"plan":"ok","tasks":[{"role":"qa","task":"x"}]}')).toThrow(/formato previsto/i);
     expect(() => parseAgentPlan('{"plan":"ok","tasks":[{"role":"qa","task":"1"},{"role":"qa","task":"2"},{"role":"qa","task":"3"}]}')).toThrow(/formato previsto/i);
