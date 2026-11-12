@@ -416,7 +416,7 @@ export default function TemplateMarketplace() {
                                                 alt={`${ui.previewAlt} ${getLocalizedTemplateName(template.id, template.name, language)}`}
                                                 className="pointer-events-none h-full w-full object-cover object-top"
                                             />
-                                        ) : (
+                                        ) : selectedTemplate ? null : (
                                             <iframe
                                                 srcDoc={previewCode}
                                                 style={{ width: '400%', height: '400%', transform: 'scale(0.25)', transformOrigin: 'top left' }}
