@@ -143,7 +143,7 @@ export function GlobalNavbar() {
           </button>
           <div className="flex min-w-0 items-center gap-1">
             <span className="truncate text-sm font-bold tracking-tight sm:text-xl">{displayName}</span>
-            <span className="shrink-0 rounded-md bg-gradient-to-r from-blue-500 to-purple-500 px-1 py-0.5 text-[10px] font-bold text-white shadow-lg pro-badge sm:px-2 sm:text-xs">
+            <span className="pro-badge shrink-0 rounded-md border border-primary/15 bg-primary/10 px-1 py-0.5 text-[10px] font-semibold text-primary sm:px-2 sm:text-xs">
               PRO
             </span>
           </div>

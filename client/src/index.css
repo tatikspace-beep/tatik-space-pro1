@@ -4,48 +4,68 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
+    --background: 210 20% 98%;
+    --foreground: 222 26% 14%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    --card-foreground: 222 26% 14%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --popover-foreground: 222 26% 14%;
+    --primary: 218 46% 38%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 18% 94%;
+    --secondary-foreground: 222 24% 20%;
+    --muted: 210 16% 94%;
+    --muted-foreground: 215 12% 43%;
+    --accent: 210 20% 92%;
+    --accent-foreground: 222 24% 20%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --radius: 0.5rem;
+    --border: 214 16% 87%;
+    --input: 214 16% 87%;
+    --ring: 218 46% 38%;
+    --radius: 0.75rem;
+    --golden-ratio: 1.618;
+    --type-step-0: 0.75rem;
+    --type-step-1: 0.875rem;
+    --type-step-2: 1rem;
+    --type-step-3: 1.125rem;
+    --type-step-4: 1.25rem;
+    --type-step-5: 1.5rem;
+    --type-step-6: 2rem;
+    --type-step-7: clamp(2rem, 4vw, 3rem);
+    --space-phi-1: 0.382rem;
+    --space-phi-2: 0.618rem;
+    --space-phi-3: 1rem;
+    --space-phi-4: 1.618rem;
+    --space-phi-5: 2.618rem;
+    --space-phi-6: 4.236rem;
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
+    color-scheme: dark;
+    --background: 222 24% 9%;
+    --foreground: 210 20% 96%;
+    --card: 222 22% 12%;
+    --card-foreground: 210 20% 96%;
+    --popover: 222 22% 12%;
+    --popover-foreground: 210 20% 96%;
+    --primary: 215 68% 70%;
+    --primary-foreground: 222 28% 12%;
+    --secondary: 220 18% 17%;
+    --secondary-foreground: 210 20% 93%;
+    --muted: 220 18% 17%;
+    --muted-foreground: 215 14% 68%;
+    --accent: 220 18% 20%;
+    --accent-foreground: 210 20% 93%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    --border: 220 16% 23%;
+    --input: 220 16% 23%;
+    --ring: 215 68% 70%;
+  }
+
+  :root:not(.dark) {
+    color-scheme: light;
   }
 }
 
@@ -56,6 +76,42 @@
 
   body {
     @apply bg-background text-foreground;
+    min-width: 320px;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: var(--type-step-2);
+    line-height: 1.6;
+    letter-spacing: -0.01em;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    color: hsl(var(--foreground));
+    font-weight: 650;
+    letter-spacing: -0.035em;
+    line-height: 1.16;
+    text-wrap: balance;
+  }
+
+  h1 { font-size: clamp(var(--type-step-6), 5vw, var(--type-step-7)); }
+  h2 { font-size: clamp(var(--type-step-5), 3.2vw, var(--type-step-6)); }
+  h3 { font-size: var(--type-step-5); }
+  h4 { font-size: var(--type-step-4); }
+  h5 { font-size: var(--type-step-3); }
+  h6 { font-size: var(--type-step-2); }
+
+  ::selection {
+    color: hsl(var(--primary-foreground));
+    background: hsl(var(--primary) / 0.82);
+  }
+
+  :where(button, a, input, select, textarea):focus-visible {
+    outline: 2px solid hsl(var(--ring) / 0.72);
+    outline-offset: 2px;
   }
 }
 
@@ -68,15 +124,37 @@
 
 /* Custom Components (es. glow effect) */
 .glow-primary {
-  box-shadow: 0 0 20px rgba(99, 102, 241, 0.3);
-}
-
-.dark .glow-primary {
-  box-shadow: 0 0 25px rgba(129, 140, 248, 0.4);
+  box-shadow: 0 8px 20px hsl(var(--primary) / 0.16);
 }
 
 .btn-primary {
-  @apply bg-primary text-primary-foreground px-4 py-2 rounded-md;
+  @apply bg-primary text-primary-foreground px-4 py-2 rounded-lg;
+}
+
+.home-hero {
+  padding-block: var(--space-phi-6) var(--space-phi-5);
+}
+
+.home-feature-grid {
+  gap: var(--space-phi-4);
+}
+
+.home-feature-card {
+  padding: var(--space-phi-4);
+  border-radius: calc(var(--radius) * var(--golden-ratio));
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.home-feature-card:hover {
+  border-color: hsl(var(--primary) / 0.28);
+  box-shadow: 0 12px 28px hsl(var(--foreground) / 0.06);
+  transform: translateY(-2px);
+}
+
+@media (min-width: 768px) {
+  .home-hero {
+    padding-block: calc(var(--space-phi-6) * var(--golden-ratio)) var(--space-phi-6);
+  }
 }
 
 /* Keep Ezoic's consent prompt compact without changing its consent controls. */
@@ -331,21 +409,8 @@ nav[data-compact-menu="true"] + .site-content {
   }
 }
 
-/* PRO Badge Glow Animation */
-@keyframes glow-pulse {
-
-  0%,
-  100% {
-    box-shadow: 0 0 20px rgba(59, 130, 246, 0.4);
-  }
-
-  50% {
-    box-shadow: 0 0 30px rgba(139, 92, 246, 0.6);
-  }
-}
-
 .pro-badge {
-  animation: glow-pulse 2s ease-in-out infinite;
+  animation: none;
 }
 
 /* CodeMirror Autocomplete Styles */
