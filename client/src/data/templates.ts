@@ -11,6 +11,8 @@ export interface Template {
     code: string;
 }
 
+export type TemplateMetadata = Omit<Template, "code">;
+
 export const FREE_TEMPLATES: Template[] = [
     {
         id: 'agency-site',

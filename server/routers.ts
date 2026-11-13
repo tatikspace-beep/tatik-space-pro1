@@ -43,6 +43,7 @@ import { getUserFeatureAccess, requireFeatureAccess } from "./_core/featureAcces
 import { PREMIUM_TEMPLATE_CATALOG } from "./_core/premiumTemplateCatalog";
 import { getAuthBaseUrl } from "./_core/authUrls";
 import { PREMIUM_TEMPLATES } from "../client/src/data/templates";
+import { ADDITIONAL_PREMIUM_TEMPLATES } from "./data/additionalPremiumTemplates";
 import { assertProviderCredentialStorageConfigured, decryptProviderCredential, encryptProviderCredential, PROVIDER_IDS, verifyProviderCredential } from "./provider-credentials";
 import { createDatabaseProject, deployStaticProject } from "./provider-operations";
 import { parseAgentPlan, validateAgentFinalResponse } from "./ai-agent";
@@ -71,6 +72,7 @@ async function sendAuthEmail(to: string, subject: string, text: string) {
 const MARKETPLACE_COMMISSION_RATE = 0.15;
 const MAX_MARKETPLACE_UPLOAD_BYTES = 2 * 1024 * 1024;
 const MARKETPLACE_SELLER_TERMS_VERSION = "2026-09-30-screening-v1";
+const SELLABLE_PREMIUM_TEMPLATES = [...PREMIUM_TEMPLATES, ...ADDITIONAL_PREMIUM_TEMPLATES];
 
 const SCHOOL_TERMS_VERSION = "2026-09-15";
 const SCHOOL_INVITE_DAYS = 7;
@@ -2977,7 +2979,7 @@ Analizza e suggerisci ottimizzazioni.`,
 
   // Template purchases
   templatePurchases: router({
-    catalog: publicProcedure.query(() => PREMIUM_TEMPLATES.flatMap(template => {
+    catalog: publicProcedure.query(() => SELLABLE_PREMIUM_TEMPLATES.flatMap(template => {
       const pricing = PREMIUM_TEMPLATE_CATALOG[template.id];
       if (!pricing) return [];
       const { code: _code, ...metadata } = template;
@@ -3029,7 +3031,7 @@ Analizza e suggerisci ottimizzazioni.`,
     getCode: protectedProcedure
       .input(z.object({ templateId: z.string() }))
       .mutation(async ({ input, ctx }) => {
-        const template = PREMIUM_TEMPLATES.find(item => item.id === input.templateId);
+        const template = SELLABLE_PREMIUM_TEMPLATES.find(item => item.id === input.templateId);
         if (!template || !PREMIUM_TEMPLATE_CATALOG[input.templateId]) {
           throw new TRPCError({ code: "BAD_REQUEST", message: "Template premium non valido" });
         }

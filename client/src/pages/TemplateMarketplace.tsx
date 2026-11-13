@@ -8,12 +8,14 @@ import { toast } from 'sonner';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { useAuth } from '@/_core/hooks/useAuth';
 import { FREE_TEMPLATES, TemplateMetadata } from '@/data/templates';
+import { ADDITIONAL_FREE_TEMPLATES } from '@/data/additionalFreeTemplates';
 import { trpc } from '@/lib/trpc';
 import { useLocation } from 'wouter';
 import { DeveloperTemplateListings } from '@/components/DeveloperTemplateListings';
 import { commercialSeoCopy } from '@/lib/commercialSeoCopy';
 import { templateMarketplaceUiCopy } from '@/lib/templateMarketplaceUiCopy';
 import { getLocalizedTemplateDescription, getLocalizedTemplateName } from '@/lib/templateMarketplaceContentCopy';
+import { templatePreviewDataUrl } from '@/lib/templatePreview';
 import { AdBanner } from '@/components/AdBanner';
 
 type MarketplaceTemplate = TemplateMetadata & { code?: string };
@@ -40,6 +42,7 @@ export default function TemplateMarketplace() {
     const [previewZoom, setPreviewZoom] = useState(100);
     const allTemplates: MarketplaceTemplate[] = [
         ...FREE_TEMPLATES,
+        ...ADDITIONAL_FREE_TEMPLATES,
         ...(premiumCatalogQuery.data ?? []),
     ];
 
@@ -344,7 +347,7 @@ export default function TemplateMarketplace() {
                         <div className="text-xs space-y-1">
                             <div className="flex justify-between">
                                 <span className="text-muted-foreground">{ui.freeTemplates}</span>
-                                <span className="font-medium">{FREE_TEMPLATES.length}</span>
+                                <span className="font-medium">{FREE_TEMPLATES.length + ADDITIONAL_FREE_TEMPLATES.length}</span>
                             </div>
                             <div className="flex justify-between">
                                 <span className="text-muted-foreground">{ui.premiumTemplates}</span>
@@ -412,7 +415,9 @@ export default function TemplateMarketplace() {
                                     <div className="relative h-60 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 overflow-hidden flex-shrink-0 border-b border-border/30">
                                         {template.isPremium ? (
                                             <img
-                                                src={`/template-previews/${template.id}.jpg`}
+                                                src={template.id.startsWith('premium-')
+                                                    ? templatePreviewDataUrl(template)
+                                                    : `/template-previews/${template.id}.jpg`}
                                                 alt={`${ui.previewAlt} ${getLocalizedTemplateName(template.id, template.name, language)}`}
                                                 className="pointer-events-none h-full w-full object-cover object-top"
                                             />
@@ -619,7 +624,7 @@ export default function TemplateMarketplace() {
 
                                 {/* Meta info + Tech badges */}
                                 <div className="flex gap-4 items-center mt-4 text-xs text-muted-foreground">
-                                    <span>📊 {selectedTemplate.uses} {ui.uses}</span>
+                                    {selectedTemplate.uses > 0 && <span>📊 {selectedTemplate.uses} {ui.uses}</span>}
                                     <span>📂 {ui.categoryLabel}: {templateCategoryLabels[selectedTemplate.category.toLowerCase()] ?? selectedTemplate.category}</span>
                                     <div className="flex gap-1.5 flex-wrap">
                                         {selectedTemplate.tech.map(t => (
@@ -702,12 +707,36 @@ export default function TemplateMarketplace() {
                                     {detailView === 'preview' ? (
                                         <div className="h-full w-full overflow-auto bg-white">
                                             {selectedTemplate.isPremium ? (
-                                                <img
-                                                    src={`/template-previews/${selectedTemplate.id}.jpg`}
-                                                    alt={`${ui.previewAlt} ${getLocalizedTemplateName(selectedTemplate.id, selectedTemplate.name, language)}`}
-                                                    className="block h-auto max-w-none origin-top-left transition-[width] duration-150"
-                                                    style={{ width: `${previewZoom}%` }}
-                                                />
+                                                selectedTemplate.id.startsWith('premium-') ? (
+                                                    authorizedCode?.templateId === selectedTemplate.id ? (
+                                                        <iframe
+                                                            srcDoc={authorizedCode?.code ?? ''}
+                                                            title={`${ui.previewAlt}: ${getLocalizedTemplateName(selectedTemplate.id, selectedTemplate.name, language)}`}
+                                                            sandbox="allow-scripts"
+                                                            className="block border-0"
+                                                            style={{
+                                                                width: `${10000 / previewZoom}%`,
+                                                                height: `${10000 / previewZoom}%`,
+                                                                transform: `scale(${previewZoom / 100})`,
+                                                                transformOrigin: 'top left',
+                                                            }}
+                                                        />
+                                                    ) : (
+                                                        <img
+                                                            src={templatePreviewDataUrl(selectedTemplate)}
+                                                            alt={`${ui.previewAlt} ${getLocalizedTemplateName(selectedTemplate.id, selectedTemplate.name, language)}`}
+                                                            className="block h-auto max-w-none origin-top-left transition-[width] duration-150"
+                                                            style={{ width: `${previewZoom}%` }}
+                                                        />
+                                                    )
+                                                ) : (
+                                                    <img
+                                                        src={`/template-previews/${selectedTemplate.id}.jpg`}
+                                                        alt={`${ui.previewAlt} ${getLocalizedTemplateName(selectedTemplate.id, selectedTemplate.name, language)}`}
+                                                        className="block h-auto max-w-none origin-top-left transition-[width] duration-150"
+                                                        style={{ width: `${previewZoom}%` }}
+                                                    />
+                                                )
                                             ) : (
                                                 <iframe
                                                     srcDoc={selectedTemplate.code}
@@ -738,7 +767,7 @@ export default function TemplateMarketplace() {
                                     ) : (
                                         <ScrollArea className="h-full">
                                             <pre className="p-4 text-xs text-slate-300 whitespace-pre-wrap break-words font-mono">
-                                                <code>{authorizedCode?.templateId === selectedTemplate.id ? (authorizedCode.code ?? '') : (selectedTemplate.code ?? '')}</code>
+                                                <code>{authorizedCode?.templateId === selectedTemplate.id ? (authorizedCode?.code ?? '') : (selectedTemplate.code ?? '')}</code>
                                             </pre>
                                         </ScrollArea>
                                     )}

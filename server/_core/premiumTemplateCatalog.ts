@@ -1,3 +1,5 @@
+import { ADDITIONAL_PREMIUM_TEMPLATES } from "../data/additionalPremiumTemplates";
+
 export const PREMIUM_TEMPLATE_CATALOG: Record<string, { name: string; priceEuro: number }> = {
   "saas-landing-pro": { name: "SaaS Landing Page Premium", priceEuro: 10 },
   "ecommerce-luxury": { name: "E-commerce Luxury Store", priceEuro: 20 },
@@ -5,4 +7,10 @@ export const PREMIUM_TEMPLATE_CATALOG: Record<string, { name: string; priceEuro:
   "business-corporate": { name: "Business Corporate", priceEuro: 40 },
   "blog-magazine": { name: "Blog Magazine", priceEuro: 50 },
   "react-portfolio-pro": { name: "React Portfolio Pro", priceEuro: 60 },
+  ...Object.fromEntries(
+    ADDITIONAL_PREMIUM_TEMPLATES.map((template) => [
+      template.id,
+      { name: template.name, priceEuro: template.price },
+    ]),
+  ),
 };
