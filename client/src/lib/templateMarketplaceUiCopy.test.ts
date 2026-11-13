@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { commercialSeoCopy } from "./commercialSeoCopy";
 import { templateMarketplaceUiCopy } from "./templateMarketplaceUiCopy";
 
 describe("template marketplace customer-facing labels", () => {
@@ -7,6 +8,11 @@ describe("template marketplace customer-facing labels", () => {
       expect(copy.premiumTemplates).not.toMatch(/premium/i);
       expect(copy.premium).not.toMatch(/premium/i);
       expect(copy.premiumContent).not.toMatch(/premium/i);
+    }
+
+    for (const copy of Object.values(commercialSeoCopy)) {
+      expect(copy.marketplaceDescription).not.toMatch(/premium/i);
+      expect(copy.marketplaceIntro).not.toMatch(/premium/i);
     }
   });
 });

@@ -131,7 +131,7 @@ export const PUBLIC_SEO: Record<string, Omit<SeoProps, "path">> = {
   },
   "/marketplace": {
     title: "Marketplace di template web | Tatik.space Pro",
-    description: "Esplora template gratuiti e premium per progetti web e acquista template premium tramite checkout. Gli sviluppatori possono candidare listing, soggetti a revisione.",
+    description: "Esplora template gratuiti e a pagamento per progetti web e acquista template tramite checkout. Gli sviluppatori possono candidare listing, soggetti a revisione.",
   },
   "/documentation": {
     title: "Documentazione Tatik.space | Guida all'IDE cloud",
