@@ -17,7 +17,8 @@ describe("additional premium templates", () => {
   it("keeps every premium template server-priced and available in the checkout catalog", () => {
     const prices = new Set(ADDITIONAL_PREMIUM_TEMPLATES.map((template) => template.price));
 
-    expect([...prices].sort((a, b) => a - b)).toEqual([9, 19, 29, 39]);
+    expect([...prices].sort((a, b) => a - b)).toEqual([29, 49, 79, 129]);
+    expect(Math.min(...Object.values(PREMIUM_TEMPLATE_CATALOG).map(({ priceEuro }) => priceEuro))).toBe(29);
     for (const template of ADDITIONAL_PREMIUM_TEMPLATES) {
       expect(template.isPremium).toBe(true);
       expect(PREMIUM_TEMPLATE_CATALOG[template.id]).toEqual({
@@ -25,6 +26,29 @@ describe("additional premium templates", () => {
         priceEuro: template.price,
       });
     }
+  });
+
+  it("raises the original premium templates to the new catalog price ladder", () => {
+    const originalPremiumPrices = Object.fromEntries(
+      PREMIUM_TEMPLATES.map(({ id, price }) => [id, price]),
+    );
+
+    expect(originalPremiumPrices).toMatchObject({
+      "saas-landing-pro": 29,
+      "ecommerce-luxury": 49,
+      "portfolio-developer": 79,
+      "business-corporate": 79,
+      "blog-magazine": 129,
+      "react-portfolio-pro": 129,
+    });
+    expect(PREMIUM_TEMPLATE_CATALOG).toMatchObject({
+      "saas-landing-pro": { priceEuro: 29 },
+      "ecommerce-luxury": { priceEuro: 49 },
+      "portfolio-developer": { priceEuro: 79 },
+      "business-corporate": { priceEuro: 79 },
+      "blog-magazine": { priceEuro: 129 },
+      "react-portfolio-pro": { priceEuro: 129 },
+    });
   });
 
   it("provides complete, self-contained responsive HTML demos with interaction disclosures", () => {
