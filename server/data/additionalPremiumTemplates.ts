@@ -31,6 +31,12 @@ function initials(value: string) {
   return value.split(/\s+/).slice(0, 2).map((part) => part[0] ?? "").join("").toUpperCase();
 }
 
+function getLayoutVariant(id: string) {
+  let value = 0;
+  for (const character of id) value = (value * 31 + character.charCodeAt(0)) >>> 0;
+  return value % 5;
+}
+
 function renderDashboard(blueprint: PremiumBlueprint) {
   const bars = [38, 58, 46, 74, 54, 82, 63, 94, 70, 87, 60, 78];
   return `<div class="app-window">
@@ -86,13 +92,60 @@ function renderLaunch(blueprint: PremiumBlueprint) {
   </div>`;
 }
 
+function renderPageSections(
+  blueprint: PremiumBlueprint,
+  features: string,
+  showcase: string,
+  metrics: string,
+) {
+  if (blueprint.archetype === "dashboard") {
+    return `<section id="overview" class="shell metrics" aria-label="Illustrative metrics">${metrics}</section>
+      <section id="features" class="shell section"><div class="section-heading"><div><span class="section-kicker">Built around the workflow</span><h2>${escapeHtml(blueprint.headline)}</h2></div><p>${escapeHtml(blueprint.intro)} Sample information is illustrative and ready to be replaced.</p></div><div class="feature-grid">${features}</div></section>
+      <section id="work" class="showcase-section"><div class="shell section-heading"><div><span class="section-kicker">In the workspace</span><h2>Work that stays visible.</h2></div><p>Bring owners, status and the next useful action into one considered view.</p></div><div class="shell showcase-grid">${showcase}</div></section>
+      <section class="shell contact-panel"><div><h2>Make the workflow your own.</h2><p>Connect verified data and the tools your team already uses.</p></div><a class="button" href="#top">Explore the workspace&nbsp;↗</a></section>`;
+  }
+
+  if (blueprint.archetype === "storefront") {
+    return `<section id="work" class="showcase-section"><div class="shell section-heading"><div><span class="section-kicker">The collection</span><h2>Made to be discovered.</h2></div><p>Replace these sample products, details and imagery with your own catalogue.</p></div><div class="shell showcase-grid">${showcase}</div></section>
+      <section id="features" class="shell section"><div class="section-heading"><div><span class="section-kicker">A thoughtful store</span><h2>Every detail earns its place.</h2></div><p>${escapeHtml(blueprint.description)}</p></div><div class="feature-grid">${features}</div></section>
+      <section id="contact" class="shell contact-panel"><div><h2>Discover the full collection.</h2><p>Sample storefront only. Connect inventory, shipping and a secure checkout before taking orders.</p></div><a class="button" href="#work">Browse the collection&nbsp;↗</a></section>`;
+  }
+
+  if (blueprint.archetype === "service") {
+    return `<section id="services" class="shell section"><div class="section-heading"><div><span class="section-kicker">How we can help</span><h2>Good service starts with clarity.</h2></div><p>${escapeHtml(blueprint.description)}</p></div><div class="feature-grid">${showcase}</div></section>
+      <section id="availability" class="showcase-section"><div class="shell section-heading"><div><span class="section-kicker">Plan your next step</span><h2>Find the right way forward.</h2></div><p>Example availability is for demonstration only. Connect your booking or enquiry system to accept requests.</p></div><div class="shell feature-grid">${features}</div></section>
+      <section id="contact" class="shell contact-panel"><div><h2>Start with a conversation.</h2><p>Share what you need and the team can guide you to the right service.</p></div><a class="button" href="mailto:hello@example.com">Make an enquiry&nbsp;↗</a></section>`;
+  }
+
+  if (blueprint.archetype === "editorial") {
+    return `<section id="work" class="showcase-section"><div class="shell section-heading"><div><span class="section-kicker">Selected work</span><h2>Stories with a point of view.</h2></div><p>${escapeHtml(blueprint.description)}</p></div><div class="shell showcase-grid">${showcase}</div></section>
+      <section id="features" class="shell section"><div class="section-heading"><div><span class="section-kicker">Behind the work</span><h2>Ideas, practice and process.</h2></div><p>Use this space for an editorial note, project context or a clear account of your approach.</p></div><div class="feature-grid">${features}</div></section>
+      <section id="contact" class="shell contact-panel"><div><h2>Have a story or project in mind?</h2><p>Invite readers and collaborators to take a clear next step.</p></div><a class="button" href="mailto:hello@example.com">Get in touch&nbsp;↗</a></section>`;
+  }
+
+  return `<section id="features" class="shell section"><div class="section-heading"><div><span class="section-kicker">The product</span><h2>Useful from the first step.</h2></div><p>${escapeHtml(blueprint.description)}</p></div><div class="feature-grid">${features}</div></section>
+    <section id="work" class="showcase-section"><div class="shell section-heading"><div><span class="section-kicker">What is taking shape</span><h2>A focused start, with room to grow.</h2></div><p>Use accurate product details and verified proof points as they become available.</p></div><div class="shell showcase-grid">${showcase}</div></section>
+    <section id="contact" class="shell contact-panel"><div><h2>Be part of what comes next.</h2><p>Sample waitlist only. Connect an email service and privacy notice before collecting sign-ups.</p></div><a class="button" href="#top">Join the early list&nbsp;↗</a></section>`;
+}
+
 function buildCode(blueprint: PremiumBlueprint) {
   const name = escapeHtml(blueprint.name);
   const description = escapeHtml(blueprint.description);
   const brand = escapeHtml(blueprint.brand);
+  const layoutVariant = getLayoutVariant(blueprint.id);
   const features = blueprint.features.map((feature, index) => `<article class="feature-card"><span class="feature-index">0${index + 1}</span><h3>${escapeHtml(feature.title)}</h3><p>${escapeHtml(feature.copy)}</p><a href="#contact" aria-label="Learn about ${escapeHtml(feature.title)}">Explore the approach&nbsp;↗</a></article>`).join("");
   const showcase = blueprint.tiles.map((tile, index) => `<article class="showcase-card"><span class="showcase-label">${escapeHtml(tile.label)}</span><h3>${escapeHtml(tile.title)}</h3><p>${escapeHtml(tile.detail)}</p><span class="showcase-mark">0${index + 1}</span></article>`).join("");
   const metrics = blueprint.metrics.map((metric) => `<div class="metric"><strong>${escapeHtml(metric.value)}</strong><span>${escapeHtml(metric.label)}</span></div>`).join("");
+  const sections = renderPageSections(blueprint, features, showcase, metrics);
+  const navigation = blueprint.archetype === "dashboard"
+    ? `<a href="#overview">Overview</a><a href="#features">Capabilities</a><a href="#work">Workflows</a>`
+    : blueprint.archetype === "storefront"
+      ? `<a href="#work">Collection</a><a href="#features">Our approach</a><a href="#contact">Visit</a>`
+      : blueprint.archetype === "service"
+        ? `<a href="#services">Services</a><a href="#availability">Availability</a><a href="#contact">Contact</a>`
+        : blueprint.archetype === "editorial"
+          ? `<a href="#work">Selected work</a><a href="#features">About</a><a href="#contact">Contact</a>`
+          : `<a href="#features">The product</a><a href="#work">Roadmap</a><a href="#contact">Early access</a>`;
   const mockup = blueprint.archetype === "dashboard" ? renderDashboard(blueprint)
     : blueprint.archetype === "storefront" ? renderStorefront(blueprint)
       : blueprint.archetype === "service" ? renderService(blueprint)
@@ -125,16 +178,18 @@ function buildCode(blueprint: PremiumBlueprint) {
     .pricing{display:grid;grid-template-columns:repeat(3,1fr);gap:13px}.price-card{padding:22px;border:1px solid var(--line);border-radius:12px;background:var(--surface)}.price-card.featured{border-color:var(--accent);box-shadow:0 12px 36px color-mix(in srgb,var(--accent) 12%,transparent)}.price-card h3{margin:0;font-size:1rem}.price-card p{min-height:40px;margin:7px 0 17px;color:var(--muted);font-size:.8rem}.price-value{display:block;margin-bottom:16px;font-size:2rem;font-weight:760;letter-spacing:-.06em}.price-value small{color:var(--muted);font-size:.75rem;font-weight:500;letter-spacing:0}.price-card ul{display:grid;gap:9px;margin:0 0 20px;padding:0;list-style:none;color:var(--muted);font-size:.8rem}.price-card li:before{content:"✓";margin-right:8px;color:var(--accent);font-weight:800}.price-card .button{width:100%}
     .faq-list{display:grid;gap:8px;max-width:780px}.faq-list details{padding:16px 18px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}.faq-list summary{cursor:pointer;font-size:.9rem;font-weight:650}.faq-list details p{margin:10px 0 0;color:var(--muted);font-size:.84rem}.contact-panel{display:flex;align-items:center;justify-content:space-between;gap:25px;margin:0 0 72px;padding:30px;border-radius:15px;background:#17211f;color:white}.contact-panel h2{margin:0;font-size:clamp(1.5rem,3vw,2.3rem);letter-spacing:-.05em}.contact-panel p{margin:7px 0 0;color:#c0cbc3;font-size:.84rem}.contact-panel .button{border-color:white;background:white;color:#17211f}.footer{padding:24px 0;border-top:1px solid var(--line);color:var(--muted);font-size:.75rem}.footer-inner{display:flex;align-items:center;justify-content:space-between;gap:16px}.footer-links{display:flex;gap:18px}
     .demo-toast{position:fixed;right:20px;bottom:20px;z-index:10;max-width:min(360px,calc(100vw - 40px));padding:13px 16px;border:1px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);box-shadow:0 12px 40px #17211f20;font-size:.82rem}.demo-toast[hidden]{display:none}
-    @media(max-width:900px){.hero{grid-template-columns:1fr;gap:30px;padding:55px 0 45px}.hero-copy{max-width:720px}.hero-visual{max-width:760px}.metrics{margin-bottom:65px}.quote-section{grid-template-columns:1fr;gap:18px}.feature-card{min-height:195px}}
-    @media(max-width:640px){.shell{width:calc(100% - 32px)}.nav{height:64px}.menu-button{display:inline-flex}.nav-links{position:absolute;top:63px;left:0;right:0;display:none;align-items:stretch;gap:0;padding:8px 16px 15px;border-bottom:1px solid var(--line);background:var(--paper)}.nav-links[data-open="true"]{display:grid}.nav-links a{padding:11px 4px}.nav-actions>.button{min-height:38px;padding:0 11px;font-size:.75rem}.nav-actions .secondary{display:none}.hero{padding:44px 0 38px}.hero h1{font-size:clamp(2.55rem,12vw,4rem)}.hero-copy>p{font-size:.96rem}.hero-visual{padding:8px}.kpi-grid{gap:5px;padding:8px}.kpi{padding:8px 6px}.kpi strong{font-size:.83rem}.kpi>span{font-size:.53rem}.chart-card,.activity-card{margin-inline:8px;padding:9px}.store-grid{gap:5px}.product-card{padding:5px}.service-feature{grid-template-columns:72px 1fr;gap:9px;padding:10px}.service-art{width:68px;height:68px}.editorial-cover{grid-template-columns:.8fr 1.2fr;gap:10px}.cover-art{height:110px}.metrics,.feature-grid,.showcase-grid,.pricing{grid-template-columns:1fr}.metrics{gap:1px}.metric{padding:14px}.metric strong{font-size:1.25rem}.section{padding-bottom:62px}.section-heading{align-items:flex-start;flex-direction:column;gap:12px}.feature-card{min-height:0}.feature-card h3{margin-top:18px}.showcase-section{padding:50px 0 60px}.showcase-card{min-height:150px}.quote-section{padding:58px 0}.quote-card{padding:20px}.contact-panel{align-items:flex-start;flex-direction:column;padding:23px;margin-bottom:50px}.footer-inner{align-items:flex-start;flex-direction:column}.footer-links{flex-wrap:wrap}.demo-toast{right:12px;bottom:12px}}
+    @media(max-width:900px){.hero{grid-template-columns:1fr;gap:30px;padding:55px 0 45px}.hero-copy{max-width:720px}.hero-visual{max-width:760px}.metrics{margin-bottom:65px}.quote-section{grid-template-columns:1fr;gap:18px}.feature-card{min-height:195px}body[data-layout] .hero{grid-template-columns:1fr}body[data-layout="3"] .hero-visual{order:initial}}
+    @media(max-width:640px){.shell{width:calc(100% - 32px)}.nav{height:64px}.menu-button{display:inline-flex}.nav-links{position:absolute;top:63px;left:0;right:0;display:none;align-items:stretch;gap:0;padding:8px 16px 15px;border-bottom:1px solid var(--line);background:var(--paper)}.nav-links[data-open="true"]{display:grid}.nav-links a{padding:11px 4px}.nav-actions>.button{min-height:38px;padding:0 11px;font-size:.75rem}.nav-actions .secondary{display:none}.hero{padding:44px 0 38px}.hero h1{font-size:clamp(2.55rem,12vw,4rem)}.hero-copy>p{font-size:.96rem}.hero-visual{padding:8px}.kpi-grid{gap:5px;padding:8px}.kpi{padding:8px 6px}.kpi strong{font-size:.83rem}.kpi>span{font-size:.53rem}.chart-card,.activity-card{margin-inline:8px;padding:9px}.store-grid{gap:5px}.product-card{padding:5px}.service-feature{grid-template-columns:72px 1fr;gap:9px;padding:10px}.service-art{width:68px;height:68px}.editorial-cover{grid-template-columns:.8fr 1.2fr;gap:10px}.cover-art{height:110px}.metrics,.feature-grid,.showcase-grid,.pricing{grid-template-columns:1fr}body[data-layout] .showcase-grid{grid-template-columns:1fr}body[data-layout="1"] .showcase-card:first-child{grid-row:auto}body[data-layout="4"] .showcase-card:last-child{grid-column:auto}.metrics{gap:1px}.metric{padding:14px}.metric strong{font-size:1.25rem}.section{padding-bottom:62px}.section-heading{align-items:flex-start;flex-direction:column;gap:12px}.feature-card{min-height:0}.feature-card h3{margin-top:18px}.showcase-section{padding:50px 0 60px}.showcase-card{min-height:150px}.quote-section{padding:58px 0}.quote-card{padding:20px}.contact-panel{align-items:flex-start;flex-direction:column;padding:23px;margin-bottom:50px}.footer-inner{align-items:flex-start;flex-direction:column}.footer-links{flex-wrap:wrap}.demo-toast{right:12px;bottom:12px}}
+    body[data-layout="1"] .hero{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:38px}body[data-layout="2"] .hero{grid-template-columns:1fr;gap:30px}body[data-layout="2"] .hero-copy{max-width:760px}body[data-layout="2"] .hero-visual{max-width:900px}body[data-layout="3"] .hero{grid-template-columns:minmax(420px,1.1fr) minmax(0,.9fr)}body[data-layout="3"] .hero-visual{order:-1}body[data-layout="4"] .hero{grid-template-columns:minmax(0,.72fr) minmax(440px,1.28fr);gap:36px}
+    body[data-layout="1"] .showcase-grid{grid-template-columns:repeat(2,minmax(0,1fr))}body[data-layout="1"] .showcase-card:first-child{grid-row:span 2}body[data-layout="2"] .showcase-grid{grid-template-columns:1fr}body[data-layout="2"] .showcase-card{min-height:130px}body[data-layout="3"] .feature-grid{grid-template-columns:1fr}body[data-layout="3"] .feature-card{min-height:0}body[data-layout="3"] .feature-card h3{margin-top:12px}body[data-layout="4"] .showcase-grid{grid-template-columns:repeat(2,minmax(0,1fr))}body[data-layout="4"] .showcase-card:last-child{grid-column:span 2}
     @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}}
   </style>
 </head>
-<body>
+<body data-layout="${layoutVariant}" data-archetype="${blueprint.archetype}">
   <header class="topbar"><div class="shell nav">
     <a class="brand" href="#top"><span class="brand-mark" aria-hidden="true">${initials(blueprint.brand)}</span>${brand}</a>
-    <nav class="nav-links" id="site-nav" aria-label="Main navigation"><a href="#features">Capabilities</a><a href="#work">Explore</a><a href="#pricing">Plans</a><a href="#faq">FAQ</a></nav>
-    <div class="nav-actions"><a class="button secondary" href="#work">See the details</a><a class="button" href="#contact">Let's talk&nbsp;↗</a><button type="button" class="menu-button" aria-controls="site-nav" aria-expanded="false" data-menu-button>Menu</button></div>
+    <nav class="nav-links" id="site-nav" aria-label="Main navigation">${navigation}</nav>
+    <div class="nav-actions"><a class="button secondary" href="#work">Explore</a><a class="button" href="#contact">${blueprint.archetype === "storefront" ? "Shop the collection" : blueprint.archetype === "launch" ? "Join the list" : blueprint.archetype === "editorial" ? "Get in touch" : "Take the next step"}&nbsp;↗</a><button type="button" class="menu-button" aria-controls="site-nav" aria-expanded="false" data-menu-button>Menu</button></div>
   </div></header>
   <main id="top">
     <section class="shell hero">
@@ -144,23 +199,9 @@ function buildCode(blueprint: PremiumBlueprint) {
       </div>
       <div class="hero-visual">${mockup}</div>
     </section>
-    <section class="shell metrics" aria-label="Illustrative metrics">${metrics}</section>
-    <section id="features" class="shell section"><div class="section-heading"><div><span class="section-kicker">Designed around the work</span><h2>Everything has a clear place.</h2></div><p>${description} This standalone prototype uses sample content and can be adapted to your own brand and workflow.</p></div><div class="feature-grid">${features}</div></section>
-    <section id="work" class="showcase-section"><div class="shell section-heading"><div><span class="section-kicker">A closer look</span><h2>Useful detail, without the noise.</h2></div><p>Bring the most important parts of your service into focus with a flexible, responsive layout.</p></div><div class="shell showcase-grid">${showcase}</div></section>
-    <section class="shell quote-section"><div><span class="quote-label">Built around useful work</span><h2 class="quote">“${escapeHtml(blueprint.features[1].title)}.”</h2><span class="quote-by">A starting point to adapt to your own product and customers.</span></div><div class="quote-card"><span class="quote-label">Sample content</span><p style="margin:12px 0 0;color:var(--muted);font-size:.9rem">Metrics, prices, dates and examples in this prototype are illustrative. Replace them with verified information before publishing.</p><strong style="display:block;margin-top:14px;font-size:.8rem">No customer endorsements are implied.</strong></div></section>
-    <section id="pricing" class="shell section"><div class="section-heading"><div><span class="section-kicker">Clear options</span><h2>Choose what fits today.</h2></div><p>Example pricing layout only. Connect your own billing system and set accurate terms before use.</p></div><div class="pricing">
-      <article class="price-card"><h3>Essentials</h3><p>A focused starting point for one person or a small team.</p><span class="price-value">€19<small> / month · sample</small></span><ul><li>Core workspace</li><li>Essential reporting</li><li>Email support</li></ul><a href="#contact" class="button secondary">Ask a question</a></article>
-      <article class="price-card featured"><h3>Growth</h3><p>More room for collaboration and a broader workflow.</p><span class="price-value">€49<small> / month · sample</small></span><ul><li>Everything in Essentials</li><li>Team collaboration</li><li>Advanced views</li></ul><a href="#contact" class="button">Explore Growth&nbsp;↗</a></article>
-      <article class="price-card"><h3>Custom</h3><p>A tailored arrangement for a more specific requirement.</p><span class="price-value">Let's talk</span><ul><li>Flexible requirements</li><li>Guided onboarding</li><li>Dedicated contact</li></ul><a href="#contact" class="button secondary">Contact the team</a></article>
-    </div></section>
-    <section id="faq" class="shell section"><div class="section-heading"><div><span class="section-kicker">Good to know</span><h2>Questions, answered.</h2></div><p>Replace these starter answers with details specific to your product, policies and service.</p></div><div class="faq-list">
-      <details><summary>Is this template connected to a live service?</summary><p>No. It is an independent front-end prototype with illustrative content and local demo interactions. Connect and test your own backend before collecting data or payments.</p></details>
-      <details><summary>Can I change the content and visual style?</summary><p>Yes. The document is self-contained HTML, CSS and JavaScript. Update the copy, colors, layout and sample records to match your brand.</p></details>
-      <details><summary>Are the included metrics and testimonials real?</summary><p>No. All metrics, prices and quotes are examples used to demonstrate the layout. Replace them with verified information before publishing.</p></details>
-    </div></section>
-    <section id="contact" class="shell contact-panel"><div><h2>Make the next step a good one.</h2><p>A confident introduction, followed by a clear and useful conversation.</p></div><a class="button" href="mailto:hello@example.com">Start a conversation&nbsp;↗</a></section>
+    ${sections}
   </main>
-  <footer class="footer"><div class="shell footer-inner"><span>© 2026 ${brand} · Independent HTML/CSS/JS template</span><nav class="footer-links" aria-label="Footer"><a href="#features">Capabilities</a><a href="#faq">FAQ</a><a href="#top">Back to top ↑</a></nav></div></footer>
+  <footer class="footer"><div class="shell footer-inner"><span>© 2026 ${brand} · Independent HTML/CSS/JS template</span><nav class="footer-links" aria-label="Footer"><a href="#features">Details</a><a href="#contact">Contact</a><a href="#top">Back to top ↑</a></nav></div></footer>
   <div class="demo-toast" role="status" aria-live="polite" data-demo-toast hidden>Demo interaction only. Connect your own service to enable this action.</div>
   <script>
     const menuButton=document.querySelector("[data-menu-button]");

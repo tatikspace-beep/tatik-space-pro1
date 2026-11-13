@@ -3033,7 +3033,7 @@ Analizza e suggerisci ottimizzazioni.`,
       .mutation(async ({ input, ctx }) => {
         const template = SELLABLE_PREMIUM_TEMPLATES.find(item => item.id === input.templateId);
         if (!template || !PREMIUM_TEMPLATE_CATALOG[input.templateId]) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "Template premium non valido" });
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Template non disponibile" });
         }
 
         let userId: number | undefined;
@@ -3071,7 +3071,7 @@ Analizza e suggerisci ottimizzazioni.`,
       .mutation(async ({ input, ctx }) => {
         const template = PREMIUM_TEMPLATE_CATALOG[input.templateId];
         if (!template) {
-          throw new TRPCError({ code: "BAD_REQUEST", message: "Template premium non valido" });
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Template non disponibile" });
         }
 
         try {
@@ -3131,7 +3131,7 @@ Analizza e suggerisci ottimizzazioni.`,
             customerEmail: userEmail || undefined,
             lineItems: [{
               name: `${template.name} - 30 days access`,
-              description: `Premium template access valid for 30 days`,
+              description: `Template access valid for 30 days`,
               amount: Math.round(discountPriceEuro * 100),
               currency: 'eur',
               quantity: 1,

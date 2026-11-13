@@ -18,4 +18,19 @@ describe("additional free templates", () => {
       expect(template.code).toContain("@media(max-width:760px)");
     }
   });
+
+  it("gives each free starter a page structure tailored to its purpose", () => {
+    const templatesById: Record<string, { section: string; art: string }> = {
+      "free-cafe-one-page": { section: "On the menu today.", art: "cafe" },
+      "free-creator-portfolio": { section: "Selected projects.", art: "portfolio" },
+      "free-community-event": { section: "The day at a glance.", art: "event" },
+      "free-wellness-studio": { section: "Find a class that feels right.", art: "wellness" },
+      "free-product-waitlist": { section: "What is coming together.", art: "waitlist" },
+    };
+
+    for (const template of ADDITIONAL_FREE_TEMPLATES) {
+      expect(template.code).toContain(templatesById[template.id].section);
+      expect(template.code).toContain(`data-art="${templatesById[template.id].art}"`);
+    }
+  });
 });

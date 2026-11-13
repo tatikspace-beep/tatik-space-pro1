@@ -49,6 +49,7 @@ describe("additional premium templates", () => {
       "blog-magazine": { priceEuro: 129 },
       "react-portfolio-pro": { priceEuro: 129 },
     });
+    expect(PREMIUM_TEMPLATE_CATALOG["saas-landing-pro"].name).toBe("SaaS Landing Page");
   });
 
   it("provides complete, self-contained responsive HTML demos with interaction disclosures", () => {
@@ -56,8 +57,32 @@ describe("additional premium templates", () => {
       expect(template.code).toContain("<!doctype html>");
       expect(template.code).toContain('name="viewport"');
       expect(template.code).toContain("prefers-reduced-motion");
-      expect(template.code).toContain("Sample content");
+      expect(template.code).toContain("Sample selection only");
       expect(template.code).toContain("Connect your own service");
+      expect(template.code).not.toContain("Choose what fits today.");
+      expect(template.code).not.toContain("€19");
     }
+  });
+
+  it("uses page sections suited to each template family", () => {
+    const sectionByTemplateId = {
+      "premium-ai-research-intelligence": ["dashboard", "Built around the workflow"],
+      "premium-digital-creator-shop": ["storefront", "The collection"],
+      "premium-legal-advisory-firm": ["service", "How we can help"],
+      "premium-product-designer-portfolio": ["editorial", "Selected work"],
+      "premium-b2b-saas-launch": ["launch", "What is taking shape"],
+    };
+
+    for (const [id, [archetype, section]] of Object.entries(sectionByTemplateId)) {
+      const template = ADDITIONAL_PREMIUM_TEMPLATES.find((item) => item.id === id);
+      if (!template) throw new Error(`Missing representative template ${id}`);
+      expect(template.code).toContain(`data-archetype="${archetype}"`);
+      expect(template.code).toContain(section);
+    }
+
+    const layoutVariants = new Set(ADDITIONAL_PREMIUM_TEMPLATES.map(
+      ({ code }) => code.match(/<body data-layout="(\d)"/)?.[1],
+    ));
+    expect(layoutVariants).toEqual(new Set(["0", "1", "2", "3", "4"]));
   });
 });

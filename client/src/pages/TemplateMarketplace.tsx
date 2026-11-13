@@ -605,7 +605,7 @@ export default function TemplateMarketplace() {
                                     <div className="mr-8 flex shrink-0 flex-col items-end gap-2 ml-4">
                                         {selectedTemplate.isPremium && (
                                             <Badge className="bg-amber-500 hover:bg-amber-600 text-white font-semibold">
-                                                Premium — €{selectedTemplate.price}
+                                                €{selectedTemplate.price}
                                             </Badge>
                                         )}
                                         {!selectedTemplate.isPremium && (

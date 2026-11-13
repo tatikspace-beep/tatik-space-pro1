@@ -1223,7 +1223,7 @@ app.start();</code></pre>
 export const PREMIUM_TEMPLATES: Template[] = [
     {
         id: 'saas-landing-pro',
-        name: 'SaaS Landing Page Premium',
+        name: 'SaaS Landing Page',
         description: 'Landing page SaaS completa enterprise: hero animato con gradient, 6 feature cards, pricing dinamico 3-tier, navbar sticky blur, testimonials carousel, stats KPI, newsletter.',
         category: 'saas',
         tech: ['HTML', 'CSS', 'JS'],
