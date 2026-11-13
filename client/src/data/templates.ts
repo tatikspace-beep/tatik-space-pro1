@@ -1540,7 +1540,7 @@ export const PREMIUM_TEMPLATES: Template[] = [
     {
         id: 'ecommerce-luxury',
         name: 'E-commerce Luxury Store',
-        description: 'Negozio online luxury: product grid con immagini premium, filtri avanzati, wishlist interattiva, colori disponibili, rating, stock indicator, checkout elegante.',
+        description: 'Negozio online luxury: product grid con immagini curate, filtri avanzati, wishlist interattiva, colori disponibili, rating, stock indicator, checkout elegante.',
         category: 'ecommerce',
         tech: ['HTML', 'CSS', 'JavaScript'],
         price: 49,

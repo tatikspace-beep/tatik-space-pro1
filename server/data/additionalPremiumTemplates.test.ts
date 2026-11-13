@@ -54,6 +54,7 @@ describe("additional premium templates", () => {
 
   it("provides complete, self-contained responsive HTML demos with interaction disclosures", () => {
     for (const template of ADDITIONAL_PREMIUM_TEMPLATES) {
+      expect(template.description).not.toMatch(/premium/i);
       expect(template.code).toContain("<!doctype html>");
       expect(template.code).toContain('name="viewport"');
       expect(template.code).toContain("prefers-reduced-motion");
