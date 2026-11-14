@@ -216,6 +216,10 @@ VITE_GOOGLE_AD_SLOT_MARKETPLACE=
 VITE_GOOGLE_AD_SLOT_FOOTER=
 ```
 
+Google Analytics invia le visualizzazioni iniziali e i cambi di pagina SPA solo
+dopo il consenso ai cookie analitici. Verificare che l'ID corrisponda allo stream
+Web del dominio e controllare il report in tempo reale dopo aver dato il consenso.
+
 Conservare il tag/script AdSense già presente in `client/index.html` e il file
 `client/public/ads.txt`. I quattro ID di slot si configurano dopo l'approvazione
 dell'account e la creazione delle unità display. Gli annunci si renderizzano
@@ -293,7 +297,8 @@ Il file `vercel.json` gestisce già il rewrite di `/api/trpc` e il fallback SPA.
 - [ ] Impression e click con consenso marketing.
 - [ ] Nessun tracking marketing con consenso negato.
 - [ ] Import ricavi e report.
-- [ ] Google Analytics/Ads/AdSense in ambiente autorizzato.
+- [ ] Google Analytics: nessuna raccolta senza consenso analytics e page_view per navigazione SPA dopo il consenso.
+- [ ] Google Ads/AdSense in ambiente autorizzato.
 
 ### Scuole
 
