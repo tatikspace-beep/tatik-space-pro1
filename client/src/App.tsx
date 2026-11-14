@@ -1,4 +1,5 @@
 import { Toaster } from "@/components/ui/sonner";
+import { GoogleAnalytics } from "@/components/GoogleAnalytics";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
@@ -279,6 +280,7 @@ function App() {
                   <AppFooter />
                   <EzoicConsentDisclosure />
                   <CookieConsent />
+                  <GoogleAnalytics />
                 </TooltipProvider>
               </ProjectProvider>
             </LanguageProvider>
