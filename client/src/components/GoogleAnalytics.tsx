@@ -61,10 +61,7 @@ export function GoogleAnalytics() {
     window.gtag?.("consent", "update", {
       analytics_storage: consent ? "granted" : "denied",
     });
-    if (!consent || !GA_ID) {
-      lastPageView.current = null;
-      return;
-    }
+    if (!GA_ID) return;
 
     loadAnalyticsScript(GA_ID);
     if (configuredId.current !== GA_ID) {
