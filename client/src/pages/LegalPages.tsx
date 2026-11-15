@@ -352,7 +352,7 @@ export function CookiePolicy() {
           </ul>
           <p className="mt-3">
             <AITranslationWrapper>
-              Google Analytics usa la modalità di consenso avanzata: prima della scelta sui cookie invia a Google segnali di visita senza usare cookie Analytics. Questi segnali possono contribuire a report aggregati e a stime modellate, non identificano con precisione tutti i visitatori. Se accetti i cookie analitici, la misurazione completa viene attivata; se li rifiuti, restano disattivati i cookie Analytics.
+              Google Analytics usa la modalità di consenso avanzata con il consenso TCF di Gatekeeper. Prima della scelta invia segnali di visita senza cookie Analytics, che non identificano i visitatori e potrebbero non apparire in tempo reale. Dopo il consenso analitico, la visualizzazione della pagina corrente e le successive vengono misurate con il consenso concesso; se rifiuti, restano disattivati i cookie Analytics.
             </AITranslationWrapper>
           </p>
         </section>

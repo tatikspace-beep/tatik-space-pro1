@@ -5,21 +5,28 @@ declare global {
   interface Window {
     dataLayer?: unknown[];
     gtag?: (...args: unknown[]) => void;
+    __tcfapi?: (
+      command: "addEventListener" | "removeEventListener",
+      version: number,
+      callback: (data: GatekeeperTCData | null, success: boolean) => void,
+      listenerId?: number,
+    ) => void;
   }
 }
 
-const CONSENT_KEY = "tatik-cookie-details";
+type GatekeeperTCData = {
+  eventStatus?: string;
+  listenerId?: number;
+  purpose?: { consents?: Record<number, boolean> };
+  vendor?: { consents?: Record<number, boolean> };
+};
+
 const GA_ID = import.meta.env.VITE_GOOGLE_ANALYTICS_ID as string | undefined;
 
-function hasAnalyticsConsent() {
-  try {
-    const stored = localStorage.getItem(CONSENT_KEY);
-    if (!stored) return false;
-    const preferences = JSON.parse(stored) as { analytics?: unknown };
-    return preferences.analytics === true;
-  } catch {
-    return false;
-  }
+function hasGatekeeperAnalyticsConsent(data: GatekeeperTCData) {
+  return data.purpose?.consents?.[1] === true
+    && data.purpose?.consents?.[8] === true
+    && data.vendor?.consents?.[755] === true;
 }
 
 function loadAnalyticsScript(measurementId: string) {
@@ -32,16 +39,10 @@ function loadAnalyticsScript(measurementId: string) {
 }
 
 export function GoogleAnalytics() {
-  const [consent, setConsent] = useState(hasAnalyticsConsent);
+  const [analyticsConsent, setAnalyticsConsent] = useState<boolean | null>(null);
   const [location] = useLocation();
   const configuredId = useRef<string | null>(null);
-  const lastPageView = useRef<string | null>(null);
-
-  useEffect(() => {
-    const refreshConsent = () => setConsent(hasAnalyticsConsent());
-    window.addEventListener("tatik:consent-updated", refreshConsent);
-    return () => window.removeEventListener("tatik:consent-updated", refreshConsent);
-  }, []);
+  const lastPageView = useRef<{ pageLocation: string; analyticsConsent: boolean } | null>(null);
 
   useEffect(() => {
     window.dataLayer = window.dataLayer || [];
@@ -55,12 +56,7 @@ export function GoogleAnalytics() {
       ad_personalization: "denied",
       wait_for_update: 500,
     });
-  }, []);
 
-  useEffect(() => {
-    window.gtag?.("consent", "update", {
-      analytics_storage: consent ? "granted" : "denied",
-    });
     if (!GA_ID) return;
 
     loadAnalyticsScript(GA_ID);
@@ -69,15 +65,75 @@ export function GoogleAnalytics() {
       window.gtag?.("config", GA_ID, { anonymize_ip: true, send_page_view: false });
       configuredId.current = GA_ID;
     }
+  }, []);
 
-    if (lastPageView.current !== window.location.href) {
+  useEffect(() => {
+    if (!window.__tcfapi) {
+      console.error("[GoogleAnalytics] Gatekeeper TCF is unavailable; Analytics consent remains denied.");
+      setAnalyticsConsent(false);
+      return;
+    }
+
+    let listenerId: number | undefined;
+    const timeout = window.setTimeout(() => {
+      console.error("[GoogleAnalytics] Gatekeeper did not provide TCF consent; Analytics consent remains denied.");
+      setAnalyticsConsent(false);
+    }, 2000);
+    const onConsentChange = (data: GatekeeperTCData | null, success: boolean) => {
+      if (!success || !data) return;
+      if (typeof data.listenerId === "number") listenerId = data.listenerId;
+
+      if (data.eventStatus === "cmpuishown") {
+        window.clearTimeout(timeout);
+        setAnalyticsConsent(false);
+        return;
+      }
+
+      if (data.eventStatus === "tcloaded" || data.eventStatus === "useractioncomplete") {
+        window.clearTimeout(timeout);
+        setAnalyticsConsent(hasGatekeeperAnalyticsConsent(data));
+      }
+    };
+
+    window.__tcfapi("addEventListener", 2, onConsentChange);
+    return () => {
+      window.clearTimeout(timeout);
+      if (typeof listenerId === "number") {
+        window.__tcfapi?.("removeEventListener", 2, () => {}, listenerId);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (analyticsConsent === null) return;
+
+    window.gtag?.("consent", "update", {
+      analytics_storage: analyticsConsent ? "granted" : "denied",
+    });
+
+    if (!GA_ID) return;
+    const pageLocation = window.location.href;
+    const previousPageView = lastPageView.current;
+    const samePage = previousPageView?.pageLocation === pageLocation;
+    const consentWasGranted = previousPageView?.analyticsConsent === true;
+    const shouldSendPageView = !samePage || (analyticsConsent && !consentWasGranted);
+
+    if (!shouldSendPageView) {
+      if (samePage) lastPageView.current = { pageLocation, analyticsConsent };
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      if (window.location.href !== pageLocation) return;
       window.gtag?.("event", "page_view", {
         page_title: document.title,
-        page_location: window.location.href,
+        page_location: pageLocation,
       });
-      lastPageView.current = window.location.href;
-    }
-  }, [consent, location]);
+      lastPageView.current = { pageLocation, analyticsConsent };
+    }, 0);
+
+    return () => window.clearTimeout(timeout);
+  }, [analyticsConsent, location]);
 
   return null;
 }

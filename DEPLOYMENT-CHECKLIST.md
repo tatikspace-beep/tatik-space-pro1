@@ -218,13 +218,11 @@ VITE_GOOGLE_AD_SLOT_FOOTER=
 
 Google Consent Mode avanzato invia la visualizzazione iniziale e i cambi di
 pagina SPA anche con consenso negato, senza cookie Analytics. Questi segnali
-possono contribuire a report aggregati e a stime modellate; la misurazione
-completa è attiva solo dopo il consenso ai cookie analitici. Verificare che l'ID
-corrisponda allo stream Web del dominio. Gatekeeper usa l'integrazione TCF della
-Google tag, abilitata prima del caricamento del CMP in `client/index.html`;
-verificare che il consenso analitico concesso aggiorni `analytics_storage` e
-produca page_view nel report in tempo reale. I segnali senza consenso non
-identificano il visitatore e non sono necessariamente visibili in Realtime.
+possono contribuire a report aggregati e a stime modellate; non identificano il
+visitatore e non sono necessariamente visibili in Realtime. La scelta Gatekeeper
+viene letta tramite TCF prima del page_view; il consenso concesso applica
+`analytics_storage=granted` anche alla pagina corrente e alle successive.
+Verificare che l'ID corrisponda allo stream Web del dominio.
 
 Conservare il tag/script AdSense già presente in `client/index.html` e il file
 `client/public/ads.txt`. I quattro ID di slot si configurano dopo l'approvazione
@@ -303,7 +301,7 @@ Il file `vercel.json` gestisce già il rewrite di `/api/trpc` e il fallback SPA.
 - [ ] Impression e click con consenso marketing.
 - [ ] Nessun tracking marketing con consenso negato.
 - [ ] Import ricavi e report.
-- [ ] Google Analytics/Gatekeeper: verificare aggiornamento TCF di `analytics_storage`, page_view con consenso concesso e navigazioni SPA; con consenso negato non aspettarsi utenti individuali in Realtime.
+- [ ] Google Analytics/Gatekeeper: verificare stato TCF prima del primo page_view, consenso concesso anche alla pagina corrente e navigazioni SPA; con consenso negato non aspettarsi utenti individuali in Realtime.
 - [ ] Google Ads/AdSense in ambiente autorizzato.
 
 ### Scuole
