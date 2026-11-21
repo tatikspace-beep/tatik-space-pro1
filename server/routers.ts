@@ -3644,7 +3644,7 @@ Analizza e suggerisci ottimizzazioni.`,
     applyPreviewAnalyticsUsageMigration: publicProcedure
       .input(z.object({ token: z.string().min(32).max(256) }))
       .mutation(async ({ input }) => {
-        const expectedToken = process.env.ANALYTICS_PREVIEW_MIGRATION_TOKEN?.trim();
+        const expectedToken = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim();
         const supplied = Buffer.from(input.token, "utf8");
         const expected = Buffer.from(expectedToken || "", "utf8");
         if (
