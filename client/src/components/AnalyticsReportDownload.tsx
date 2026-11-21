@@ -207,7 +207,19 @@ export function AnalyticsReportDownload({
     try {
       if (!pdfGenerator) throw new Error("Il PDF è ancora in preparazione. Riprova tra qualche secondo.");
       const pdf = pdfGenerator(reportTitle, reportContent, reportVisuals);
-      pdf.save(`${reportTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "tatik-report"}.pdf`);
+      const filename = `${reportTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "tatik-report"}.pdf`;
+      const url = URL.createObjectURL(pdf.output("blob"));
+      const anchor = document.createElement("a");
+      try {
+        anchor.href = url;
+        anchor.download = filename;
+        anchor.style.display = "none";
+        document.body.appendChild(anchor);
+        anchor.click();
+      } finally {
+        anchor.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Impossibile generare il PDF.");
     }
