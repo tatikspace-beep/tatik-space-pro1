@@ -20,7 +20,8 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { AnalyticsReportDownload, AnalyticsUsageNotice } from "@/components/AnalyticsReportDownload";
 import { useLanguage } from "@/contexts/LanguageContext";
-import type { AnalyticsReportVisual } from "@/lib/analyticsReportPdf";
+import type { AnalyticsReportConclusion, AnalyticsReportVisual } from "@/lib/analyticsReportPdf";
+import { createStatisticalAssessment } from "@/lib/statisticalAssessment";
 import type { AppRouter } from "../../../server/routers";
 
 type ProviderId = "worldbank" | "nasa" | "ecb" | "eurostat";
@@ -366,6 +367,10 @@ export function OfficialDataAnalysis() {
       series: [...observed, ...forecasts],
     }];
   }, [allDates, analysis, chartData, series]);
+  const reportConclusion = useMemo<AnalyticsReportConclusion | undefined>(
+    () => analysis ? createStatisticalAssessment(analysis, language === "it" ? "it" : "en") : undefined,
+    [analysis, language],
+  );
 
   const addSource = () => setSourceRows((rows) => [
     ...rows,
@@ -675,6 +680,7 @@ export function OfficialDataAnalysis() {
           title="Report analisi serie storiche"
           content={reportContent}
           visuals={reportVisuals}
+          conclusion={reportConclusion}
           returnPath="/analysis/portals"
         />
       </CardContent>

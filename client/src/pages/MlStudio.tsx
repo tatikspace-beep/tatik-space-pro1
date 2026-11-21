@@ -32,7 +32,7 @@ import {
   YAxis,
 } from "recharts";
 import { createMlAssessment } from "@/lib/mlStudioAssessment";
-import type { AnalyticsReportVisual } from "@/lib/analyticsReportPdf";
+import type { AnalyticsReportConclusion, AnalyticsReportVisual } from "@/lib/analyticsReportPdf";
 import { trpc } from "@/lib/trpc";
 
 const copy = {
@@ -197,12 +197,6 @@ export default function MlStudio() {
       "Model metrics:",
       ...modelMetrics,
       "",
-      "Technical assessment:",
-      `Summary: ${assessment.summary}`,
-      "Key findings:",
-      ...assessment.findings.map((finding) => `• ${finding}`),
-      `Methodological note: ${assessment.disclaimer}`,
-      "",
       "Feature importance:",
       ...result.featureImportance.map((feature) => `${feature.name}: ${formatMetric(feature.importance)}`),
       "",
@@ -210,6 +204,14 @@ export default function MlStudio() {
       ...(result.warnings.length ? result.warnings : ["None"]),
     ].join("\n");
   }, [assessment, result]);
+  const reportConclusion = useMemo<AnalyticsReportConclusion | undefined>(() => assessment ? {
+    title: assessment.title,
+    content: [
+      assessment.summary,
+      ...assessment.findings.map((finding) => `• ${finding}`),
+      assessment.disclaimer,
+    ].join("\n\n"),
+  } : undefined, [assessment]);
   const classificationChartData = result?.task === "classification"
     ? result.models.map((model) => ({
       model: model.name,
@@ -726,6 +728,7 @@ export default function MlStudio() {
           title={result ? `Report ML - ${result.fileName}` : "Report ML Studio"}
           content={reportContent}
           visuals={reportVisuals}
+          conclusion={reportConclusion}
           returnPath="/analysis/ml-studio"
         />
         <MlStudioSources language={language} onMergedDataset={loadDatasetPayload} />
