@@ -339,6 +339,18 @@ export const paymentRecords = pgTable("payment_records", {
 export type PaymentRecord = typeof paymentRecords.$inferSelect;
 export type InsertPaymentRecord = typeof paymentRecords.$inferInsert;
 
+export const analyticsMonthlyUsage = pgTable("analytics_monthly_usage", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  monthKey: varchar("monthKey", { length: 7 }).notNull(),
+  analysisCount: integer("analysisCount").notNull().default(0),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, (table) => ({
+  userMonthUnique: uniqueIndex("analytics_monthly_usage_user_month_unique").on(table.userId, table.monthKey),
+}));
+
+export type AnalyticsMonthlyUsage = typeof analyticsMonthlyUsage.$inferSelect;
+
 export const providerConnections = pgTable("provider_connections", {
   id: serial("id").primaryKey(),
   userId: integer("userId").notNull().references(() => users.id, { onDelete: "cascade" }),

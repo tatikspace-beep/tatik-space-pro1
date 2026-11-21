@@ -53,6 +53,10 @@ jspm_packages/
 
 # dotenv environment variables file
 .env
+.env*
+**/.env*
+client/.env.production
+client/src/pages/SMTP_HOST.txt
 
 # Test files
 test-results
@@ -61,3 +65,12 @@ playwright-report
 # Temporary files
 tmp
 temp
+__pycache__
+**/__pycache__/**
+data-insight-ai-test/test_*.py
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache
+.mypy_cache
+.ruff_cache

@@ -38,7 +38,19 @@ import QRCode from "qrcode";
 import { createSignedEmailAccessToken, verifySignedEmailAccessToken } from "./email-access-token";
 import { scanMarketplaceTemplate } from "./marketplace-scan";
 import { hasActiveSchoolAccess } from "./school-access";
-import { generateAssistantResponse } from "./_core/aiProviders";
+import {
+  assertAnalyticsCheckoutStripeKey,
+  assertFreeAnalysisRowLimit,
+  FREE_ANALYSIS_ROW_LIMIT,
+  FREE_MONTHLY_ANALYSES,
+  MAX_ANALYSIS_ROWS,
+  getAnalyticsMonthKey,
+  getAnalyticsReportPriceCents,
+  getMonthlyAnalyticsUsage,
+  releaseMonthlyAnalyticsUse,
+  reserveMonthlyAnalyticsUse,
+} from "./analytics-usage";
+import { generateAssistantResponse, generateFreeAnalysisAnswer } from "./_core/aiProviders";
 import { getUserFeatureAccess, requireFeatureAccess } from "./_core/featureAccess";
 import { PREMIUM_TEMPLATE_CATALOG } from "./_core/premiumTemplateCatalog";
 import { getAuthBaseUrl } from "./_core/authUrls";
@@ -48,6 +60,20 @@ import { createDatabaseProject, deployStaticProject } from "./provider-operation
 import { parseAgentPlan, validateAgentFinalResponse } from "./ai-agent";
 import { isInformationalAgentRequest } from "../shared/agentRequestIntent";
 import { isLocalizedAgentEditRequest, LOCALIZED_AGENT_EDIT_GUIDANCE } from "../shared/agentEditScope";
+import {
+  callDataInsight,
+  type DocumentAnalysisResult,
+  type OfficialSeries,
+  type PortalExplorationResult,
+  type StatisticalAnalysis,
+  type MlDatasetPreview,
+  type MlSourcesAnalysisResult,
+  type MergedMlDataset,
+  type TabularMlResult,
+  type SentinelAoiJob,
+  type UnetGeoTiffExport,
+  type UnetGeoTiffExportResult,
+} from "./data-insight";
 
 async function sendAuthEmail(to: string, subject: string, text: string) {
   const apiKey = process.env.RESEND_API_KEY;
@@ -74,6 +100,32 @@ const MARKETPLACE_SELLER_TERMS_VERSION = "2026-09-30-screening-v1";
 
 const SCHOOL_TERMS_VERSION = "2026-09-15";
 const SCHOOL_INVITE_DAYS = 7;
+const DATA_INSIGHT_DAILY_LIMIT = 10;
+const dataInsightDailyUsage = new Map<string, { date: string; count: number }>();
+const mlSourceListSchema = z.object({
+  documents: z.array(z.object({
+    name: z.string().min(1).max(180),
+    contentBase64: z.string().min(1).max(3_600_000),
+  })).max(5).default([]),
+  urls: z.array(z.string().url().max(2048)).max(5).default([]),
+});
+
+function validateMlSourceBatch(
+  value: { documents: Array<{ contentBase64: string }>; urls: string[] },
+  context: z.RefinementCtx,
+) {
+  if (!value.documents.length && !value.urls.length) {
+    context.addIssue({ code: "custom", message: "Aggiungi almeno un documento o un URL." });
+  }
+  if (value.documents.reduce((total, document) => total + document.contentBase64.length, 0) > 3_400_000) {
+    context.addIssue({ code: "custom", message: "La dimensione complessiva dei documenti supera 2,5 MB." });
+  }
+}
+
+const mlSourceAnalysisSchema = mlSourceListSchema
+  .extend({ query: z.string().max(1000).default("") })
+  .superRefine(validateMlSourceBatch);
+const mlSourceMergeSchema = mlSourceListSchema.superRefine(validateMlSourceBatch);
 
 async function resolveProviderUserId(user: NonNullable<TrpcContext["user"]>) {
   if (typeof user.id === "number") return user.id;
@@ -113,10 +165,407 @@ function hashSchoolInviteToken(token: string) {
   return crypto.createHash("sha256").update(token).digest("hex");
 }
 
+function reserveDataInsightUsage(userId: string) {
+  const date = new Date().toISOString().slice(0, 10);
+  const current = dataInsightDailyUsage.get(userId);
+  const usage = current?.date === date ? current : { date, count: 0 };
+  if (usage.count >= DATA_INSIGHT_DAILY_LIMIT) {
+    throw new TRPCError({
+      code: "TOO_MANY_REQUESTS",
+      message: `Limite giornaliero Data Insight raggiunto (${DATA_INSIGHT_DAILY_LIMIT} richieste). Riprova domani.`,
+    });
+  }
+  usage.count += 1;
+  dataInsightDailyUsage.set(userId, usage);
+}
+
+async function withDataInsightLimit<T>(userId: number | string, action: () => Promise<T>) {
+  const key = String(userId);
+  reserveDataInsightUsage(key);
+  try {
+    return await action();
+  } catch (error) {
+    const date = new Date().toISOString().slice(0, 10);
+    const usage = dataInsightDailyUsage.get(key);
+    if (usage?.date === date && usage.count > 0) usage.count -= 1;
+    throw error;
+  }
+}
+
+async function getAnalyticsPlanStatus(user: NonNullable<TrpcContext["user"]>) {
+  const userId = await resolveProviderUserId(user);
+  const staff = isStaffUser(user);
+  const schoolAccess = !staff && await hasActiveSchoolAccess(userId);
+  const subscription = !staff && !schoolAccess
+    ? await db.getSubscriptionByUserIdAndStatus(userId, "active")
+    : null;
+  const premium = staff || schoolAccess || subscription?.tier === "pro" ||
+    user.subscriptionType === "pro" || user.subscriptionType === "unlimited";
+  const monthKey = getAnalyticsMonthKey();
+  const used = premium ? 0 : await getMonthlyAnalyticsUsage(userId, monthKey);
+  return {
+    userId,
+    staff,
+    premium,
+    monthKey,
+    used,
+    monthlyLimit: FREE_MONTHLY_ANALYSES,
+    remaining: premium ? null : Math.max(0, FREE_MONTHLY_ANALYSES - used),
+    freeRowLimit: FREE_ANALYSIS_ROW_LIMIT,
+    maxRows: MAX_ANALYSIS_ROWS,
+    reportPriceCents: getAnalyticsReportPriceCents(),
+  };
+}
+
+async function withAnalyticsQuota<T>(
+  user: NonNullable<TrpcContext["user"]>,
+  action: () => Promise<T>,
+) {
+  const status = await getAnalyticsPlanStatus(user);
+  if (status.premium) return action();
+
+  await reserveMonthlyAnalyticsUse(status.userId, status.monthKey);
+  try {
+    return await action();
+  } catch (error) {
+    await releaseMonthlyAnalyticsUse(status.userId, status.monthKey);
+    throw error;
+  }
+}
+
+function getDataInsightCookieHeader(ctx: TrpcContext) {
+  const cookie = ctx.req.headers.cookie;
+  return Array.isArray(cookie) ? cookie.join("; ") : cookie;
+}
+
 export const appRouter = router({
   // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
   pricing: pricingRouter,
+  analyticsAccess: router({
+    getStatus: protectedProcedure.query(({ ctx }) => getAnalyticsPlanStatus(ctx.user)),
+  }),
+  analyticsReports: router({
+    startCheckout: protectedProcedure
+      .input(z.object({
+        reportId: z.string().uuid(),
+        reportTitle: z.string().min(1).max(120),
+        returnPath: z.enum(["/analysis/ml-studio", "/analysis/remote-sensing", "/analysis/portals"]),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const status = await getAnalyticsPlanStatus(ctx.user);
+        if (status.staff) {
+          throw new TRPCError({ code: "BAD_REQUEST", message: "Amministratori e collaboratori scaricano i report gratuitamente." });
+        }
+        assertAnalyticsCheckoutStripeKey();
+        const { createCheckoutSession, getStripeReturnBaseUrl } = await import("./_core/stripe");
+        const baseUrl = getStripeReturnBaseUrl();
+        const priceCents = getAnalyticsReportPriceCents();
+        const session = await createCheckoutSession({
+          customerId: ctx.user.stripeCustomerId || undefined,
+          customerEmail: ctx.user.email || undefined,
+          mode: "payment",
+          lineItems: [{
+            name: "Report di analisi Tatik.space",
+            description: input.reportTitle.replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 120),
+            amount: priceCents,
+            currency: "eur",
+          }],
+          successUrl: `${baseUrl}${input.returnPath}?report_purchase=success&report_id=${encodeURIComponent(input.reportId)}&session_id={CHECKOUT_SESSION_ID}`,
+          cancelUrl: `${baseUrl}${input.returnPath}?report_purchase=cancelled`,
+          metadata: {
+            userId: String(status.userId),
+            kind: "analytics_report",
+            reportId: input.reportId,
+          },
+        });
+        if (!session.id || !session.url) {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Stripe non ha restituito una sessione Checkout valida." });
+        }
+        const payment = await db.createPaymentRecord({
+          userId: status.userId,
+          provider: "stripe",
+          kind: "analytics_report",
+          status: "pending",
+          providerOrderId: session.id,
+          amount: priceCents,
+          currency: "eur",
+          metadata: JSON.stringify({ reportId: input.reportId, reportTitle: input.reportTitle }),
+        });
+        if (!payment) {
+          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Impossibile registrare l'acquisto del report nel database." });
+        }
+        return { checkoutUrl: session.url, priceCents };
+      }),
+    verifyPurchase: protectedProcedure
+      .input(z.object({
+        sessionId: z.string().min(1).max(255),
+        reportId: z.string().uuid(),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const userId = await resolveProviderUserId(ctx.user);
+        const payment = await db.getPaymentRecordByProviderOrder("stripe", input.sessionId);
+        if (
+          !payment ||
+          payment.userId !== userId ||
+          payment.kind !== "analytics_report" ||
+          !["pending", "paid"].includes(payment.status)
+        ) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Acquisto del report non trovato per questo account." });
+        }
+        let metadata: unknown;
+        try {
+          metadata = JSON.parse(payment.metadata || "{}");
+        } catch {
+          throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Metadati dell'acquisto non validi." });
+        }
+        if (!metadata || typeof metadata !== "object" || !("reportId" in metadata) || metadata.reportId !== input.reportId) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Il pagamento non corrisponde al report richiesto." });
+        }
+        const { requireStripe } = await import("./_core/stripe");
+        const session = await requireStripe().checkout.sessions.retrieve(input.sessionId);
+        if (
+          session.metadata?.kind !== "analytics_report" ||
+          session.metadata?.userId !== String(userId) ||
+          session.metadata?.reportId !== input.reportId ||
+          session.payment_status !== "paid" ||
+          session.amount_total !== payment.amount ||
+          (session.currency || "eur").toLowerCase() !== (payment.currency || "eur").toLowerCase()
+        ) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "Stripe non conferma il pagamento completo di questo report." });
+        }
+        if (payment.status !== "paid") {
+          const verified = await db.updatePaymentRecord(payment.id, {
+            status: "paid",
+            providerPaymentId: typeof session.payment_intent === "string" ? session.payment_intent : session.id,
+            verifiedAt: new Date(),
+          });
+          if (!verified) {
+            throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Pagamento verificato, ma non è stato possibile aggiornare il registro." });
+          }
+        }
+        return { verified: true, reportId: input.reportId };
+      }),
+  }),
+  dataInsight: router({
+    fetchOfficialSeries: protectedProcedure
+      .input(z.object({
+        provider: z.enum(["worldbank", "nasa", "ecb", "eurostat"]),
+        indicator: z.string().min(1).max(40),
+        country: z.string().regex(/^[A-Z]{3}$/).optional(),
+        start: z.string().date(),
+        end: z.string().date(),
+        latitude: z.number().finite().min(-90).max(90),
+        longitude: z.number().finite().min(-180).max(180),
+      }))
+      .mutation(({ input, ctx }) => withDataInsightLimit(
+        ctx.user.id,
+        () => callDataInsight<OfficialSeries>("/api/source/series", input, { cookieHeader: getDataInsightCookieHeader(ctx) }),
+      )),
+    importDataUrl: protectedProcedure
+      .input(z.object({ url: z.string().url().max(4096) }))
+      .mutation(({ input, ctx }) => withDataInsightLimit(
+        ctx.user.id,
+        () => callDataInsight<{ name: string; content: string }>("/api/import/url", input, { cookieHeader: getDataInsightCookieHeader(ctx) }),
+      )),
+    analyzeData: protectedProcedure
+      .input(z.object({
+        series: z.array(z.object({
+          name: z.string().min(1).max(180),
+          unit: z.string().max(80),
+          source: z.string().max(180),
+          url: z.string().url().max(4096).optional(),
+          rows: z.array(z.object({
+            date: z.string().date(),
+            value: z.number().finite(),
+          })).min(1).max(15_000),
+        })).min(1).max(10),
+        targetIndex: z.number().int().min(0).max(9),
+        forecastSteps: z.number().int().min(0).max(20),
+        backtestSteps: z.number().int().min(0).max(10),
+        question: z.string().max(1000),
+      }).superRefine((input, ctx) => {
+        const totalRows = input.series.reduce((count, item) => count + item.rows.length, 0);
+        if (totalRows > 30_000) {
+          ctx.addIssue({
+            code: "custom",
+            message: "Invia al massimo 30.000 osservazioni per analisi.",
+            path: ["series"],
+          });
+        }
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const totalRows = input.series.reduce((count, item) => count + item.rows.length, 0);
+        const access = await getAnalyticsPlanStatus(ctx.user);
+        assertFreeAnalysisRowLimit(totalRows, access.premium);
+        return withAnalyticsQuota(ctx.user, () => withDataInsightLimit(
+          ctx.user.id,
+          () => callDataInsight<StatisticalAnalysis>("/api/analyze", input, { cookieHeader: getDataInsightCookieHeader(ctx) }),
+        ));
+      }),
+    explorePortal: protectedProcedure
+      .input(z.object({
+        url: z.string().url().max(2048),
+        query: z.string().max(1000).default(""),
+      }))
+      .mutation(({ input, ctx }) => withAnalyticsQuota(ctx.user, () => withDataInsightLimit(
+        ctx.user.id,
+        () => callDataInsight<PortalExplorationResult>("/api/assist/explore-url", input, { cookieHeader: getDataInsightCookieHeader(ctx) }),
+      ))),
+    analyzeDocument: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1).max(180),
+        contentBase64: z.string().min(1).max(3_600_000),
+        query: z.string().max(1000).default(""),
+      }))
+      .mutation(({ input, ctx }) => withAnalyticsQuota(ctx.user, () => withDataInsightLimit(
+        ctx.user.id,
+        () => callDataInsight<DocumentAnalysisResult>("/api/assist/document", input, { cookieHeader: getDataInsightCookieHeader(ctx) }),
+      ))),
+    startRemoteSensing: protectedProcedure
+      .input(z.object({
+        bbox: z.array(z.number().finite()).length(4),
+        startDate: z.string().date(),
+        endDate: z.string().date(),
+        maxCloudCover: z.number().min(0).max(100),
+        mapModel: z.enum(["randomForest", "svm"]).default("randomForest"),
+        maxSamplesPerClass: z.number().int().min(100).max(2000).default(900),
+        spatialBlockMeters: z.union([z.literal(250), z.literal(500), z.literal(1000)]).default(500),
+        selectedClasses: z.array(z.number().int()).min(1).max(11).default([10, 20, 30, 40, 50, 60, 70, 80, 90, 95, 100]),
+        includeUnetData: z.boolean().default(false),
+      }))
+      .mutation(({ input, ctx }) => withAnalyticsQuota(ctx.user, () => withDataInsightLimit(
+        ctx.user.id,
+        () => callDataInsight<SentinelAoiJob>(
+          "/api/assist/remote-sensing/aoi/run",
+          input,
+          { cookieHeader: getDataInsightCookieHeader(ctx) },
+        ),
+      ))),
+    exportUnetClassification: protectedProcedure
+      .input(z.object({
+        width: z.number().int().min(1).max(128),
+        height: z.number().int().min(1).max(128),
+        classCodes: z.array(z.number().int()).min(2).max(11),
+        predictedClassCodesBase64: z.string().min(1).max(22_000),
+        transform: z.tuple([
+          z.number().finite(),
+          z.number().finite(),
+          z.number().finite(),
+          z.number().finite(),
+          z.number().finite(),
+          z.number().finite(),
+        ]),
+        crs: z.string().max(64),
+        bbox: z.tuple([z.number().finite(), z.number().finite(), z.number().finite(), z.number().finite()]),
+        sceneId: z.string().max(200),
+      }))
+      .mutation(({ input, ctx }) => withDataInsightLimit(
+        ctx.user.id,
+        () => callDataInsight<UnetGeoTiffExportResult>(
+          "/api/assist/remote-sensing/aoi/unet/export",
+          input satisfies UnetGeoTiffExport,
+          { cookieHeader: getDataInsightCookieHeader(ctx) },
+        ),
+      )),
+  }),
+  mlStudio: router({
+    previewDataset: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1).max(180),
+        contentBase64: z.string().min(1).max(3_600_000),
+      }))
+      .mutation(({ input, ctx }) => withDataInsightLimit(
+        ctx.user.id,
+        () => callDataInsight<MlDatasetPreview>("/api/ml/preview", input, { cookieHeader: getDataInsightCookieHeader(ctx) }),
+      )),
+    trainTabular: protectedProcedure
+      .input(z.object({
+        name: z.string().min(1).max(180),
+        contentBase64: z.string().min(1).max(3_600_000),
+        task: z.enum(["classification", "regression"]),
+        target: z.string().min(1).max(180),
+        features: z.array(z.string().min(1).max(180)).min(1).max(50),
+      }))
+      .mutation(async ({ input, ctx }) => {
+        const access = await getAnalyticsPlanStatus(ctx.user);
+        const preview = await callDataInsight<MlDatasetPreview>("/api/ml/preview", {
+          name: input.name,
+          contentBase64: input.contentBase64,
+        }, { cookieHeader: getDataInsightCookieHeader(ctx) });
+        assertFreeAnalysisRowLimit(preview.rows, access.premium);
+        return withAnalyticsQuota(ctx.user, () => withDataInsightLimit(
+          ctx.user.id,
+          () => callDataInsight<TabularMlResult>("/api/ml/train", input, { cookieHeader: getDataInsightCookieHeader(ctx) }),
+        ));
+      }),
+    analyzeSources: protectedProcedure
+      .input(mlSourceAnalysisSchema)
+      .mutation(({ input, ctx }) => withAnalyticsQuota(ctx.user, () => withDataInsightLimit(
+        ctx.user.id,
+        () => callDataInsight<MlSourcesAnalysisResult>("/api/ml/analyze-sources", input, { cookieHeader: getDataInsightCookieHeader(ctx) }),
+      ))),
+    mergeSources: protectedProcedure
+      .input(mlSourceMergeSchema)
+      .mutation(({ input, ctx }) => withDataInsightLimit(
+        ctx.user.id,
+        () => callDataInsight<MergedMlDataset>("/api/ml/merge-sources", input, { cookieHeader: getDataInsightCookieHeader(ctx) }),
+      )),
+    explainResults: protectedProcedure
+      .input(z.object({
+        question: z.string().min(1).max(1000),
+        consent: z.literal(true),
+        language: z.enum(["it", "en"]),
+        sector: z.string().max(100),
+        task: z.enum(["classification", "regression"]),
+        target: z.string().min(1).max(180),
+        bestModel: z.string().min(1).max(100),
+        trainRows: z.number().int().min(1).max(10_000),
+        testRows: z.number().int().min(1).max(2_000),
+        models: z.array(z.object({
+          name: z.string().min(1).max(100),
+          accuracy: z.number().finite().optional(),
+          balancedAccuracy: z.number().finite().optional(),
+          macroF1: z.number().finite().optional(),
+          confusionMatrix: z.array(z.array(z.number().int().nonnegative().max(10_000)).max(15)).max(15).optional(),
+          r2: z.number().finite().optional(),
+          mae: z.number().finite().nonnegative().optional(),
+          rmse: z.number().finite().nonnegative().optional(),
+        })).min(2).max(3),
+        featureImportance: z.array(z.object({
+          name: z.string().min(1).max(180),
+          importance: z.number().finite().nonnegative(),
+        })).max(8),
+        classLabels: z.array(z.string().max(180)).max(15),
+      }))
+      .mutation(async ({ ctx, input }) => {
+        const isAdmin = isAdminUser(ctx.user);
+        const userId = String(ctx.user.id);
+        const usage = checkAiDailyLimit(userId, isAdmin);
+        try {
+          const evidence = JSON.stringify({
+            sector: input.sector || "non specificato",
+            task: input.task,
+            target: input.target,
+            bestModel: input.bestModel,
+            trainRows: input.trainRows,
+            testRows: input.testRows,
+            models: input.models,
+            featureImportance: input.featureImportance,
+            classLabels: input.classLabels,
+            limitation: "Metriche su un singolo split; non dimostrano causalita e non sostituiscono una validazione indipendente.",
+          });
+          const response = await generateFreeAnalysisAnswer(input.question, evidence, input.language);
+          return { ...response, usage };
+        } catch (error) {
+          releaseAiDailyUsage(userId, isAdmin);
+          throw new TRPCError({
+            code: "BAD_GATEWAY",
+            message: error instanceof Error ? error.message : "Il modello gratuito non e disponibile.",
+          });
+        }
+      }),
+  }),
   auth: router({
     me: publicProcedure.query(async opts => {
       console.log(`[Auth.me] Query called, user: ${opts.ctx.user?.email || 'not authenticated'}`);
@@ -339,7 +788,7 @@ export const appRouter = router({
     // and sends a time-limited token (logged here) valid for 10 minutes.
     requestRegistration: publicProcedure
       .input(z.object({ email: z.string().email(), name: z.string().optional(), redirectTo: z.string().max(2048).optional() }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         try {
           const normalizedEmail = normalizeEmail(input.email);
 
@@ -363,7 +812,9 @@ export const appRouter = router({
           registrationTokens.set(token, { userId: user?.id, email: normalizedEmail, name: input.name, purpose: 'registration', expires: Date.now() + 1000 * 60 * 10 });
 
           const returnTo = safeReturnPath(input.redirectTo);
-          const link = `${getAuthBaseUrl()}/complete-registration?token=${encodeURIComponent(token)}&next=${encodeURIComponent(returnTo)}`;
+          const originHeader = ctx.req.headers.origin;
+          const requestOrigin = typeof originHeader === "string" ? originHeader : undefined;
+          const link = `${getAuthBaseUrl(undefined, requestOrigin)}/complete-registration?token=${encodeURIComponent(token)}&next=${encodeURIComponent(returnTo)}`;
           await sendAuthEmail(
             normalizedEmail,
             'Complete your Tatik Space registration',
@@ -399,13 +850,15 @@ export const appRouter = router({
 
     requestAccessCode: publicProcedure
       .input(z.object({ email: z.string().trim().email(), redirectTo: z.string().max(2048).optional() }))
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         const normalizedEmail = normalizeEmail(input.email);
         const user = await db.getUserByEmail(normalizedEmail);
         if (user) {
           const token = await createSignedEmailAccessToken(normalizedEmail);
           const returnTo = safeReturnPath(input.redirectTo);
-          const link = `${getAuthBaseUrl()}/access?token=${encodeURIComponent(token)}&next=${encodeURIComponent(returnTo)}`;
+          const originHeader = ctx.req.headers.origin;
+          const requestOrigin = typeof originHeader === "string" ? originHeader : undefined;
+          const link = `${getAuthBaseUrl(undefined, requestOrigin)}/access?token=${encodeURIComponent(token)}&next=${encodeURIComponent(returnTo)}`;
           await sendAuthEmail(normalizedEmail, 'Your Tatik Space access link', `Open this link within 10 minutes to access your account:\n${link}`);
         }
         return { success: true };
@@ -1889,7 +2342,7 @@ Analizza e suggerisci ottimizzazioni.`,
         const { createPayPalSubscription } = await import("./_core/paypal");
         const baseUrl = process.env.VERCEL_ENV === "preview" && process.env.VERCEL_URL
           ? `https://${process.env.VERCEL_URL}`
-          : authBaseUrl();
+          : getAuthBaseUrl();
         const subscription = await createPayPalSubscription({
           planId,
           customId,

@@ -48,6 +48,45 @@ async function processCheckoutSession(
   if (!isPaid) return null;
 
   const isTemplate = metadata.kind === "template" || Boolean(metadata.templateId);
+  if (metadata.kind === "analytics_report") {
+    const reportId = metadata.reportId;
+    const pending = await db.getPaymentRecordByProviderOrder("stripe", session.id);
+    let purchaseMetadata: unknown;
+    try {
+      purchaseMetadata = pending?.metadata ? JSON.parse(pending.metadata) : null;
+    } catch {
+      throw new Error("Analytics report payment has invalid purchase metadata");
+    }
+    if (
+      !reportId ||
+      !pending ||
+      pending.userId !== userId ||
+      pending.kind !== "analytics_report" ||
+      !purchaseMetadata ||
+      typeof purchaseMetadata !== "object" ||
+      !("reportId" in purchaseMetadata) ||
+      purchaseMetadata.reportId !== reportId ||
+      pending.amount !== session.amount_total ||
+      (pending.currency || "eur").toLowerCase() !== (session.currency || "eur").toLowerCase()
+    ) {
+      throw new Error("Stripe analytics report payment does not match its pending purchase");
+    }
+    if (pending.status === "paid") return pending;
+    if (pending.status !== "pending") {
+      throw new Error("A cancelled or refunded analytics report cannot be marked as paid");
+    }
+    const record = await db.updatePaymentRecord(pending.id, {
+      status: "paid",
+      providerPaymentId: typeof session.payment_intent === "string" ? session.payment_intent : session.id,
+      providerEventId: eventId,
+      amount: session.amount_total ?? pending.amount,
+      currency: session.currency || pending.currency || "eur",
+      verifiedAt: new Date(),
+    });
+    if (!record) throw new Error("Unable to persist paid analytics report");
+    return record;
+  }
+
   let marketplaceOrder: typeof marketplaceOrders.$inferSelect | undefined;
   let marketplaceListingUnavailable = false;
   if (metadata.kind === "marketplace" && metadata.orderId) {

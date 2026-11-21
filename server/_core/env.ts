@@ -9,4 +9,6 @@ export const ENV = {
   // Forge / third-party storage API (optional)
   forgeApiUrl: process.env.FORGE_API_URL ?? process.env.VITE_FRONTEND_FORGE_API_URL ?? "",
   forgeApiKey: process.env.FORGE_API_KEY ?? process.env.VITE_FRONTEND_FORGE_API_KEY ?? "",
+  dataInsightApiUrl: process.env.DATA_INSIGHT_API_URL ?? "",
+  dataInsightApiKey: process.env.DATA_INSIGHT_API_KEY ?? "",
 };
