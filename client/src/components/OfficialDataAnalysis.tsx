@@ -368,8 +368,8 @@ export function OfficialDataAnalysis() {
     }];
   }, [allDates, analysis, chartData, series]);
   const reportConclusion = useMemo<AnalyticsReportConclusion | undefined>(
-    () => analysis ? createStatisticalAssessment(analysis, language === "it" ? "it" : "en") : undefined,
-    [analysis, language],
+    () => analysis ? createStatisticalAssessment(analysis, "it") : undefined,
+    [analysis],
   );
 
   const addSource = () => setSourceRows((rows) => [

@@ -3,6 +3,16 @@ import { createAnalyticsReportPdf } from "./analyticsReportPdf";
 
 const pixel = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4////fwAJ+wP9KobjigAAAABJRU5ErkJggg==";
 
+function getPdfPageStreams(pdf: ReturnType<typeof createAnalyticsReportPdf>) {
+  const output = new TextDecoder().decode(pdf.output("arraybuffer"));
+  const contentReferences = [...output.matchAll(/\/Type \/Page\b[\s\S]*?\/Contents (\d+) 0 R/g)]
+    .map((match) => match[1]);
+  return contentReferences.map((reference) => {
+    const stream = output.match(new RegExp(`${reference} 0 obj\\n<<\\n/Length \\d+\\n>>\\nstream\\n([\\s\\S]*?)\\nendstream`));
+    return stream?.[1] ?? "";
+  });
+}
+
 describe("createAnalyticsReportPdf", () => {
   it("includes image, chart, and confusion-matrix pages in the generated report", () => {
     const report = createAnalyticsReportPdf("Test report", "Aggregated results.", [
@@ -79,5 +89,26 @@ describe("createAnalyticsReportPdf", () => {
 
     expect(output.indexOf("Visual result marker")).toBeGreaterThanOrEqual(0);
     expect(output.indexOf("Closing assessment marker.")).toBeGreaterThan(output.indexOf("Visual result marker"));
+  });
+
+  it("moves the final chart to share its page with a conclusion when needed", () => {
+    const content = Array.from({ length: 18 }, (_, index) => `Detailed observation ${index + 1} provides context.`).join("\n");
+    const report = createAnalyticsReportPdf(
+      "Technical report",
+      content,
+      [{
+        type: "chart",
+        title: "Final chart marker",
+        chartType: "line",
+        categories: ["2019", "2020", "2021", "2022"],
+        series: [{ name: "Observed", values: [4, 5, 6, 7] }],
+      }],
+      { title: "Technical assessment", content: "Closing assessment marker." },
+    );
+    const pages = getPdfPageStreams(report);
+    const closingPage = pages.find((page) => page.includes("Closing assessment marker."));
+
+    expect(pages).toHaveLength(2);
+    expect(closingPage).toContain("Final chart marker");
   });
 });
