@@ -111,7 +111,7 @@ function addVerticalBarChart(
   const plotX = margin + 16;
   const plotY = top + 14;
   const plotWidth = pageWidth - margin - plotX;
-  const plotHeight = 78;
+  const plotHeight = 66;
   const values = visual.series.flatMap((item) => item.values.filter((value): value is number => value !== null && Number.isFinite(value)));
   if (!values.length || !visual.categories.length) {
     pdf.setFontSize(9);
@@ -173,7 +173,7 @@ function addHorizontalBarChart(
   const plotX = margin + labelWidth;
   const plotY = top + 14;
   const plotWidth = pageWidth - margin - plotX;
-  const rowHeight = Math.min(16, Math.max(8, 140 / Math.max(1, visual.categories.length)));
+  const rowHeight = Math.min(12, Math.max(7, 120 / Math.max(1, visual.categories.length)));
   const plotHeight = rowHeight * visual.categories.length;
   const values = visual.series.flatMap((item) => item.values.filter((value): value is number => value !== null && Number.isFinite(value)));
   if (!values.length || !visual.categories.length) {
@@ -248,7 +248,7 @@ function addLineChart(
   const plotX = margin + 18;
   const plotY = top + 14;
   const plotWidth = pageWidth - margin - plotX;
-  const plotHeight = 88;
+  const plotHeight = 68;
   const values = visual.series.flatMap((item) => item.values.filter((value): value is number => value !== null && Number.isFinite(value)));
   if (!values.length || !visual.categories.length) {
     pdf.setFontSize(9);
@@ -337,7 +337,7 @@ function addMatrix(
   const labelWidth = 44;
   const availableWidth = pdf.internal.pageSize.getWidth() - margin * 2 - labelWidth;
   const cellWidth = Math.min(24, availableWidth / Math.max(1, visual.columnLabels.length));
-  const rowHeight = Math.min(14, Math.max(8, 120 / Math.max(1, visual.rowLabels.length)));
+  const rowHeight = Math.min(12, Math.max(6, 90 / Math.max(1, visual.rowLabels.length)));
   const startX = margin + labelWidth;
   const startY = top + 14;
   const maximum = Math.max(1, ...visual.values.flat());
@@ -428,80 +428,67 @@ function addImage(
 }
 
 function extractSummary(content: string) {
-  return content.split(/\r?\n/).flatMap((line) => {
+  const summary: Array<{ label: string; value: string; sourceLine: string }> = [];
+  for (const sourceLine of content.split(/\r?\n/)) {
+    const line = sourceLine.trim();
+    if (!line) break;
     const separator = line.indexOf(":");
-    if (separator <= 0 || separator > 36) return [];
-    const value = line.slice(separator + 1).trim();
-    return value ? [{ label: line.slice(0, separator).trim(), value }] : [];
-  }).slice(0, 4);
+    if (separator <= 0 || separator > 36) continue;
+    const value = line.slice(separator + 1).split(";")[0].trim();
+    if (value) summary.push({ label: line.slice(0, separator).trim(), value, sourceLine: line });
+    if (summary.length === 4) break;
+  }
+  return summary;
 }
 
-function addCoverPage(
+function addCompactHeader(
   pdf: jsPDF,
   title: string,
-  content: string,
-  visualCount: number,
+  summary: ReturnType<typeof extractSummary>,
 ) {
   const pageWidth = pdf.internal.pageSize.getWidth();
+  const titleLines = pdf.splitTextToSize(title.slice(0, 160), pageWidth - margin * 2).slice(0, 2);
+  const headerHeight = titleLines.length > 1 ? 34 : 28;
   pdf.setFillColor(15, 23, 42);
-  pdf.rect(0, 0, pageWidth, 86, "F");
+  pdf.rect(0, 0, pageWidth, headerHeight, "F");
   pdf.setFillColor(37, 99, 235);
-  pdf.rect(0, 0, 4, 86, "F");
+  pdf.rect(0, 0, 4, headerHeight, "F");
   pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(9);
+  pdf.setFontSize(7);
   pdf.setTextColor(191, 219, 254);
-  pdf.text("TATIK.SPACE  /  REPORT ANALITICO", margin, 17);
-  pdf.setFontSize(22);
-  pdf.setTextColor(255, 255, 255);
-  const titleLines = pdf.splitTextToSize(title.slice(0, 160), pageWidth - margin * 2);
-  pdf.text(titleLines, margin, 37, { lineHeightFactor: 1.15 });
+  pdf.text("TATIK.SPACE  /  REPORT ANALITICO", margin, 9);
   pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(10);
   pdf.setTextColor(219, 226, 239);
-  pdf.text("Risultati, metriche e visualizzazioni dell'analisi", margin, 68);
-  pdf.setFontSize(8);
-  pdf.text(`Generato il ${new Date().toLocaleDateString("it-IT")}`, margin, 78);
+  pdf.text(new Date().toLocaleDateString("it-IT"), pageWidth - margin, 9, { align: "right" });
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(18);
+  pdf.setTextColor(255, 255, 255);
+  pdf.text(titleLines, margin, titleLines.length > 1 ? 18 : 20, { lineHeightFactor: 1 });
 
-  const summary = extractSummary(content);
+  let y = headerHeight + 5;
+  if (!summary.length) return y;
   const cardGap = 8;
   const cardWidth = (pageWidth - margin * 2 - cardGap) / 2;
-  const cardHeight = 29;
-  const startY = 101;
+  const cardHeight = 22;
   summary.forEach((item, index) => {
     const column = index % 2;
     const row = Math.floor(index / 2);
     const x = margin + column * (cardWidth + cardGap);
-    const y = startY + row * (cardHeight + 8);
+    const cardY = y + row * (cardHeight + 4);
     pdf.setFillColor(245, 248, 252);
     pdf.setDrawColor(225, 231, 239);
-    pdf.roundedRect(x, y, cardWidth, cardHeight, 2, 2, "FD");
+    pdf.roundedRect(x, cardY, cardWidth, cardHeight, 2, 2, "FD");
     pdf.setFont("helvetica", "bold");
     pdf.setFontSize(7);
     pdf.setTextColor(90, 100, 115);
-    pdf.text(truncate(item.label.toLocaleUpperCase(), 42), x + 5, y + 7);
+    pdf.text(truncate(item.label.toLocaleUpperCase(), 42), x + 5, cardY + 6);
     pdf.setFont("helvetica", "normal");
-    pdf.setFontSize(9);
+    pdf.setFontSize(8.5);
     pdf.setTextColor(25, 35, 50);
     const valueLines = pdf.splitTextToSize(item.value, cardWidth - 10).slice(0, 2);
-    pdf.text(valueLines, x + 5, y + 16, { lineHeightFactor: 1.1 });
+    pdf.text(valueLines, x + 5, cardY + 14, { lineHeightFactor: 1 });
   });
-
-  const summaryBottom = startY + Math.ceil(summary.length / 2) * (cardHeight + 8);
-  pdf.setDrawColor(225, 231, 239);
-  pdf.line(margin, summaryBottom + 8, pageWidth - margin, summaryBottom + 8);
-  pdf.setFont("helvetica", "bold");
-  pdf.setFontSize(10);
-  pdf.setTextColor(25, 35, 50);
-  pdf.text("Contenuto del report", margin, summaryBottom + 20);
-  pdf.setFont("helvetica", "normal");
-  pdf.setFontSize(9);
-  pdf.setTextColor(75, 85, 100);
-  pdf.text(
-    `${visualCount} visualizzazioni incluse · risultati dettagliati e note metodologiche nelle pagine successive`,
-    margin,
-    summaryBottom + 28,
-    { maxWidth: pageWidth - margin * 2 },
-  );
+  return y + Math.ceil(summary.length / 2) * (cardHeight + 4) + 2;
 }
 
 function addPageHeading(pdf: jsPDF, title: string, section: string) {
@@ -522,11 +509,30 @@ function addPageHeading(pdf: jsPDF, title: string, section: string) {
   return 31;
 }
 
-function addRichContent(pdf: jsPDF, title: string, content: string) {
+function addInlineSectionHeading(pdf: jsPDF, section: string, y: number) {
+  pdf.setFillColor(37, 99, 235);
+  pdf.rect(margin, y - 3, 1.3, 9, "F");
+  pdf.setFont("helvetica", "bold");
+  pdf.setFontSize(11);
+  pdf.setTextColor(25, 35, 50);
+  pdf.text(section, margin + 5, y + 3);
+  return y + 11;
+}
+
+function addRichContent(
+  pdf: jsPDF,
+  title: string,
+  content: string,
+  startY: number,
+  summary: ReturnType<typeof extractSummary>,
+) {
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
   const contentWidth = pageWidth - margin * 2;
-  let y = addPageHeading(pdf, title, "Risultati e interpretazione");
+  let y = addInlineSectionHeading(pdf, "Risultati e interpretazione", startY);
+  const summaryLines = new Set(summary
+    .filter((item) => item.sourceLine.slice(item.sourceLine.indexOf(":") + 1).trim() === item.value && item.value.length <= 60)
+    .map((item) => item.sourceLine));
   const nextPage = () => {
     pdf.addPage();
     y = addPageHeading(pdf, title, "Risultati e interpretazione");
@@ -534,20 +540,21 @@ function addRichContent(pdf: jsPDF, title: string, content: string) {
   const lines = content.split(/\r?\n/);
   for (const rawLine of lines) {
     const line = rawLine.trim();
+    if (summaryLines.has(line)) continue;
     if (!line) {
-      y += 3;
+      y += 2;
       continue;
     }
     if (line.endsWith(":")) {
-      if (y + 13 > pageHeight - 18) nextPage();
-      y += 3;
+      if (y + 11 > pageHeight - margin - 12) nextPage();
+      y += 2;
       pdf.setFillColor(37, 99, 235);
-      pdf.rect(margin, y - 3, 1.3, 9, "F");
+      pdf.rect(margin, y - 2, 1.3, 8, "F");
       pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(11);
+      pdf.setFontSize(10);
       pdf.setTextColor(25, 35, 50);
       pdf.text(line.slice(0, -1), margin + 5, y + 3);
-      y += 12;
+      y += 10;
       continue;
     }
 
@@ -559,38 +566,39 @@ function addRichContent(pdf: jsPDF, title: string, content: string) {
       const label = `${contentLine.slice(0, separator)}:`;
       const value = contentLine.slice(separator + 1).trim();
       pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(9);
+      pdf.setFontSize(8.5);
       const labelWidth = pdf.getTextWidth(label) + 3;
       pdf.setFont("helvetica", "normal");
       const valueLines = pdf.splitTextToSize(value, contentWidth - labelWidth);
-      const blockHeight = Math.max(5, valueLines.length * 4.7);
-      if (y + blockHeight > pageHeight - 18) nextPage();
+      const blockHeight = Math.max(4.5, valueLines.length * 4.2);
+      if (y + blockHeight > pageHeight - margin - 12) nextPage();
       pdf.setFont("helvetica", "bold");
-      pdf.setFontSize(9);
+      pdf.setFontSize(8.5);
       pdf.setTextColor(55, 65, 80);
       pdf.text(label, margin + 1, y);
       pdf.setFont("helvetica", "normal");
       pdf.setTextColor(55, 65, 80);
       pdf.text(valueLines, margin + labelWidth, y);
-      y += blockHeight + 2;
+      y += blockHeight + 1;
       continue;
     }
 
     const isNamedResult = contentLine.length <= 110 && contentLine.includes(" — ");
     pdf.setFont("helvetica", isNamedResult ? "bold" : "normal");
-    pdf.setFontSize(isNamedResult ? 10 : 9);
+    pdf.setFontSize(isNamedResult ? 9.5 : 8.5);
     const textWidth = contentWidth - (isBullet ? 8 : 0);
     const wrapped = pdf.splitTextToSize(contentLine, textWidth);
-    const blockHeight = wrapped.length * (isNamedResult ? 5.2 : 4.7);
-    if (y + blockHeight > pageHeight - 18) nextPage();
+    const blockHeight = wrapped.length * (isNamedResult ? 4.8 : 4.2);
+    if (y + blockHeight > pageHeight - margin - 12) nextPage();
     pdf.setTextColor(isNamedResult ? 35 : 55, isNamedResult ? 45 : 65, isNamedResult ? 60 : 80);
     if (isBullet) {
       pdf.setFillColor(37, 99, 235);
       pdf.circle(margin + 2, y - 1, 0.8, "F");
     }
     pdf.text(wrapped, margin + (isBullet ? 6 : 1), y);
-    y += blockHeight + 2;
+    y += blockHeight + 1;
   }
+  return y;
 }
 
 function estimateVisualHeight(
@@ -603,15 +611,15 @@ function estimateVisualHeight(
     return height + captionHeight + legendHeight + 12;
   }
   if (visual.type === "matrix") {
-    const rowHeight = Math.min(14, Math.max(8, 120 / Math.max(1, visual.rowLabels.length)));
+    const rowHeight = Math.min(12, Math.max(6, 90 / Math.max(1, visual.rowLabels.length)));
     return 22 + visual.rowLabels.length * rowHeight;
   }
-  if (visual.chartType === "line") return 126 + Math.ceil(visual.series.length / 3) * 6;
+  if (visual.chartType === "line") return 106 + Math.ceil(visual.series.length / 3) * 6;
   if (visual.orientation === "horizontal") {
-    const rowHeight = Math.min(16, Math.max(8, 140 / Math.max(1, visual.categories.length)));
+    const rowHeight = Math.min(12, Math.max(7, 120 / Math.max(1, visual.categories.length)));
     return 30 + rowHeight * visual.categories.length + Math.ceil(visual.series.length / 3) * 6;
   }
-  return 120 + Math.ceil(visual.series.length / 3) * 6;
+  return 108 + Math.ceil(visual.series.length / 3) * 6;
 }
 
 function addVisual(
@@ -639,26 +647,19 @@ export function createAnalyticsReportPdf(
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
   pdf.setProperties({ title, subject: "Report di analisi Tatik.space" });
-  addCoverPage(pdf, title, content, visuals.length);
-  if (content.trim()) {
-    pdf.addPage();
-    addRichContent(pdf, title, content);
-  }
-
-  let pageHasVisual = false;
-  let visualY = 0;
+  const summary = extractSummary(content);
+  let visualY = addCompactHeader(pdf, title, summary);
+  if (content.trim()) visualY = addRichContent(pdf, title, content, visualY, summary);
   for (const visual of visuals) {
     const estimatedHeight = estimateVisualHeight(pdf, visual);
     if (
-      !pageHasVisual ||
       visual.type === "image" ||
       visualY + estimatedHeight > pageHeight - margin - 12
     ) {
       pdf.addPage();
       visualY = addPageHeading(pdf, title, "Grafici e visualizzazioni");
     }
-    visualY = addVisual(pdf, visual, visualY) + 10;
-    pageHasVisual = true;
+    visualY = addVisual(pdf, visual, visualY) + 6;
   }
 
   const totalPages = pdf.getNumberOfPages();

@@ -35,7 +35,7 @@ describe("createAnalyticsReportPdf", () => {
       },
     ]);
 
-    expect(report.getNumberOfPages()).toBe(4);
+    expect(report.getNumberOfPages()).toBe(3);
     const bytes = report.output("arraybuffer");
     expect(new TextDecoder().decode(bytes.slice(0, 5))).toBe("%PDF-");
     expect(bytes.byteLength).toBeGreaterThan(2_000);
@@ -58,7 +58,7 @@ describe("createAnalyticsReportPdf", () => {
       [chart("Accuracy"), chart("Balanced accuracy"), chart("Macro F1")],
     );
 
-    expect(report.getNumberOfPages()).toBe(3);
+    expect(report.getNumberOfPages()).toBe(2);
     expect(new TextDecoder().decode(report.output("arraybuffer").slice(0, 5))).toBe("%PDF-");
   });
 });
