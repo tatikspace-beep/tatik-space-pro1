@@ -658,11 +658,12 @@ export function createAnalyticsReportPdf(
   const summary = extractSummary(content);
   let visualY = addCompactHeader(pdf, title, summary);
   if (content.trim()) visualY = addRichContent(pdf, title, content, visualY, summary);
-  for (const visual of visuals) {
+  for (const [index, visual] of visuals.entries()) {
     const estimatedHeight = estimateVisualHeight(pdf, visual);
+    const reserveConclusion = conclusion?.content.trim() && index === visuals.length - 1 ? 50 : 0;
     if (
       visual.type === "image" ||
-      visualY + estimatedHeight > pageHeight - margin - 12
+      visualY + estimatedHeight + reserveConclusion > pageHeight - margin - 12
     ) {
       pdf.addPage();
       visualY = addPageHeading(pdf, title, "Grafici e visualizzazioni");
