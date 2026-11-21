@@ -33,6 +33,11 @@ export type AnalyticsReportVisual =
       values: number[][];
     };
 
+export type AnalyticsReportConclusion = {
+  title: string;
+  content: string;
+};
+
 const margin = 14;
 const defaultColors = ["#2563eb", "#16a34a", "#f59e0b", "#9333ea", "#db2777", "#0891b2"];
 
@@ -525,17 +530,19 @@ function addRichContent(
   content: string,
   startY: number,
   summary: ReturnType<typeof extractSummary>,
+  sectionTitle = "Risultati e interpretazione",
+  includeSectionHeading = true,
 ) {
   const pageWidth = pdf.internal.pageSize.getWidth();
   const pageHeight = pdf.internal.pageSize.getHeight();
   const contentWidth = pageWidth - margin * 2;
-  let y = addInlineSectionHeading(pdf, "Risultati e interpretazione", startY);
+  let y = includeSectionHeading ? addInlineSectionHeading(pdf, sectionTitle, startY) : startY;
   const summaryLines = new Set(summary
     .filter((item) => item.sourceLine.slice(item.sourceLine.indexOf(":") + 1).trim() === item.value && item.value.length <= 60)
     .map((item) => item.sourceLine));
   const nextPage = () => {
     pdf.addPage();
-    y = addPageHeading(pdf, title, "Risultati e interpretazione");
+    y = addPageHeading(pdf, title, sectionTitle);
   };
   const lines = content.split(/\r?\n/);
   for (const rawLine of lines) {
@@ -642,6 +649,7 @@ export function createAnalyticsReportPdf(
   title: string,
   content: string,
   visuals: AnalyticsReportVisual[] = [],
+  conclusion?: AnalyticsReportConclusion,
 ) {
   const pdf = new jsPDF();
   const pageWidth = pdf.internal.pageSize.getWidth();
@@ -660,6 +668,17 @@ export function createAnalyticsReportPdf(
       visualY = addPageHeading(pdf, title, "Grafici e visualizzazioni");
     }
     visualY = addVisual(pdf, visual, visualY) + 6;
+  }
+
+  if (conclusion?.content.trim()) {
+    const pageBottom = pageHeight - margin - 12;
+    if (visualY + 50 > pageBottom) {
+      pdf.addPage();
+      visualY = addPageHeading(pdf, title, conclusion.title);
+      addRichContent(pdf, title, conclusion.content, visualY, [], conclusion.title, false);
+    } else {
+      addRichContent(pdf, title, conclusion.content, visualY, [], conclusion.title);
+    }
   }
 
   const totalPages = pdf.getNumberOfPages();

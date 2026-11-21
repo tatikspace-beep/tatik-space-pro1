@@ -5,13 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
-import type { AnalyticsReportVisual } from "@/lib/analyticsReportPdf";
+import type { AnalyticsReportConclusion, AnalyticsReportVisual } from "@/lib/analyticsReportPdf";
 
 type StoredReport = {
   reportId: string;
   title: string;
   content: string;
   visuals?: AnalyticsReportVisual[];
+  conclusion?: AnalyticsReportConclusion;
 };
 
 const REPORT_STORAGE_PREFIX = "tatik.analytics-report.";
@@ -63,11 +64,13 @@ export function AnalyticsReportDownload({
   title,
   content,
   visuals = [],
+  conclusion,
   returnPath,
 }: {
   title: string;
   content: string;
   visuals?: AnalyticsReportVisual[];
+  conclusion?: AnalyticsReportConclusion;
   returnPath: "/analysis/ml-studio" | "/analysis/remote-sensing" | "/analysis/portals";
 }) {
   const { isAuthenticated } = useAuth();
@@ -161,14 +164,15 @@ export function AnalyticsReportDownload({
   }, [pdfContent]);
 
   const currentReport: StoredReport | null = content
-    ? { reportId: "", title, content, visuals }
+    ? { reportId: "", title, content, visuals, conclusion }
     : verifiedReport;
   const isCurrentReportPaid = Boolean(
     verifiedReport &&
     currentReport &&
     verifiedReport.title === currentReport.title &&
     verifiedReport.content === currentReport.content &&
-    JSON.stringify(verifiedReport.visuals ?? []) === JSON.stringify(currentReport.visuals ?? []),
+    JSON.stringify(verifiedReport.visuals ?? []) === JSON.stringify(currentReport.visuals ?? []) &&
+    JSON.stringify(verifiedReport.conclusion) === JSON.stringify(currentReport.conclusion),
   );
   const access = accessQuery.data;
   const freeDownload = Boolean(access?.staff);
@@ -180,7 +184,7 @@ export function AnalyticsReportDownload({
     const reportId = crypto.randomUUID();
     setPreparingReport(true);
     try {
-      const report = { reportId, title, content, visuals: await compressVisualsForStorage(visuals) };
+      const report = { reportId, title, content, visuals: await compressVisualsForStorage(visuals), conclusion };
       sessionStorage.setItem(`${REPORT_STORAGE_PREFIX}${reportId}`, JSON.stringify(report));
       const checkout = await checkoutMutation.mutateAsync({ reportId, reportTitle: title, returnPath });
       window.location.assign(checkout.checkoutUrl);
@@ -195,7 +199,7 @@ export function AnalyticsReportDownload({
   if (!content && !returnParams.sessionId && !returnParams.cancelled && !verifiedReport) return null;
 
   const reportToDownload = freeDownload && content
-    ? { title, content, visuals }
+    ? { title, content, visuals, conclusion }
     : isCurrentReportPaid && verifiedReport
       ? verifiedReport
       : null;
@@ -203,10 +207,15 @@ export function AnalyticsReportDownload({
     ? new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(access.reportPriceCents / 100)
     : null;
 
-  const download = (reportTitle: string, reportContent: string, reportVisuals: AnalyticsReportVisual[] = []) => {
+  const download = (
+    reportTitle: string,
+    reportContent: string,
+    reportVisuals: AnalyticsReportVisual[] = [],
+    reportConclusion?: AnalyticsReportConclusion,
+  ) => {
     try {
       if (!pdfGenerator) throw new Error("Il PDF è ancora in preparazione. Riprova tra qualche secondo.");
-      const pdf = pdfGenerator(reportTitle, reportContent, reportVisuals);
+      const pdf = pdfGenerator(reportTitle, reportContent, reportVisuals, reportConclusion);
       const filename = `${reportTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "tatik-report"}.pdf`;
       const url = URL.createObjectURL(pdf.output("blob"));
       const anchor = document.createElement("a");
@@ -245,12 +254,12 @@ export function AnalyticsReportDownload({
         </p>
         {content && (
           freeDownload ? (
-            <Button onClick={() => download(title, content, visuals)} disabled={!pdfReady}>
+            <Button onClick={() => download(title, content, visuals, conclusion)} disabled={!pdfReady}>
               {pdfLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
               {pdfLoading ? "Preparazione PDF…" : "Scarica PDF gratuitamente"}
             </Button>
           ) : isCurrentReportPaid && verifiedReport ? (
-            <Button onClick={() => download(verifiedReport.title, verifiedReport.content, verifiedReport.visuals)} disabled={!pdfReady}>
+            <Button onClick={() => download(verifiedReport.title, verifiedReport.content, verifiedReport.visuals, verifiedReport.conclusion)} disabled={!pdfReady}>
               <Download className="mr-2 h-4 w-4" />Scarica il report acquistato
             </Button>
           ) : (
@@ -261,7 +270,7 @@ export function AnalyticsReportDownload({
           )
         )}
         {!content && reportToDownload && (
-          <Button onClick={() => download(reportToDownload.title, reportToDownload.content, reportToDownload.visuals)} disabled={!pdfReady}>
+          <Button onClick={() => download(reportToDownload.title, reportToDownload.content, reportToDownload.visuals, reportToDownload.conclusion)} disabled={!pdfReady}>
             <Download className="mr-2 h-4 w-4" />Scarica il report acquistato
           </Button>
         )}

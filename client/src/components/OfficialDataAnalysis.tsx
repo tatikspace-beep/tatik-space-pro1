@@ -488,46 +488,6 @@ export function OfficialDataAnalysis() {
       <CardContent className="space-y-7">
         <AnalyticsUsageNotice language={language === "it" ? "it" : "en"} />
         <section className="space-y-3">
-          <h3 className="font-semibold">Catalogo e API ufficiali</h3>
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {(Object.entries(providers) as Array<[ProviderId, typeof providers[ProviderId]]>).map(([id, provider]) => (
-              <article key={id} className="rounded-lg border p-4">
-                <h4 className="font-medium">{provider.name}</h4>
-                <p className="mt-1 text-xs text-muted-foreground">{provider.indicators.map((item) => item.label).join(" · ")}</p>
-                <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-sm">
-                  <a className="text-primary underline" href={provider.pageUrl} target="_blank" rel="noopener noreferrer">Portale dati <ExternalLink className="inline h-3 w-3" /></a>
-                  <a className="text-primary underline" href={provider.apiUrl} target="_blank" rel="noopener noreferrer">API ufficiale <ExternalLink className="inline h-3 w-3" /></a>
-                  <a className="text-primary underline" href={provider.docsUrl} target="_blank" rel="noopener noreferrer">Documentazione <ExternalLink className="inline h-3 w-3" /></a>
-                </div>
-              </article>
-            ))}
-          </div>
-          <div className="space-y-3 pt-2">
-            <div>
-              <h4 className="font-medium">Altri cataloghi e fonti ufficiali</h4>
-              <p className="text-sm text-muted-foreground">
-                Questi portali ampliano la ricerca dei dataset. Non sono connettori automatici: scegli il dataset sul sito della fonte e importa un CSV/JSON o un URL supportato.
-              </p>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {additionalSources.map((source) => (
-                <article key={source.name} className="rounded-lg border p-4">
-                  <h5 className="font-medium">{source.name}</h5>
-                  <p className="mt-1 text-sm text-muted-foreground">{source.description}</p>
-                  <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-sm">
-                    {source.links.map((link) => (
-                      <a key={link.url} className="text-primary underline" href={link.url} target="_blank" rel="noopener noreferrer">
-                        {link.label} <ExternalLink className="inline h-3 w-3" />
-                      </a>
-                    ))}
-                  </div>
-                </article>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="space-y-3">
           <h3 className="font-semibold">Fonti dati ufficiali da analizzare</h3>
           <div className="space-y-3">
             {sourceRows.map((row) => {
@@ -717,6 +677,45 @@ export function OfficialDataAnalysis() {
           visuals={reportVisuals}
           returnPath="/analysis/portals"
         />
+        <section className="space-y-3 border-t pt-6">
+          <h3 className="font-semibold">Catalogo e API ufficiali</h3>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {(Object.entries(providers) as Array<[ProviderId, typeof providers[ProviderId]]>).map(([id, provider]) => (
+              <article key={id} className="rounded-lg border p-4">
+                <h4 className="font-medium">{provider.name}</h4>
+                <p className="mt-1 text-xs text-muted-foreground">{provider.indicators.map((item) => item.label).join(" · ")}</p>
+                <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-sm">
+                  <a className="text-primary underline" href={provider.pageUrl} target="_blank" rel="noopener noreferrer">Portale dati <ExternalLink className="inline h-3 w-3" /></a>
+                  <a className="text-primary underline" href={provider.apiUrl} target="_blank" rel="noopener noreferrer">API ufficiale <ExternalLink className="inline h-3 w-3" /></a>
+                  <a className="text-primary underline" href={provider.docsUrl} target="_blank" rel="noopener noreferrer">Documentazione <ExternalLink className="inline h-3 w-3" /></a>
+                </div>
+              </article>
+            ))}
+          </div>
+          <div className="space-y-3 pt-2">
+            <div>
+              <h4 className="font-medium">Altri cataloghi e fonti ufficiali</h4>
+              <p className="text-sm text-muted-foreground">
+                Questi portali ampliano la ricerca dei dataset. Non sono connettori automatici: scegli il dataset sul sito della fonte e importa un CSV/JSON o un URL supportato.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {additionalSources.map((source) => (
+                <article key={source.name} className="rounded-lg border p-4">
+                  <h5 className="font-medium">{source.name}</h5>
+                  <p className="mt-1 text-sm text-muted-foreground">{source.description}</p>
+                  <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-sm">
+                    {source.links.map((link) => (
+                      <a key={link.url} className="text-primary underline" href={link.url} target="_blank" rel="noopener noreferrer">
+                        {link.label} <ExternalLink className="inline h-3 w-3" />
+                      </a>
+                    ))}
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
       </CardContent>
     </Card>
   );

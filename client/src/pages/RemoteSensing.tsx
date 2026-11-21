@@ -12,7 +12,7 @@ import { EuroSatCnn } from "@/components/EuroSatCnn";
 import { Seo } from "@/components/Seo";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
-import type { AnalyticsReportVisual } from "@/lib/analyticsReportPdf";
+import type { AnalyticsReportConclusion, AnalyticsReportVisual } from "@/lib/analyticsReportPdf";
 import type { SentinelAoiJob } from "../../../server/data-insight";
 
 const copy = {
@@ -57,6 +57,12 @@ const copy = {
     mapModel: "Modello esportato",
     mapComparison: "Il confronto RF/SVM usa gli stessi campioni di test.",
     macroWinner: (name: string) => `F1 macro più alta nel test spaziale: ${name}. Non equivale a verifica sul terreno.`,
+    opinionTitle: "Valutazione tecnica orientativa (automatica)",
+    opinionSummary: (winner: string, winnerF1: string, other: string, otherF1: string) =>
+      `Sul test spaziale, ${winner} ottiene macro F1 ${winnerF1} contro ${other} (${otherF1}); nel campione e nell'area valutati mostra quindi un accordo maggiore con il riferimento.`,
+    opinionReference: "Le etichette di confronto provengono da ESA WorldCover 2021 e non sono rilievi a terra indipendenti: le metriche non dimostrano l'accuratezza assoluta della mappa.",
+    opinionRecommendation: "La mappa è adatta a un'esplorazione preliminare, non è sufficiente da sola per decisioni operative o scientifiche. Prima dell'uso, verifica in GIS e confronta con dati indipendenti dell'area.",
+    opinionDisclaimer: "Sintesi automatizzata basata sui risultati mostrati; non è una perizia firmata né una certificazione professionale.",
     classMetricsTitle: "Prestazioni per classe",
     className: "Classe",
     precision: "Precision",
@@ -130,6 +136,12 @@ const copy = {
     mapModel: "Exported model",
     mapComparison: "RF/SVM comparison uses the same held-out samples.",
     macroWinner: (name: string) => `Highest macro F1 on the spatial test: ${name}. This is not field validation.`,
+    opinionTitle: "Automated technical assessment",
+    opinionSummary: (winner: string, winnerF1: string, other: string, otherF1: string) =>
+      `On the spatial test, ${winner} scores macro F1 ${winnerF1} versus ${other} (${otherF1}); it therefore agrees more closely with the reference in the evaluated sample and area.`,
+    opinionReference: "The reference labels come from ESA WorldCover 2021, not independent ground surveys; these metrics do not establish the map's absolute accuracy.",
+    opinionRecommendation: "The map is suitable for preliminary exploration, not for operational or scientific decisions by itself. Review it in GIS and compare it with independent data from the area before use.",
+    opinionDisclaimer: "Automated summary based on the displayed results; it is not a signed expert opinion or professional certification.",
     classMetricsTitle: "Per-class performance",
     className: "Class",
     precision: "Precision",
@@ -290,11 +302,33 @@ export default function RemoteSensing() {
       ? current.filter((value) => value !== key)
       : [...current, key]);
   };
-  const macroF1Leader = result
+  const macroF1WinnerModel = result
     ? result.models.randomForest.macroF1 >= result.models.svm.macroF1
-      ? result.models.randomForest.name
-      : result.models.svm.name
-    : "";
+      ? result.models.randomForest
+      : result.models.svm
+    : undefined;
+  const macroF1OtherModel = result && macroF1WinnerModel
+    ? macroF1WinnerModel === result.models.randomForest
+      ? result.models.svm
+      : result.models.randomForest
+    : undefined;
+  const macroF1Leader = macroF1WinnerModel?.name ?? "";
+  const reportConclusion: AnalyticsReportConclusion | undefined = macroF1WinnerModel && macroF1OtherModel
+    ? {
+        title: text.opinionTitle,
+        content: [
+          text.opinionSummary(
+            macroF1WinnerModel.name,
+            macroF1WinnerModel.macroF1.toFixed(3),
+            macroF1OtherModel.name,
+            macroF1OtherModel.macroF1.toFixed(3),
+          ),
+          text.opinionReference,
+          text.opinionRecommendation,
+          text.opinionDisclaimer,
+        ].join("\n\n"),
+      }
+    : undefined;
   const classPerformance = result
     ? result.models.randomForest.perClass.map((randomForestClass) => ({
         ...randomForestClass,
@@ -548,27 +582,6 @@ export default function RemoteSensing() {
           </CardContent>
         </Card>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>{text.sourcesTitle}</CardTitle>
-            <CardDescription>{text.sourcesDescription}</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-3 sm:grid-cols-2">
-            {text.sources.map((source) => (
-              <a
-                key={source.url}
-                className="inline-flex items-start gap-2 rounded-md border p-3 text-sm font-medium text-primary underline underline-offset-4 hover:bg-accent"
-                href={source.url}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <ExternalLink className="mt-0.5 h-4 w-4 shrink-0" />
-                {source.label}
-              </a>
-            ))}
-          </CardContent>
-        </Card>
-
         <EuroSatCnn language={language === "it" ? "it" : "en"} />
 
         {result && job && (
@@ -611,6 +624,7 @@ export default function RemoteSensing() {
           title={result ? `Report Sentinel-2 - ${result.scene.id}` : "Report Sentinel-2"}
           content={reportContent}
           visuals={reportVisuals}
+          conclusion={reportConclusion}
           returnPath="/analysis/remote-sensing"
         />
 
@@ -759,6 +773,26 @@ export default function RemoteSensing() {
         <div className="rounded-lg border p-5 text-sm text-muted-foreground">
           {text.portal} · <Link className="font-medium text-primary underline" href="/analysis/portals">{text.portalLink}</Link>
         </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>{text.sourcesTitle}</CardTitle>
+            <CardDescription>{text.sourcesDescription}</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-3 sm:grid-cols-2">
+            {text.sources.map((source) => (
+              <a
+                key={source.url}
+                className="inline-flex items-start gap-2 rounded-md border p-3 text-sm font-medium text-primary underline underline-offset-4 hover:bg-accent"
+                href={source.url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <ExternalLink className="mt-0.5 h-4 w-4 shrink-0" />
+                {source.label}
+              </a>
+            ))}
+          </CardContent>
+        </Card>
       </section>
     </main>
   );
