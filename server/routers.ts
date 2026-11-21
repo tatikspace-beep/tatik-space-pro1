@@ -35,7 +35,12 @@ import { hashPassword, isAdminEmail, isAgentEarlyAccessEmail, isStaffUser, norma
 import { checkAiDailyLimit, releaseAiDailyUsage } from "./_core/aiUsage";
 import speakeasy from "speakeasy";
 import QRCode from "qrcode";
-import { createSignedEmailAccessToken, verifySignedEmailAccessToken } from "./email-access-token";
+import {
+  createSignedEmailAccessToken,
+  createSignedEmailRegistrationToken,
+  verifySignedEmailAccessToken,
+  verifySignedEmailRegistrationToken,
+} from "./email-access-token";
 import { scanMarketplaceTemplate } from "./marketplace-scan";
 import { hasActiveSchoolAccess } from "./school-access";
 import {
@@ -784,8 +789,7 @@ export const appRouter = router({
           });
         }
       }),
-    // New flow: request registration token by email. Server creates or upserts a user record
-    // and sends a time-limited token (logged here) valid for 10 minutes.
+    // Create or ensure the user exists before sending a time-limited registration link.
     requestRegistration: publicProcedure
       .input(z.object({ email: z.string().email(), name: z.string().optional(), redirectTo: z.string().max(2048).optional() }))
       .mutation(async ({ input, ctx }) => {
@@ -808,8 +812,7 @@ export const appRouter = router({
           }
 
           // Generate secure token and save (10 minutes)
-          const token = crypto.randomBytes(32).toString('hex');
-          registrationTokens.set(token, { userId: user?.id, email: normalizedEmail, name: input.name, purpose: 'registration', expires: Date.now() + 1000 * 60 * 10 });
+          const token = await createSignedEmailRegistrationToken(normalizedEmail);
 
           const returnTo = safeReturnPath(input.redirectTo);
           const originHeader = ctx.req.headers.origin;
@@ -829,22 +832,22 @@ export const appRouter = router({
       }),
 
     completeRegistration: publicProcedure
-      .input(z.object({ token: z.string(), password: z.string().min(8) }))
+      .input(z.object({ token: z.string() }))
       .mutation(async ({ input, ctx }) => {
-        const entry = registrationTokens.get(input.token);
-        if (!entry || entry.purpose !== 'registration' || entry.expires < Date.now()) {
+        let email: string;
+        try {
+          ({ email } = await verifySignedEmailRegistrationToken(input.token));
+        } catch {
           throw new TRPCError({ code: 'BAD_REQUEST', message: 'Invalid or expired registration token' });
         }
 
-        const user = await db.getUserByEmail(entry.email);
+        const user = await db.getUserByEmail(email);
         if (!user?.id) throw new TRPCError({ code: 'BAD_REQUEST', message: 'Registration record not found' });
-        await db.updatePassword(user.id, hashPassword(input.password));
 
         const { sdk } = await import('./_core/sdk');
-        const sessionToken = await sdk.createSessionToken(`local:${entry.email}`, { name: entry.name || entry.email.split('@')[0] });
+        const sessionToken = await sdk.createSessionToken(user.openId || `local:${email}`, { name: user.name || email.split('@')[0] });
         const cookieOptions = getSessionCookieOptions(ctx.req);
         (ctx.res as any).cookie(COOKIE_NAME, sessionToken, { ...cookieOptions, maxAge: 1000 * 60 * 60 * 24 * 365 });
-        registrationTokens.delete(input.token);
         return { success: true };
       }),
 
