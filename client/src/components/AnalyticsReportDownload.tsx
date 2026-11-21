@@ -109,6 +109,10 @@ export function AnalyticsReportDownload({
     }
   }, [content, returnParams.sessionId]);
 
+  useEffect(() => {
+    if (content) void accessQuery.refetch();
+  }, [content]);
+
   const currentReport = content
     ? { reportId: "", title, content }
     : verifiedReport;
@@ -147,10 +151,6 @@ export function AnalyticsReportDownload({
   const reportPrice = access
     ? new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(access.reportPriceCents / 100)
     : null;
-
-  useEffect(() => {
-    if (content) void accessQuery.refetch();
-  }, [content]);
 
   const download = (reportTitle: string, reportContent: string) => {
     void downloadPdf(reportTitle, reportContent).catch((reason) => {
