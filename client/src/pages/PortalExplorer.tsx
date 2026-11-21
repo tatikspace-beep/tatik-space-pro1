@@ -2,7 +2,7 @@ import { Compass, Database, Satellite, Search } from "lucide-react";
 import { Link } from "wouter";
 import { Seo } from "@/components/Seo";
 import { DataInsightSources } from "@/components/DataInsightSources";
-import { OfficialDataAnalysis } from "@/components/OfficialDataAnalysis";
+import { OfficialDataAnalysis, OfficialDataCatalogs } from "@/components/OfficialDataAnalysis";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 const copy = {
@@ -62,6 +62,7 @@ export default function PortalExplorer() {
             <Search className="h-4 w-4" />{text.otherLink}
           </Link>
         </div>
+        <OfficialDataCatalogs />
       </section>
     </main>
   );
