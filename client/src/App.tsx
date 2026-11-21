@@ -26,6 +26,9 @@ import { PrivacyPolicy, TermsOfService, CookiePolicy, ContactPage } from "./page
 import ProfilePage from "./pages/ProfilePage";
 import TemplateMarketplace from "./pages/TemplateMarketplace";
 import DeveloperMarketplace from "./pages/DeveloperMarketplace";
+import PortalExplorer from "./pages/PortalExplorer";
+import RemoteSensing from "./pages/RemoteSensing";
+import MlStudio from "./pages/MlStudio";
 import SchoolProgram from "./pages/SchoolProgram";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink } from "@trpc/client";
@@ -65,6 +68,9 @@ function Router() {
           : location.startsWith("/login") || location.startsWith("/access") ? currentTranslations.login
             : location.startsWith("/register") || location.startsWith("/complete-registration") ? currentTranslations.register
               : location.startsWith("/marketplace/developer") || location.startsWith("/marketplace/demo") ? currentTranslations.templateMarketplace
+                : location === "/analysis/portals" ? (language === "it" ? "Analisi dati" : "Data analysis")
+                  : location === "/analysis/remote-sensing" ? (language === "it" ? "Telerilevamento e Machine Learning" : "Remote sensing & Machine Learning")
+                    : location === "/analysis/ml-studio" ? (language === "it" ? "ML Studio" : "ML Studio")
                 : currentShellCopy.notFoundTitle;
   const fallbackSeo = {
     title: `${routeTitle} | Tatik.space`,
@@ -93,6 +99,9 @@ function Router() {
       <Route path={"/marketplace"} component={TemplateMarketplace} />
       <Route path={"/schools"} component={SchoolProgram} />
       <Route path={"/marketplace/developer"} component={DeveloperMarketplace} />
+      <Route path={"/analysis/portals"} component={PortalExplorer} />
+      <Route path={"/analysis/remote-sensing"} component={RemoteSensing} />
+      <Route path={"/analysis/ml-studio"} component={MlStudio} />
       <Route path={"/files"} component={Files} />
       <Route path={"/templates"} component={Templates} />
       <Route path={"/collaboration"} component={Collaboration} />

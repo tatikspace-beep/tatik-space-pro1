@@ -53,10 +53,13 @@ export function GlobalNavbar() {
   const { user, isAuthenticated, logout, login } = useAuth();
   const { language, setLanguage, t } = useLanguage();
   const copy = siteSurfaceCopy[language];
+  const analysisNav = language === "it"
+    ? { title: "Analitica", portals: "Analisi dati", remoteSensing: "Telerilevamento e ML", mlStudio: "ML Studio (altri settori)" }
+    : { title: "Analytics", portals: "Data analysis", remoteSensing: "Remote sensing & ML", mlStudio: "ML Studio (all sectors)" };
   const { currentProject } = useProject();
   const [location, setLocation] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [openNavDropdown, setOpenNavDropdown] = useState<'solutions' | 'resources' | null>(null);
+  const [openNavDropdown, setOpenNavDropdown] = useState<'solutions' | 'analytics' | 'resources' | null>(null);
   const [desktopNavFits, setDesktopNavFits] = useState(false);
   const navbarRowRef = useRef<HTMLDivElement>(null);
   const brandRef = useRef<HTMLDivElement>(null);
@@ -196,6 +199,40 @@ export function GlobalNavbar() {
 
           <div
             className="relative"
+            onMouseLeave={() => setOpenNavDropdown((open) => open === 'analytics' ? null : open)}
+          >
+            <button
+              type="button"
+              aria-expanded={openNavDropdown === 'analytics'}
+              aria-controls="analytics-menu"
+              onClick={() => setOpenNavDropdown(openNavDropdown === 'analytics' ? null : 'analytics')}
+              className="flex items-center gap-1 px-3 py-2 rounded-md hover:bg-accent transition-colors"
+            >
+              <span className="font-medium">{analysisNav.title}</span>
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-chevron-down">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+            <div
+              id="analytics-menu"
+              className={`absolute left-0 top-full z-50 w-64 pt-1 transition-all duration-200 ${openNavDropdown === 'analytics' ? 'visible opacity-100' : 'invisible opacity-0 pointer-events-none'}`}
+            >
+              <div className="rounded-md border border-border bg-background p-2 shadow-lg">
+                <Link href="/analysis/portals" onClick={() => setOpenNavDropdown(null)} className="block px-3 py-2 rounded-md hover:bg-accent text-sm">
+                  {analysisNav.portals}
+                </Link>
+                <Link href="/analysis/remote-sensing" onClick={() => setOpenNavDropdown(null)} className="block px-3 py-2 rounded-md hover:bg-accent text-sm">
+                  {analysisNav.remoteSensing}
+                </Link>
+                <Link href="/analysis/ml-studio" onClick={() => setOpenNavDropdown(null)} className="block px-3 py-2 rounded-md hover:bg-accent text-sm">
+                  {analysisNav.mlStudio}
+                </Link>
+              </div>
+            </div>
+          </div>
+
+          <div
+            className="relative"
             onMouseLeave={() => setOpenNavDropdown((open) => open === 'resources' ? null : open)}
           >
             <button
@@ -313,6 +350,10 @@ export function GlobalNavbar() {
             <Link href="/marketplace/developer" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{copy.navbar.developerMarketplace}</Link>
             <Link href="/collaboration" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{t.collaboration}</Link>
             <Link href="/deployment" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{t.deployment}</Link>
+            <span className="px-3 pt-2 text-xs font-semibold uppercase text-muted-foreground">{analysisNav.title}</span>
+            <Link href="/analysis/portals" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{analysisNav.portals}</Link>
+            <Link href="/analysis/remote-sensing" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{analysisNav.remoteSensing}</Link>
+            <Link href="/analysis/ml-studio" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{analysisNav.mlStudio}</Link>
             <span className="px-3 pt-2 text-xs font-semibold uppercase text-muted-foreground">{t.resources}</span>
             <Link href="/documentation" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{t.documentation}</Link>
             <Link href="/tutorials" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{t.tutorials}</Link>

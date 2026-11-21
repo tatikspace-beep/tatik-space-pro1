@@ -2,8 +2,18 @@
   "version": 2,
   "buildCommand": "pnpm run build:vercel",
   "outputDirectory": "dist",
+  "fluid": true,
   "env": {
     "NODE_OPTIONS": "--experimental-modules"
+  },
+  "functions": {
+    "api/data_insight.py": {
+      "maxDuration": 300,
+      "includeFiles": "data-insight-ai-test/**"
+    },
+    "api/trpc.ts": {
+      "maxDuration": 300
+    }
   },
   "redirects": [
     {

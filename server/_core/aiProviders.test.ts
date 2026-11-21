@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { invokeLLM } from "./llm";
-import { generateAssistantResponse } from "./aiProviders";
+import { generateAssistantResponse, generateFreeAnalysisAnswer } from "./aiProviders";
 
 vi.mock("./llm", () => ({
   invokeLLM: vi.fn().mockResolvedValue({
@@ -252,6 +252,46 @@ describe("generateAssistantResponse", () => {
     await expect(generateAssistantResponse("qwen", [
       { role: "user", content: "Ciao" },
     ])).rejects.toThrow(/richiede HTTPS/i);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("generateFreeAnalysisAnswer", () => {
+  const originalEnv = { ...process.env };
+
+  beforeEach(() => {
+    delete process.env.OPENROUTER_API_KEY;
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    process.env = { ...originalEnv };
+    vi.unstubAllGlobals();
+  });
+
+  it("uses only the explicitly free OpenRouter route", async () => {
+    process.env.OPENROUTER_API_KEY = "test-openrouter-key";
+    process.env.GROQ_API_KEY = "test-paid-provider-key";
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      choices: [{ message: { content: "Risposta basata sulle metriche" } }],
+    }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await generateFreeAnalysisAnswer("Quale modello e migliore?", "{\"bestModel\":\"Ridge\"}", "it");
+
+    expect(result.model).toBe("openrouter/free");
+    expect(result.provider).toBe("OpenRouter free");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe("https://openrouter.ai/api/v1/chat/completions");
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body).model).toBe("openrouter/free");
+  });
+
+  it("does not fall back to another provider when the free route is unconfigured", async () => {
+    process.env.GROQ_API_KEY = "test-paid-provider-key";
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(generateFreeAnalysisAnswer("Domanda", "{}", "it")).rejects.toThrow(/non e configurato/);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

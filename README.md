@@ -112,6 +112,12 @@ L'Agente AI affianca l'assistente esistente: pianifica la richiesta, la delega a
 
 Il proprietario del progetto o un amministratore può aggiungere e rimuovere collaboratori dall'editor. I collaboratori accedono soltanto ai progetti a cui sono stati aggiunti. Prima del rilascio, applicare `drizzle/migrations/0019_project_members.sql` al database Production corretto; la migrazione crea la tabella e gli indici senza modificare i dati esistenti.
 
+### Quote e report di Analytics
+
+Gli account non staff hanno 3 analisi gratuite per mese UTC; le analisi tabellari gratuite accettano fino a 1.000 righe. Un abbonamento Pro attivo sblocca analisi più grandi e senza quota mensile. Amministratori e collaboratori hanno accesso illimitato e scaricano gratuitamente i report PDF; per gli altri utenti ogni report PDF è un acquisto singolo Stripe, €1,99 per impostazione predefinita. Il prezzo può essere impostato con `ANALYTICS_REPORT_PRICE_CENTS` (centesimi di euro, minimo 50). Per Checkout in Preview è obbligatoria una chiave Stripe `sk_test_`; le chiavi live vengono rifiutate.
+
+La quota usa la tabella `analytics_monthly_usage`. Applicare `drizzle/migrations/0020_analytics_monthly_usage.sql` solo al database Preview dopo aver verificato che sia separato da Production; non eseguire questa migrazione su Production prima dell'approvazione esplicita del rilascio.
+
 ### OAuth
 
 Configura OAuth per GitHub e Google nelle variabili d'ambiente.
