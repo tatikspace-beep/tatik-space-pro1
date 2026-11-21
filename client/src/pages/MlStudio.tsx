@@ -464,8 +464,6 @@ export default function MlStudio() {
           </CardContent>
         </Card>
 
-        <MlStudioSources language={language} onMergedDataset={loadDatasetPayload} />
-
         {result && (
           <Card>
             <CardHeader>
@@ -730,6 +728,7 @@ export default function MlStudio() {
           visuals={reportVisuals}
           returnPath="/analysis/ml-studio"
         />
+        <MlStudioSources language={language} onMergedDataset={loadDatasetPayload} />
       </section>
     </main>
   );

@@ -61,4 +61,23 @@ describe("createAnalyticsReportPdf", () => {
     expect(report.getNumberOfPages()).toBe(2);
     expect(new TextDecoder().decode(report.output("arraybuffer").slice(0, 5))).toBe("%PDF-");
   });
+
+  it("places the optional conclusion after the visual results", () => {
+    const report = createAnalyticsReportPdf(
+      "Technical report",
+      "Aggregated results.",
+      [{
+        type: "chart",
+        title: "Visual result marker",
+        chartType: "bar",
+        categories: ["Random Forest", "SVM"],
+        series: [{ name: "Macro F1", values: [0.7, 0.6] }],
+      }],
+      { title: "Technical assessment", content: "Closing assessment marker." },
+    );
+    const output = new TextDecoder().decode(report.output("arraybuffer"));
+
+    expect(output.indexOf("Visual result marker")).toBeGreaterThanOrEqual(0);
+    expect(output.indexOf("Closing assessment marker.")).toBeGreaterThan(output.indexOf("Visual result marker"));
+  });
 });
