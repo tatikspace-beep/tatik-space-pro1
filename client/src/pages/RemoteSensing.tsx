@@ -356,7 +356,8 @@ export default function RemoteSensing() {
       type: "image",
       title: `Mappa tematica Sentinel-2 — ${result.scene.id}`,
       dataUrl: result.mapImage,
-      caption: `Modello mappa: ${result.processing.mapModel}. Riferimento: ${result.reference.name}. ${result.reference.meaning}`,
+      caption: `Acquisizione: ${result.scene.datetime}. Copertura nuvolosa: ${result.scene.tileCloudCoverPercent.toFixed(1)}%. Risoluzione: ${result.processing.pixelSizeMeters} m. Modello: ${result.processing.mapModel}. Riferimento: ${result.reference.name} — ${result.reference.meaning}`,
+      legend: result.classLegend.map((item) => ({ label: item.name, color: item.color })),
     }, {
       type: "chart",
       title: "Confronto delle metriche del modello",
