@@ -3641,56 +3641,6 @@ Analizza e suggerisci ottimizzazioni.`,
 
   // Analytics and Monetization
   analytics: router({
-    applyPreviewAnalyticsUsageMigration: publicProcedure
-      .input(z.object({ token: z.string().min(32).max(256) }))
-      .mutation(async ({ input }) => {
-        const expectedToken = process.env.VERCEL_AUTOMATION_BYPASS_SECRET?.trim();
-        const supplied = Buffer.from(input.token, "utf8");
-        const expected = Buffer.from(expectedToken || "", "utf8");
-        if (
-          process.env.VERCEL_ENV !== "preview" ||
-          process.env.VERCEL_GIT_COMMIT_REF !== "preview/paypal-diagnostics-20261012" ||
-          !process.env.DATABASE_URL ||
-          !expectedToken ||
-          supplied.length !== expected.length ||
-          !crypto.timingSafeEqual(supplied, expected)
-        ) {
-          throw new TRPCError({ code: "FORBIDDEN", message: "Preview migration is unavailable." });
-        }
-
-        const database = await db.getDb();
-        if (!database) {
-          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Preview database is unavailable." });
-        }
-        const preflight = await database.execute(sql`
-          SELECT EXISTS (
-            SELECT 1 FROM information_schema.tables
-            WHERE table_schema = 'public' AND table_name = 'users'
-          ) AS users_table_exists
-        `);
-        if (!preflight.rows[0]?.users_table_exists) {
-          throw new TRPCError({ code: "PRECONDITION_FAILED", message: "Preview database is missing the users table." });
-        }
-
-        await database.transaction(async transaction => {
-          await transaction.execute(sql`
-            CREATE TABLE IF NOT EXISTS "analytics_monthly_usage" (
-              "id" serial PRIMARY KEY,
-              "userId" integer NOT NULL REFERENCES "users"("id") ON DELETE CASCADE,
-              "monthKey" varchar(7) NOT NULL,
-              "analysisCount" integer NOT NULL DEFAULT 0,
-              "updatedAt" timestamptz NOT NULL DEFAULT now()
-            )
-          `);
-          await transaction.execute(sql`
-            CREATE UNIQUE INDEX IF NOT EXISTS "analytics_monthly_usage_user_month_unique"
-              ON "analytics_monthly_usage" ("userId", "monthKey")
-          `);
-        });
-
-        return { applied: true };
-      }),
-
     trackAdImpression: publicProcedure
       .input(z.object({
         adId: z.string(),
