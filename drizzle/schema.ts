@@ -47,6 +47,18 @@ export const projects = pgTable("projects", {
 export type Project = typeof projects.$inferSelect;
 export type InsertProject = typeof projects.$inferInsert;
 
+export const projectMembers = pgTable("project_members", {
+  id: serial("id").primaryKey(),
+  projectId: integer("projectId").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  userId: integer("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+}, (table) => ({
+  projectUserUnique: uniqueIndex("project_members_project_user_unique").on(table.projectId, table.userId),
+  userIndex: index("project_members_user_idx").on(table.userId),
+}));
+
+export type ProjectMember = typeof projectMembers.$inferSelect;
+
 /**
  * Files table - stores project files
  */
@@ -185,6 +197,8 @@ export const subscriptionDiscounts = pgTable("subscription_discounts", {
   userId: integer("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
   discountAmount: text("discountAmount").notNull().default("2.00"),
   reason: varchar("reason", { length: 255 }).notNull(), // 'monetization_100_percent'
+  paypalPlanId: varchar("paypalPlanId", { length: 255 }),
+  paypalApprovalUrl: text("paypalApprovalUrl"),
   earnedAt: timestamp("earnedAt").notNull().defaultNow(),
   appliedAt: timestamp("appliedAt"),
   applicableUntil: timestamp("applicableUntil"),
@@ -324,6 +338,44 @@ export const paymentRecords = pgTable("payment_records", {
 
 export type PaymentRecord = typeof paymentRecords.$inferSelect;
 export type InsertPaymentRecord = typeof paymentRecords.$inferInsert;
+
+export const analyticsMonthlyUsage = pgTable("analytics_monthly_usage", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  monthKey: varchar("monthKey", { length: 7 }).notNull(),
+  analysisCount: integer("analysisCount").notNull().default(0),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, (table) => ({
+  userMonthUnique: uniqueIndex("analytics_monthly_usage_user_month_unique").on(table.userId, table.monthKey),
+}));
+
+export type AnalyticsMonthlyUsage = typeof analyticsMonthlyUsage.$inferSelect;
+
+export const providerConnections = pgTable("provider_connections", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  provider: varchar("provider", { length: 32 }).notNull(),
+  encryptedCredential: text("encryptedCredential").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, table => ({
+  userProviderIdx: uniqueIndex("provider_connections_user_provider_idx").on(table.userId, table.provider),
+}));
+export type ProviderConnection = typeof providerConnections.$inferSelect;
+
+export const providerResources = pgTable("provider_resources", {
+  id: serial("id").primaryKey(),
+  userId: integer("userId").notNull().references(() => users.id, { onDelete: "cascade" }),
+  projectId: integer("projectId").notNull().references(() => projects.id, { onDelete: "cascade" }),
+  provider: varchar("provider", { length: 32 }).notNull(),
+  resourceId: varchar("resourceId", { length: 255 }).notNull(),
+  resourceUrl: text("resourceUrl"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().notNull(),
+}, table => ({
+  userProjectProviderIdx: uniqueIndex("provider_resources_user_project_provider_idx").on(table.userId, table.projectId, table.provider),
+}));
+export type ProviderResource = typeof providerResources.$inferSelect;
 
 /**
  * Developer marketplace. Listing source files are kept in private storage and

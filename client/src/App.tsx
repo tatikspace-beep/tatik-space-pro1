@@ -1,10 +1,12 @@
 import { Toaster } from "@/components/ui/sonner";
+import { GoogleAnalytics } from "@/components/GoogleAnalytics";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { CookieConsent } from "./components/CookieConsent";
+import { EzoicConsentDisclosure } from "./components/EzoicConsentDisclosure";
 import Home from "./pages/Home";
 import EditorApp from "./pages/EditorApp";
 import Files from "./pages/Files";
@@ -24,6 +26,9 @@ import { PrivacyPolicy, TermsOfService, CookiePolicy, ContactPage } from "./page
 import ProfilePage from "./pages/ProfilePage";
 import TemplateMarketplace from "./pages/TemplateMarketplace";
 import DeveloperMarketplace from "./pages/DeveloperMarketplace";
+import PortalExplorer from "./pages/PortalExplorer";
+import RemoteSensing from "./pages/RemoteSensing";
+import MlStudio from "./pages/MlStudio";
 import SchoolProgram from "./pages/SchoolProgram";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink } from "@trpc/client";
@@ -42,6 +47,7 @@ import { siteShellCopy } from '@/lib/siteShellCopy';
 import { translations } from '@/lib/i18n';
 import { BetaNotice } from '@/components/BetaNotice';
 import { PUBLIC_SEO, Seo } from "@/components/Seo";
+import { AffiliatePartnerStrip } from "@/components/AffiliatePartnerStrip";
 
 // Initialize i18n
 import './lib/i18n';
@@ -62,6 +68,9 @@ function Router() {
           : location.startsWith("/login") || location.startsWith("/access") ? currentTranslations.login
             : location.startsWith("/register") || location.startsWith("/complete-registration") ? currentTranslations.register
               : location.startsWith("/marketplace/developer") || location.startsWith("/marketplace/demo") ? currentTranslations.templateMarketplace
+                : location === "/analysis/portals" ? (language === "it" ? "Analisi dati" : "Data analysis")
+                  : location === "/analysis/remote-sensing" ? (language === "it" ? "Telerilevamento e Machine Learning" : "Remote sensing & Machine Learning")
+                    : location === "/analysis/ml-studio" ? (language === "it" ? "ML Studio" : "ML Studio")
                 : currentShellCopy.notFoundTitle;
   const fallbackSeo = {
     title: `${routeTitle} | Tatik.space`,
@@ -90,6 +99,9 @@ function Router() {
       <Route path={"/marketplace"} component={TemplateMarketplace} />
       <Route path={"/schools"} component={SchoolProgram} />
       <Route path={"/marketplace/developer"} component={DeveloperMarketplace} />
+      <Route path={"/analysis/portals"} component={PortalExplorer} />
+      <Route path={"/analysis/remote-sensing"} component={RemoteSensing} />
+      <Route path={"/analysis/ml-studio"} component={MlStudio} />
       <Route path={"/files"} component={Files} />
       <Route path={"/templates"} component={Templates} />
       <Route path={"/collaboration"} component={Collaboration} />
@@ -273,8 +285,11 @@ function App() {
                   {/* Promo banner placed above the global footer for selected pages */}
                   <PromoPlacement />
 
+                  <AffiliatePartnerStrip />
                   <AppFooter />
+                  <EzoicConsentDisclosure />
                   <CookieConsent />
+                  <GoogleAnalytics />
                 </TooltipProvider>
               </ProjectProvider>
             </LanguageProvider>

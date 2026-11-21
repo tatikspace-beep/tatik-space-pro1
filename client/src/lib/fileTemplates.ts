@@ -459,6 +459,7 @@ export function detectLanguageFromExtension(filename: string): string {
         'json': 'json',
         'sql': 'sql',
         'md': 'markdown',
+        'markdown': 'markdown',
         'xml': 'xml',
         'java': 'java',
         'cs': 'csharp',

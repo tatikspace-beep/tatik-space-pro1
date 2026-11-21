@@ -10,6 +10,19 @@ module.exports = {
   ],
   theme: {
     extend: {
+      fontSize: {
+        xs: "var(--type-step-0)",
+        sm: "var(--type-step-1)",
+        base: "var(--type-step-2)",
+        lg: "var(--type-step-3)",
+        xl: "var(--type-step-4)",
+        "2xl": "var(--type-step-5)",
+        "3xl": "var(--type-step-6)",
+        "4xl": "var(--type-step-7)",
+        "5xl": "var(--type-step-7)",
+        "6xl": "var(--type-step-7)",
+        "7xl": "var(--type-step-7)",
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",

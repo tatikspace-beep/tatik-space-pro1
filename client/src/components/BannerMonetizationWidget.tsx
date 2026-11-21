@@ -1,17 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
-import { useAuth } from '@/_core/hooks/useAuth';
+import { useLanguage } from '@/contexts/LanguageContext';
+import { monetizationAdminCopy } from '@/lib/monetizationAdminCopy';
 
 export default function BannerMonetizationWidget() {
     const [showCelebration, setShowCelebration] = useState(false);
+    const { language } = useLanguage();
+    const copy = monetizationAdminCopy[language];
     const { data, isLoading, error, refetch } = trpc.user.monetizationProgress.useQuery(undefined, {
         retry: 1,
         refetchInterval: 30000,
         refetchOnWindowFocus: true,
     });
-    const { user } = useAuth();
-
     useEffect(() => {
         // Show celebration if just completed
         if (data?.isCompleted && data?.percentage >= 100) {
@@ -24,7 +25,7 @@ export default function BannerMonetizationWidget() {
     if (error) {
         return (
             <div className="w-full p-2 text-xs text-red-600 bg-red-500/10 rounded border border-red-500/30">
-                Errore caricamento
+                {copy.loadError}
             </div>
         );
     }
@@ -62,14 +63,14 @@ export default function BannerMonetizationWidget() {
                             {Math.round(progressPercentage)}%
                         </span>
                         <span className="text-xs text-muted-foreground">
-                            {data.daysRemaining} giorni
+                            {data.daysRemaining} {copy.daysInPeriod}
                         </span>
                     </div>
                     <div className="flex items-center gap-2">
                         <button
                             onClick={() => refetch()}
                             className="p-1 hover:bg-accent rounded transition-colors opacity-60 hover:opacity-100"
-                            title="Aggiorna"
+                            title={copy.refresh}
                             disabled={isLoading}
                         >
                             <RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} />
@@ -82,14 +83,14 @@ export default function BannerMonetizationWidget() {
             {/* Celebration Message - only visible at 100% */}
             {showCelebration && data.isCompleted && data.percentage >= 100 && (
                 <div className="mt-2 p-2 bg-green-500/10 border border-green-500/30 rounded-lg text-xs font-bold text-green-500 text-center animate-pulse">
-                    🎉 COMPLIMENTI! HAI SBLOCCATO LO SCONTO!
+                    🎉 {copy.celebration}
                 </div>
             )}
 
             {/* Permanent Completion Message */}
             {data.isCompleted && data.percentage >= 100 && !showCelebration && (
                 <div className="mt-2 p-2 bg-green-500/5 border border-green-500/20 rounded-lg text-xs font-bold text-green-600 text-center">
-                    ✓ Sconto Sbloccato
+                    ✓ {copy.discountUnlocked}
                 </div>
             )}
         </div>

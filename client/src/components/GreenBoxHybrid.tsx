@@ -112,15 +112,31 @@ export function GreenBoxHybrid({ stats }: GreenBoxHybridProps) {
         }
     };
 
+    const closeButton = (
+        <button
+            type="button"
+            onClick={() => {
+                setIsVisible(false);
+                trackInteraction('close');
+            }}
+            className="ml-1 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded text-slate-400 transition-colors hover:bg-slate-600 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+            title={copy.close}
+            aria-label={copy.close}
+        >
+            <X className="h-4 w-4" />
+        </button>
+    );
+
     if (!isVisible) return null;
 
     return (
-        <div className={`bg-slate-700 border border-slate-600 rounded-lg p-4 transition-opacity duration-300 ${fadeOut ? 'opacity-50' : 'opacity-100'}`}>
+        <div className={`relative bg-slate-700 border border-slate-600 rounded-lg p-4 transition-opacity duration-300 ${fadeOut ? 'opacity-50' : 'opacity-100'}`}>
             {currentType === 'stats' && stats && (
                 <div className="space-y-3">
                     <div className="flex items-center gap-2 mb-3">
                         <BarChart3 className="h-4 w-4 text-slate-300" />
                         <h3 className="text-sm font-semibold text-slate-100">{copy.projectStats}</h3>
+                        {closeButton}
                     </div>
 
                     <div className="space-y-2 text-xs text-slate-300">
@@ -149,6 +165,7 @@ export function GreenBoxHybrid({ stats }: GreenBoxHybridProps) {
                     <div className="flex items-center gap-2 mb-2">
                         <Lightbulb className="h-4 w-4 text-amber-400" />
                         <h3 className="text-sm font-semibold text-slate-100">{copy.tipHeading}</h3>
+                        {closeButton}
                     </div>
 
                     <div className="bg-slate-600/50 rounded p-2.5 border border-slate-500/30">
@@ -178,6 +195,7 @@ export function GreenBoxHybrid({ stats }: GreenBoxHybridProps) {
                     <div className="flex items-center gap-2 mb-2">
                         <Zap className="h-4 w-4 text-emerald-400" />
                         <h3 className="text-sm font-semibold text-slate-100">{copy.offerHeading}</h3>
+                        {closeButton}
                     </div>
 
                     <div className="bg-gradient-to-br from-emerald-900/30 to-slate-600/50 rounded p-2.5 border border-emerald-500/30">
@@ -205,18 +223,6 @@ export function GreenBoxHybrid({ stats }: GreenBoxHybridProps) {
                 </div>
             )}
 
-            {/* Close button */}
-            <button
-                onClick={() => {
-                    setIsVisible(false);
-                    trackInteraction('close');
-                }}
-                className="absolute top-2 right-2 text-slate-500 hover:text-slate-300 transition-colors"
-                title={copy.close}
-                aria-label={copy.close}
-            >
-                <X className="h-3.5 w-3.5" />
-            </button>
         </div>
     );
 }

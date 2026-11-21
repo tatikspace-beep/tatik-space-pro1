@@ -1,0 +1,8 @@
+fastapi>=0.115,<1
+openpyxl>=3.1,<4
+pypdf>=5,<7
+python-docx>=1,<2
+numpy>=2,<3
+Pillow>=11,<13
+scikit-learn>=1.6,<2
+rasterio>=1.4,<2

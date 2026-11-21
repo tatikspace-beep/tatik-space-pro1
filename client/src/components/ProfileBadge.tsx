@@ -3,6 +3,7 @@ import { trpc } from '@/lib/trpc';
 import { useAuth } from '@/_core/hooks/useAuth';
 import { useLanguage } from '@/contexts/LanguageContext';
 import { Link } from 'wouter';
+import { profileBadgeCopy } from '@/lib/siteSurfaceCopy';
 import {
     User,
     FolderOpen,
@@ -14,7 +15,8 @@ import {
 
 export default function ProfileBadge() {
     const { user, logout } = useAuth();
-    const { t } = useLanguage();
+    const { language } = useLanguage();
+    const copy = profileBadgeCopy[language];
     const [open, setOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -57,6 +59,7 @@ export default function ProfileBadge() {
                 onClick={() => setOpen((v) => !v)}
                 aria-haspopup="true"
                 aria-expanded={open}
+                aria-label={open ? copy.closeMenu : copy.openMenu}
             >
                 <span className="profile-badge-avatar">{initials}</span>
                 <span className="profile-badge-name">{user.name ?? user.email}</span>
@@ -84,7 +87,7 @@ export default function ProfileBadge() {
                         onClick={() => setOpen(false)}
                     >
                         <User size={15} />
-                        {t.profileInfo ?? 'Profile'}
+                        {copy.profile}
                     </Link>
 
                     <Link
@@ -93,7 +96,7 @@ export default function ProfileBadge() {
                         onClick={() => setOpen(false)}
                     >
                         <School size={15} />
-                        Programma scuole
+                        {copy.schools}
                     </Link>
 
                     <Link
@@ -102,17 +105,17 @@ export default function ProfileBadge() {
                         onClick={() => setOpen(false)}
                     >
                         <FolderOpen size={15} />
-                        {t.myFiles ?? 'My Files'}
+                        {copy.myFiles}
                     </Link>
 
-                    {/* Compact banner monetization pill (percentage + days) */}
+                    {/* Compact activity-bonus progress */}
                     <div className="px-3 py-2">
                         {monetizationQuery.isLoading ? (
                             <div className="h-6 w-16 bg-secondary rounded-full animate-pulse mx-auto" />
                         ) : (
                             <div className="mx-auto inline-flex items-center gap-2 px-3 py-1 rounded-full bg-gradient-to-r from-green-50 to-emerald-50 border border-green-100">
                                 <span className="text-xs font-bold text-red-600">{Math.round(Math.min(monetizationQuery.data?.percentage ?? 0, 100))}%</span>
-                                <span className="text-xs text-muted-foreground">{monetizationQuery.data?.daysRemaining ?? 0}g</span>
+                                <span className="text-xs text-muted-foreground">{monetizationQuery.data?.daysRemaining ?? 0}{copy.daysShort}</span>
                             </div>
                         )}
                     </div>
@@ -126,7 +129,7 @@ export default function ProfileBadge() {
                         onClick={() => setOpen(false)}
                     >
                         <Bell size={15} />
-                        {t.microJobAlerts ?? 'Micro-Job Alerts'}
+                        {copy.microJobAlerts}
                     </Link>
 
                     <div className="profile-dropdown-divider" />
@@ -138,7 +141,7 @@ export default function ProfileBadge() {
                         role="menuitem"
                     >
                         <LogOut size={15} />
-                        {t.logout ?? 'Sign Out'}
+                        {copy.signOut}
                     </button>
                 </div>
             )}

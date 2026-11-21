@@ -6,14 +6,33 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import {
-  Bot, Send, Loader2, User, Sparkles, Zap, Crown,
-  Lock, ChevronRight, AlertCircle, Copy, Check, Bug, ArrowLeft, Flame
+  Bot, Send, Loader2, User, Sparkles, Zap,
+  AlertCircle, Copy, Check, Bug, ArrowLeft, Flame, BookmarkPlus
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { useAuth } from '@/_core/hooks/useAuth';
 import { trpc } from '@/lib/trpc';
 import { useLanguage } from '@/contexts/LanguageContext';
+import { useAuth } from '@/_core/hooks/useAuth';
 import { formatCopy, getComponentCopy, getModelCopy } from '@/lib/assistantUiCopy';
+import { AITransparencyNotice } from '@/components/AITransparencySection';
+import {
+  extractAssistantCodeBlocks,
+  extractAssistantCodeFiles,
+  extractAssistantProjectMoves,
+  findAgentFilesWithExcessiveScopeLoss,
+  findUnverifiedGoogleMapEmbeds,
+  hasAssistantProjectOperationsBlock,
+  type AssistantProjectMove,
+} from '@/lib/assistantCodeFiles';
+import { buildAssistantProjectContext, type AssistantProjectFile } from '@/lib/assistantProjectContext';
+import {
+  addApprovedAgentExample,
+  agentMemoryStorageKey,
+  parseApprovedAgentExamples,
+  selectRelevantAgentExamples,
+  type ApprovedAgentExample,
+} from '@/lib/agentMemory';
+import { isInformationalAgentRequest } from '@shared/agentRequestIntent';
 
 // ---------------------------------------------------------------------------
 // Constants & Configuration
@@ -29,7 +48,6 @@ const MODELS = [
     label: '32B',
     badgeColor: 'bg-blue-500/10 text-blue-400 border-blue-500/20',
     dotColor: 'bg-blue-400',
-    tier: 'free' as const,
     hfModel: 'Qwen/Qwen2.5-Coder-32B-Instruct',
   },
   {
@@ -38,25 +56,14 @@ const MODELS = [
     label: 'V2',
     badgeColor: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
     dotColor: 'bg-emerald-400',
-    tier: 'free' as const,
     hfModel: 'deepseek-ai/DeepSeek-Coder-V2-Instruct',
   },
   {
     id: 'gemini',
     name: 'Gemini Flash',
-    label: '2.0',
+    label: '2.5',
     badgeColor: 'bg-violet-500/10 text-violet-400 border-violet-500/20',
     dotColor: 'bg-violet-400',
-    tier: 'free' as const,
-    hfModel: null as null,
-  },
-  {
-    id: 'gpt4',
-    name: 'GPT-4o',
-    label: 'Pro',
-    badgeColor: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-    dotColor: 'bg-amber-400',
-    tier: 'pro' as const,
     hfModel: null as null,
   },
 ] as const;
@@ -69,6 +76,10 @@ interface Message {
   content: string;
   timestamp: Date;
   modelId?: ModelId;
+  provider?: string;
+  providerModel?: string;
+  agentTask?: string;
+  agentResponse?: string;
   error?: boolean;
 }
 
@@ -78,7 +89,16 @@ interface DailyUsage {
 }
 
 interface AIAssistantProps {
-  onCodeInsert?: (code: string) => void;
+  projectId?: number | null;
+  projectName?: string;
+  projectFiles?: AssistantProjectFile[];
+  currentFilePath?: string;
+  currentFileContent?: string;
+  onCodeInsert?: (code: string) => Promise<void>;
+  onCreateFiles?: (
+    files: Array<{ path: string; content: string }>,
+    moves: AssistantProjectMove[],
+  ) => Promise<{ created: number; updated: number; moved: number } | null>;
 }
 
 // ---------------------------------------------------------------------------
@@ -123,87 +143,11 @@ function renderMarkdown(text: string): string {
     .replace(/\n/g, '<br/>');
 }
 
-function extractCodeBlock(text: string): string | null {
-  const match = text.match(/```(?:\w+)?\n?([\s\S]*?)```/);
-  return match ? match[1].trim() : null;
-}
-
-// ---------------------------------------------------------------------------
-// API callers
-// ---------------------------------------------------------------------------
-
-const SYSTEM_PROMPT = `You are an expert web developer, UI/UX designer, and SEO specialist integrated into Tatik.space Pro code editor.
-Your expertise: HTML5, CSS3, JavaScript ES2024, React, TypeScript, Tailwind CSS, SEO, accessibility (WCAG), Core Web Vitals, performance optimization.
-Rules:
-- Respond in the same language as the user (Italian or English)
-- Always wrap code in triple backtick fences with language identifier
-- Be direct and practical — skip unnecessary preambles
-- For layouts: provide complete, copy-paste ready code with comments
-- For bugs: identify root cause, then provide the fix
-- For SEO/UX: give concrete, measurable improvements (e.g., "Improves LCP by 20%")
-- Suggest accessibility improvements automatically (alt text, ARIA, semantic HTML)
-- For performance: mention Lighthouse scores and Web Vitals impact`;
-
-async function callHuggingFace(
-  model: string,
-  history: { role: string; content: string }[],
-  apiKey: string
-): Promise<string> {
-  const res = await fetch(
-    `https://api-inference.huggingface.co/models/${model}/v1/chat/completions`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...history],
-        max_tokens: 2048,
-        temperature: 0.3,
-        stream: false,
-      }),
-    }
-  );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as any)?.error ?? `HuggingFace error ${res.status}`);
-  }
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content ?? '(no response)';
-}
-
-async function callGemini(
-  history: { role: string; content: string }[],
-  apiKey: string
-): Promise<string> {
-  const contents = history.map((m) => ({
-    role: m.role === 'assistant' ? 'model' : 'user',
-    parts: [{ text: m.content }],
-  }));
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents,
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        generationConfig: { maxOutputTokens: 2048, temperature: 0.3 },
-      }),
-    }
-  );
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as any)?.error?.message ?? `Gemini error ${res.status}`);
-  }
-  const data = await res.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? '(no response)';
-}
-
 // ---------------------------------------------------------------------------
 // Main Component
 // ---------------------------------------------------------------------------
 
-export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
+export function AIAssistant({ projectId, projectName, projectFiles = [], currentFilePath, currentFileContent, onCodeInsert, onCreateFiles }: AIAssistantProps) {
   const { user } = useAuth({ redirectOnUnauthenticated: false });
   const { language } = useLanguage();
   const copy = getComponentCopy(language);
@@ -214,14 +158,30 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
   });
   const isPro = pricingStatus?.featureAccess.aiAssistant === true;
   const chatMutation = trpc.ai.chat.useMutation();
+  const agentMutation = trpc.ai.agent.useMutation();
+  const { data: agentAvailability } = trpc.ai.agentAvailability.useQuery(
+    { projectId: projectId ?? null },
+    { enabled: Boolean(user), retry: false },
+  );
+  const isAdmin = user?.role === 'admin'
+    || user?.email?.trim().toLowerCase() === 'tatik.space@gmail.com';
 
   const [isOpen, setIsOpen] = useState(false);
   const [selectedModel, setSelectedModel] = useState<ModelId>('qwen');
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
+  const [contextDisclosure, setContextDisclosure] = useState<'pending' | 'sent' | 'not-sent'>('pending');
   const [isLoading, setIsLoading] = useState(false);
   const [dailyUsage, setDailyUsage] = useState<DailyUsage>(getDailyUsage);
-  const [showProBanner, setShowProBanner] = useState(false);
+  const [agentMode, setAgentMode] = useState(false);
+  const agentMemoryKey = user && projectId !== undefined && projectId !== null
+    ? agentMemoryStorageKey(user.id, projectId)
+    : null;
+  const [agentMemory, setAgentMemory] = useState<{
+    key: string | null;
+    examples: ApprovedAgentExample[];
+  }>({ key: null, examples: [] });
+  const approvedAgentExamples = agentMemory.key === agentMemoryKey ? agentMemory.examples : [];
 
   // Bug fix mode states
   const [bugFixMode, setBugFixMode] = useState(false);
@@ -287,7 +247,56 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
 
   const currentModel = MODELS.find((m) => m.id === selectedModel)!;
   const remainingMessages = FREE_DAILY_LIMIT - dailyUsage.count;
-  const isLimitReached = !isPro && remainingMessages <= 0;
+  const isLimitReached = !isAdmin && remainingMessages <= 0;
+  const canRunAgent = isAdmin || remainingMessages >= 5;
+
+  useEffect(() => {
+    if (!agentMemoryKey) {
+      setAgentMemory({ key: null, examples: [] });
+      return;
+    }
+    try {
+      setAgentMemory({
+        key: agentMemoryKey,
+        examples: parseApprovedAgentExamples(localStorage.getItem(agentMemoryKey)),
+      });
+    } catch (error) {
+      setAgentMemory({ key: agentMemoryKey, examples: [] });
+      toast.error(error instanceof Error ? error.message : 'Impossibile leggere la memoria locale dell’Agente.');
+    }
+  }, [agentMemoryKey]);
+
+  const handleApproveAgentExample = (task: string, response: string) => {
+    if (!agentMemoryKey) return;
+    const confirmed = window.confirm(language === 'it'
+      ? 'Salvare richiesta e risposta come esempio approvato in questo browser per il progetto? Saranno inviati solo al servizio Ollama self-hosted se viene usato come fallback. Non salvare segreti o dati personali. Continuare?'
+      : 'Save this request and response as an approved example in this browser for this project? It will only be sent to self-hosted Ollama when that fallback is used. Do not save secrets or personal data. Continue?');
+    if (!confirmed) return;
+
+    try {
+      const updated = addApprovedAgentExample(approvedAgentExamples, task, response);
+      localStorage.setItem(agentMemoryKey, JSON.stringify(updated));
+      setAgentMemory({ key: agentMemoryKey, examples: updated });
+      toast.success(language === 'it' ? 'Esempio approvato salvato nel browser.' : 'Approved example saved in this browser.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Impossibile salvare l’esempio approvato.');
+    }
+  };
+
+  const handleClearAgentMemory = () => {
+    if (!agentMemoryKey || approvedAgentExamples.length === 0) return;
+    const confirmed = window.confirm(language === 'it'
+      ? 'Eliminare tutti gli esempi approvati salvati in questo browser per il progetto?'
+      : 'Delete all approved examples saved in this browser for this project?');
+    if (!confirmed) return;
+    try {
+      localStorage.removeItem(agentMemoryKey);
+      setAgentMemory({ key: agentMemoryKey, examples: [] });
+      toast.success(language === 'it' ? 'Memoria dell’Agente eliminata.' : 'Agent memory deleted.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Impossibile eliminare la memoria dell’Agente.');
+    }
+  };
 
   // ---------------------------------------------------------------------------
   // Scroll to bottom
@@ -325,7 +334,6 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
   // ---------------------------------------------------------------------------
   const handleModelChange = (id: ModelId) => {
     const model = MODELS.find((m) => m.id === id)!;
-    if (model.tier === 'pro' && !isPro) { setShowProBanner(true); return; }
     setSelectedModel(id);
     const modelIndex = MODELS.indexOf(model);
     setMessages((prev) => [
@@ -350,7 +358,13 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
   const handleSend = useCallback(async () => {
     const trimmed = input.trim();
     if (!trimmed || isLoading) return;
-    if (isLimitReached) { setShowProBanner(true); return; }
+    if (isLimitReached) return;
+    if (agentMode && !canRunAgent) {
+      toast.error(language === 'it'
+        ? 'L’Agente può richiedere fino a cinque chiamate AI. Riprova quando il limite giornaliero si rinnova.'
+        : 'The Agent may use up to five AI calls. Try again when the daily limit resets.');
+      return;
+    }
 
     const userMsg: Message = {
       id: Date.now().toString(),
@@ -360,36 +374,103 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
     };
 
     const nextMessages = [...messages, userMsg];
+    const hasProjectContext = projectFiles.length > 0 || (currentFilePath && currentFileContent !== undefined);
+    const informationalAgentRequest = agentMode && isInformationalAgentRequest(trimmed);
+    if (agentMode && !agentAvailability?.available) return;
+    if (hasProjectContext) {
+      setContextDisclosure(informationalAgentRequest ? 'not-sent' : 'sent');
+    }
     setMessages(nextMessages);
     setInput('');
     setIsLoading(true);
 
-    const newUsage = { ...dailyUsage, count: dailyUsage.count + 1 };
-    setDailyUsage(newUsage);
-    saveDailyUsage(newUsage);
+    if (!isAdmin) {
+      const newUsage = { ...dailyUsage, count: dailyUsage.count + 1 };
+      setDailyUsage(newUsage);
+      saveDailyUsage(newUsage);
+    }
 
     try {
       const apiHistory = nextMessages
         .filter((m) => m.id !== 'welcome' && !m.id.startsWith('switch-'))
         .map((m) => ({ role: m.role, content: m.content }));
+      apiHistory.splice(0, Math.max(0, apiHistory.length - 49));
+      if (projectFiles.length > 0 || (currentFilePath && currentFileContent !== undefined)) {
+        const contextFiles = projectFiles.slice();
+        if (currentFilePath && currentFileContent !== undefined) {
+          const currentIndex = contextFiles.findIndex(file => file.path === currentFilePath);
+          if (currentIndex === -1) contextFiles.unshift({ path: currentFilePath, content: currentFileContent });
+          else contextFiles[currentIndex] = { ...contextFiles[currentIndex], content: currentFileContent };
+        }
+        apiHistory.unshift({
+          role: 'user',
+          content: buildAssistantProjectContext(projectName, contextFiles, currentFilePath, trimmed),
+        });
+      }
 
-      const response = await chatMutation.mutateAsync({
-        model: selectedModel === 'gemini' ? 'gemini' : selectedModel === 'deepseek' ? 'deepseek' : 'qwen',
-        messages: apiHistory,
-      });
-      const reply = response.content;
-
+      const model = selectedModel === 'gemini' ? 'gemini' : selectedModel === 'deepseek' ? 'deepseek' : 'qwen';
+      const contextFiles = projectFiles.slice();
+      if (currentFilePath && currentFileContent !== undefined) {
+        const currentIndex = contextFiles.findIndex(file => file.path === currentFilePath);
+        if (currentIndex === -1) contextFiles.unshift({ path: currentFilePath, content: currentFileContent });
+        else contextFiles[currentIndex] = { ...contextFiles[currentIndex], content: currentFileContent };
+      }
+      let content: string;
+      let provider: string;
+      let providerModel: string;
+      let agentResponse: string | undefined;
+      if (agentMode) {
+        const response = await agentMutation.mutateAsync({
+          projectId: projectId ?? 0,
+          model,
+          task: trimmed,
+          history: messages
+            .filter(message => message.id !== 'welcome' && !message.id.startsWith('switch-'))
+            .slice(-8)
+            .map(message => ({ role: message.role, content: message.content.slice(0, 4000) })),
+          context: contextFiles.length > 0
+            ? buildAssistantProjectContext(projectName, contextFiles, currentFilePath, trimmed).slice(0, 12000)
+            : undefined,
+          approvedExamples: selectRelevantAgentExamples(approvedAgentExamples, trimmed),
+        });
+        if (!isAdmin) {
+          const used = Math.min(
+            FREE_DAILY_LIMIT,
+            Math.max(dailyUsage.count + response.usageCalls, response.usage.used),
+          );
+          const updatedUsage = { ...dailyUsage, count: used };
+          setDailyUsage(updatedUsage);
+          saveDailyUsage(updatedUsage);
+        }
+        agentResponse = response.content;
+        content = informationalAgentRequest
+          ? response.content
+          : `**Piano di lavoro:** ${response.plan}\n\n**Deleghe:**\n${response.delegations.map(item => `- ${item.role}: ${item.task}`).join('\n')}\n\n${response.content}`;
+        provider = response.provider;
+        providerModel = response.model;
+      } else {
+        const response = await chatMutation.mutateAsync({ model, messages: apiHistory });
+        content = response.content;
+        provider = response.provider;
+        providerModel = response.model;
+      }
       setMessages((prev) => [...prev, {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: reply,
+        content,
         timestamp: new Date(),
         modelId: selectedModel,
+        provider,
+        providerModel,
+        agentTask: agentMode ? trimmed : undefined,
+        agentResponse,
       }]);
     } catch (err: any) {
-      const failedUsage = { ...dailyUsage, count: Math.max(0, dailyUsage.count) };
-      setDailyUsage(failedUsage);
-      saveDailyUsage(failedUsage);
+      if (!isAdmin) {
+        const failedUsage = { ...dailyUsage, count: Math.max(0, dailyUsage.count) };
+        setDailyUsage(failedUsage);
+        saveDailyUsage(failedUsage);
+      }
       setMessages((prev) => [...prev, {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -403,7 +484,7 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
       setIsLoading(false);
       textareaRef.current?.focus();
     }
-  }, [input, isLoading, messages, selectedModel, dailyUsage, isLimitReached, chatMutation]);
+  }, [input, isLoading, messages, selectedModel, dailyUsage, isLimitReached, chatMutation, agentMutation, agentMode, agentAvailability, projectId, currentFilePath, currentFileContent, projectName, projectFiles, approvedAgentExamples]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -437,15 +518,16 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
-  if (pricingStatus?.featureAccess.aiAssistant !== true) return null;
-
   return (
     <>
       {/* Trigger button */}
-      <Button onClick={() => setIsOpen(true)} size="sm" className="gap-1 px-2 py-1" variant="outline">
+      <Button onClick={() => {
+        setAgentMode(!isPro);
+        setIsOpen(true);
+      }} size="sm" className="gap-1 px-2 py-1" variant="outline">
         <Bot className="h-4 w-4" />
-        {copy.ai.button}
-        {!isPro && remainingMessages <= 3 && remainingMessages > 0 && (
+        {isPro ? copy.ai.button : "Agente AI"}
+        {remainingMessages <= 3 && remainingMessages > 0 && (
           <Badge variant="destructive" className="text-[9px] px-1 py-0 h-4 ml-1">{remainingMessages}</Badge>
         )}
       </Button>
@@ -461,55 +543,72 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
                   <Sparkles className="h-3.5 w-3.5 text-primary" />
                 </div>
                 {copy.ai.title}
-                {isPro && (
-                  <Badge className="bg-amber-500/10 text-amber-500 border border-amber-500/20 text-[10px] gap-1">
-                    <Crown className="h-2.5 w-2.5" /> PRO
-                  </Badge>
-                )}
               </DialogTitle>
-              {!isPro && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <div className="h-1.5 w-16 rounded-full bg-muted overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-primary transition-all duration-300"
-                      style={{ width: `${Math.min((dailyUsage.count / FREE_DAILY_LIMIT) * 100, 100)}%` }}
-                    />
-                  </div>
-                  <span>{Math.max(remainingMessages, 0)}/{FREE_DAILY_LIMIT}</span>
-                </div>
-              )}
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  {!isAdmin && (
+                    <div className="h-1.5 w-16 rounded-full bg-muted overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-primary transition-all duration-300"
+                        style={{ width: `${Math.min((dailyUsage.count / FREE_DAILY_LIMIT) * 100, 100)}%` }}
+                      />
+                    </div>
+                  )}
+                  <span title={isAdmin ? (language === 'it' ? 'Uso senza limite giornaliero' : 'No daily usage limit') : undefined}>
+                    {isAdmin ? '∞' : `${Math.max(remainingMessages, 0)}/${FREE_DAILY_LIMIT}`}
+                  </span>
+              </div>
             </div>
 
             {/* Model tabs */}
-            <div className="flex gap-0.5 border-b">
+            <div className="flex min-w-0 gap-0.5 overflow-x-auto border-b">
+              <button
+                onClick={() => {
+                  setAgentMode(true);
+                  setBugFixMode(false);
+                  setOptimizationMode(false);
+                }}
+                className={cn(
+                  'relative flex shrink-0 items-center gap-1.5 px-3 py-2 text-xs font-semibold rounded-t-md transition-all border-b-2 -mb-px',
+                  agentMode
+                    ? 'border-primary text-primary bg-primary/5'
+                    : 'border-transparent text-primary hover:bg-primary/5'
+                )}
+              >
+                <Bot className="h-3.5 w-3.5" />
+                <span>Agente AI</span>
+              </button>
+              {isPro && <>
               {MODELS.map((model) => {
                 const isActive = selectedModel === model.id;
-                const isLocked = model.tier === 'pro' && !isPro;
                 return (
                   <button
                     key={model.id}
-                    onClick={() => handleModelChange(model.id)}
+                    onClick={() => {
+                      setAgentMode(false);
+                      handleModelChange(model.id);
+                    }}
                     className={cn(
-                      'relative flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-md transition-all border-b-2 -mb-px',
+                      'relative flex shrink-0 items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-md transition-all border-b-2 -mb-px',
                       isActive && !bugFixMode
                         ? 'border-primary text-foreground bg-background'
-                        : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50',
-                      isLocked && 'opacity-60'
+                        : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
                     )}
                   >
                     <span className={cn('h-1.5 w-1.5 rounded-full', isActive && !bugFixMode ? model.dotColor : 'bg-muted-foreground/40')} />
                     {model.name}
                     <span className="text-[9px] opacity-60">{model.label}</span>
-                    {isLocked && <Lock className="h-2.5 w-2.5 ml-0.5" />}
                   </button>
                 );
               })}
 
               {/* Bug Analysis Tab */}
               <button
-                onClick={() => setBugFixMode(true)}
+                onClick={() => {
+                  setAgentMode(false);
+                  setBugFixMode(true);
+                }}
                 className={cn(
-                  'relative flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-md transition-all border-b-2 -mb-px',
+                  'relative flex shrink-0 items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-md transition-all border-b-2 -mb-px',
                   bugFixMode
                     ? 'border-primary text-foreground bg-background'
                     : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
@@ -521,9 +620,12 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
 
               {/* Optimization Tab */}
               <button
-                onClick={() => setOptimizationMode(true)}
+                onClick={() => {
+                  setAgentMode(false);
+                  setOptimizationMode(true);
+                }}
                 className={cn(
-                  'relative flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-md transition-all border-b-2 -mb-px',
+                  'relative flex shrink-0 items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-t-md transition-all border-b-2 -mb-px',
                   optimizationMode
                     ? 'border-primary text-foreground bg-background'
                     : 'border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50'
@@ -532,12 +634,22 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
                 <Flame className="h-3.5 w-3.5" />
                 <span>{copy.ai.optimizeTab}</span>
               </button>
+              </>}
             </div>
           </DialogHeader>
 
+          <AITransparencyNotice />
+
           {/* Model info strip */}
           <div className="flex items-center gap-2 px-5 py-2 bg-muted/30 border-b shrink-0 flex-wrap">
-            {!bugFixMode && !optimizationMode ? (
+            {agentMode ? (
+              <>
+                <Badge variant="outline" className="text-[10px] gap-1 px-2 bg-primary/10 text-primary border-primary/20">
+                  <Bot className="h-2.5 w-2.5" /> Agente di sviluppo
+                </Badge>
+                <span className="text-[11px] text-muted-foreground">Pianifica, delega a specialisti e sintetizza una soluzione. Le modifiche richiedono la tua conferma.</span>
+              </>
+            ) : !bugFixMode && !optimizationMode ? (
               <>
                 <Badge variant="outline" className={cn('text-[10px] gap-1 px-2', currentModel.badgeColor)}>
                   <Zap className="h-2.5 w-2.5" />
@@ -569,30 +681,18 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
             )}
           </div>
 
-          {/* Pro banner */}
-          {showProBanner && !isPro && (
-            <div className="mx-4 mt-3 shrink-0 rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 flex items-start gap-3">
-              <Crown className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-amber-500">{copy.ai.proTitle}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {copy.ai.proBenefits}
-                </p>
-              </div>
-              <div className="flex items-center gap-2 shrink-0">
-                <Button size="sm" className="h-7 text-xs bg-amber-500 hover:bg-amber-600 text-white gap-1">
-                  {copy.promo.upgrade} <ChevronRight className="h-3 w-3" />
-                </Button>
-                <button onClick={() => setShowProBanner(false)} className="text-muted-foreground hover:text-foreground text-lg leading-none">×</button>
-              </div>
-            </div>
-          )}
-
           {/* Messages / Bug Fix Form */}
           <div ref={scrollAreaRef} className="flex-1 overflow-hidden min-h-0">
             <ScrollArea className="h-full">
               <div className="flex flex-col gap-4 p-5">
-                {bugFixMode ? (
+                {agentMode && !agentAvailability?.available ? (
+                  <div className="rounded-lg border border-primary/20 bg-primary/5 p-4 text-sm">
+                    <div className="mb-1 font-semibold">Accesso anticipato</div>
+                    <p className="text-muted-foreground">
+                      {agentAvailability?.notice || "L'Agente AI è attualmente disponibile solo per amministratori e un gruppo ristretto di collaboratori. L'accesso Pro sarà disponibile a breve."}
+                    </p>
+                  </div>
+                ) : bugFixMode ? (
                   // Bug fix form
                   <>
                     <div className="flex items-center gap-2 mb-3">
@@ -760,16 +860,76 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
                 ) : (
                   // Chat messages
                   <>
-                    {messages.map((msg) => (
+                    {messages.map((msg, messageIndex) => (
                       <MessageBubble
                         key={msg.id}
                         message={msg}
                         model={MODELS.find((m) => m.id === msg.modelId)}
+                        onApproveAgentExample={
+                          msg.agentTask && msg.agentResponse && agentMemoryKey
+                            ? () => handleApproveAgentExample(msg.agentTask!, msg.agentResponse!)
+                            : undefined
+                        }
+                        agentExampleApproved={Boolean(msg.agentTask && approvedAgentExamples.some(example =>
+                          example.task === msg.agentTask && example.response === msg.agentResponse,
+                        ))}
                         onInsertCode={
-                          onCodeInsert && msg.role === 'assistant' && /```/.test(msg.content)
-                            ? () => {
-                              const code = extractCodeBlock(msg.content);
-                              if (code) { onCodeInsert(code); toast.success(copy.ai.codeInserted); }
+                          onCodeInsert && msg.role === 'assistant' && extractAssistantCodeBlocks(msg.content).length > 0
+                            ? async () => {
+                              const blocks = extractAssistantCodeBlocks(msg.content);
+                              const code = blocks[0]?.content;
+                              if (!code) return;
+                              try {
+                                await onCodeInsert(code);
+                                toast.success(copy.ai.codeInserted);
+                              } catch (error) {
+                                toast.error(error instanceof Error ? error.message : copy.ai.chatError);
+                              }
+                            }
+                            : undefined
+                        }
+                        onCreateFiles={
+                          onCreateFiles && msg.role === 'assistant'
+                            && (extractAssistantCodeFiles(msg.content).length > 0 || hasAssistantProjectOperationsBlock(msg.content))
+                            ? async () => {
+                              try {
+                                const files = extractAssistantCodeFiles(msg.content);
+                                const moves = extractAssistantProjectMoves(msg.content);
+                                const request = msg.agentTask
+                                  || [...messages.slice(0, messageIndex)].reverse().find(item => item.role === 'user')?.content
+                                  || '';
+                                const existingFiles = projectFiles.slice();
+                                if (currentFilePath && currentFileContent !== undefined) {
+                                  const currentIndex = existingFiles.findIndex(file => file.path === currentFilePath);
+                                  const current = { path: currentFilePath, content: currentFileContent };
+                                  if (currentIndex === -1) existingFiles.unshift(current);
+                                  else existingFiles[currentIndex] = current;
+                                }
+                                const filesWithScopeLoss = findAgentFilesWithExcessiveScopeLoss(files, existingFiles, request);
+                                if (filesWithScopeLoss.length > 0) {
+                                  throw new Error(language === 'it'
+                                    ? `Modifica non applicata: ${filesWithScopeLoss.join(', ')} rimuoverebbe gran parte del contenuto esistente. Chiedi una modifica locale che mantenga le altre sezioni.`
+                                    : `Change not applied: ${filesWithScopeLoss.join(', ')} would remove most existing content. Request a local edit that preserves the other sections.`);
+                                }
+                                const unverifiedMaps = findUnverifiedGoogleMapEmbeds(files, [
+                                  request,
+                                  ...existingFiles.map(file => file.content || ''),
+                                ].join('\n'));
+                                if (unverifiedMaps.length > 0) {
+                                  throw new Error(language === 'it'
+                                    ? `Mappa non applicata: coordinate o ID Google non verificati in ${unverifiedMaps.join(', ')}. Chiedi una mappa basata sull’indirizzo fornito.`
+                                    : `Map not applied: unverified coordinates or Google IDs in ${unverifiedMaps.join(', ')}. Request a map based on the supplied address.`);
+                                }
+                                const result = await onCreateFiles(files, moves);
+                                if (result) {
+                                  const summary = language === 'it'
+                                    ? `${result.created} file creati, ${result.updated} aggiornati, ${result.moved} spostati nel progetto`
+                                    : `${result.created} files created, ${result.updated} updated, ${result.moved} moved in the project`;
+                                  toast.success(summary);
+                                }
+                              } catch (error) {
+                                toast.error(error instanceof Error ? error.message : copy.ai.chatError);
+                              }
                             }
                             : undefined
                         }
@@ -806,9 +966,6 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
                       <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3 text-xs text-destructive">
                         <AlertCircle className="h-4 w-4 shrink-0" />
                         <span>{copy.ai.dailyLimit}</span>
-                        <Button size="sm" variant="destructive" className="ml-auto h-6 text-[11px]" onClick={() => setShowProBanner(true)}>
-                          {copy.promo.upgrade}
-                        </Button>
                       </div>
                     )}
                   </>
@@ -822,33 +979,64 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
           {/* Input */}
           {/* Input / Analyze Button */}
           {!bugFixMode && !optimizationMode ? (
-            <form
-              onSubmit={(e) => { e.preventDefault(); handleSend(); }}
-              className="flex gap-2 px-4 py-3 border-t bg-background/60 items-end shrink-0"
-            >
-              <Textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={
-                  isLimitReached
-                    ? copy.ai.limitPlaceholder
-                    : formatCopy(copy.ai.askModel, { model: currentModel.name })
-                }
-                className="flex-1 resize-none min-h-[40px] max-h-32 text-sm"
-                rows={1}
-                disabled={isLoading || isLimitReached}
-              />
-              <Button
-                type="submit"
-                size="icon"
-                disabled={!input.trim() || isLoading || isLimitReached}
-                className="h-10 w-10 shrink-0"
+            <div className="border-t bg-background/60 shrink-0">
+              {agentMode && agentMemoryKey && (
+                <div className="flex items-center justify-between gap-2 px-4 pt-2 text-[10px] text-muted-foreground">
+                  <span>
+                    {language === 'it'
+                      ? `${approvedAgentExamples.length} esempi approvati salvati solo in questo browser; vengono inviati solo a Ollama self-hosted se usato come fallback.`
+                      : `${approvedAgentExamples.length} approved examples saved only in this browser; sent only to self-hosted Ollama when used as a fallback.`}
+                  </span>
+                  {approvedAgentExamples.length > 0 && (
+                    <button type="button" onClick={handleClearAgentMemory} className="shrink-0 hover:text-foreground">
+                      {language === 'it' ? 'Elimina' : 'Clear'}
+                    </button>
+                  )}
+                </div>
+              )}
+              {(projectFiles.length > 0 || (currentFilePath && currentFileContent !== undefined)) && (
+                <p className="px-4 pt-2 text-[10px] text-muted-foreground">
+                  {language === 'it'
+                    ? contextDisclosure === 'not-sent'
+                      ? 'Contesto del progetto non inviato per questa richiesta informativa.'
+                      : contextDisclosure === 'sent'
+                        ? `Contesto del progetto inviato al modello IA selezionato (${projectFiles.length} file${currentFilePath ? ` · attivo: ${currentFilePath}` : ''})`
+                        : 'Il contesto del progetto può essere inviato al modello IA quando pertinente.'
+                    : contextDisclosure === 'not-sent'
+                      ? 'Project context was not sent for this informational request.'
+                      : contextDisclosure === 'sent'
+                        ? `Project context sent to the selected AI model (${projectFiles.length} files${currentFilePath ? ` · active: ${currentFilePath}` : ''})`
+                        : 'Project context may be sent to the selected AI model when relevant.'}
+                </p>
+              )}
+              <form
+                onSubmit={(e) => { e.preventDefault(); handleSend(); }}
+                className="flex gap-2 px-4 py-3 items-end"
               >
-                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              </Button>
-            </form>
+                <Textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={
+                    isLimitReached
+                      ? copy.ai.limitPlaceholder
+                      : formatCopy(copy.ai.askModel, { model: currentModel.name })
+                  }
+                  className="flex-1 resize-none min-h-[40px] max-h-32 text-sm"
+                  rows={1}
+                  disabled={isLoading || isLimitReached || (agentMode && (!agentAvailability?.available || !canRunAgent))}
+                />
+                <Button
+                  type="submit"
+                  size="icon"
+                  disabled={!input.trim() || isLoading || isLimitReached || (agentMode && !canRunAgent)}
+                  className="h-10 w-10 shrink-0"
+                >
+                  {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                </Button>
+              </form>
+            </div>
           ) : bugFixMode ? (
             <div className="flex gap-2 px-4 py-3 border-t bg-background/60 shrink-0">
               <Button
@@ -952,10 +1140,13 @@ export function AIAssistant({ onCodeInsert }: AIAssistantProps) {
 interface MessageBubbleProps {
   message: Message;
   model?: (typeof MODELS)[number];
+  onApproveAgentExample?: () => void;
+  agentExampleApproved?: boolean;
   onInsertCode?: () => void;
+  onCreateFiles?: () => void;
 }
 
-function MessageBubble({ message, model, onInsertCode }: MessageBubbleProps) {
+function MessageBubble({ message, model, onApproveAgentExample, agentExampleApproved, onInsertCode, onCreateFiles }: MessageBubbleProps) {
   const isUser = message.role === 'user';
   const { language } = useLanguage();
   const copy = getComponentCopy(language);
@@ -1006,6 +1197,11 @@ function MessageBubble({ message, model, onInsertCode }: MessageBubbleProps) {
           {model && !isUser && (
             <span className="text-[10px] text-muted-foreground">· {model.name}</span>
           )}
+          {message.provider && !isUser && (
+            <span className="text-[10px] text-muted-foreground">
+              · {message.provider}{message.providerModel ? ` (${message.providerModel})` : ''}
+            </span>
+          )}
           {!isUser && (
             <button onClick={handleCopy} className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-0.5 transition-colors">
               {copied ? <Check className="h-2.5 w-2.5" /> : <Copy className="h-2.5 w-2.5" />}
@@ -1015,6 +1211,22 @@ function MessageBubble({ message, model, onInsertCode }: MessageBubbleProps) {
           {onInsertCode && (
             <button onClick={onInsertCode} className="text-[10px] text-primary hover:underline font-medium">
               {copy.ai.insertCode}
+            </button>
+          )}
+          {onCreateFiles && (
+            <button onClick={onCreateFiles} className="text-[10px] text-primary hover:underline font-medium">
+              {language === 'it' ? 'Crea file nel progetto' : 'Create project files'}
+            </button>
+          )}
+          {onApproveAgentExample && (
+            <button
+              onClick={onApproveAgentExample}
+              disabled={agentExampleApproved}
+              className="text-[10px] text-primary hover:underline font-medium disabled:text-muted-foreground disabled:no-underline"
+            >
+              {agentExampleApproved
+                ? (language === 'it' ? 'Esempio salvato' : 'Example saved')
+                : <><BookmarkPlus className="mr-1 inline h-3 w-3" />{language === 'it' ? 'Approva esempio' : 'Approve example'}</>}
             </button>
           )}
         </div>

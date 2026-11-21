@@ -8,6 +8,9 @@ import { useLanguage } from '@/contexts/LanguageContext';
 import { AITranslationWrapper } from '@/components/AITranslationWrapper';
 import { contactPageFallbacks, contactPageTitles } from '@/lib/contactFormTranslations';
 import { legalSupplementalCopy } from '@/lib/legalSupplementalCopy';
+import { legalComplianceCopy } from '@/lib/legalComplianceCopy';
+import { controllerPrivacyCopy } from '@/lib/controllerPrivacyCopy';
+import { AITransparencySection } from '@/components/AITransparencySection';
 
 function LegalLayout({ children, title }: { children: React.ReactNode; title: string }) {
   const { t } = useLanguage();
@@ -39,6 +42,8 @@ function LegalLayout({ children, title }: { children: React.ReactNode; title: st
 export function PrivacyPolicy() {
   const { language, t } = useLanguage();
   const supplementalCopy = legalSupplementalCopy[language];
+  const complianceCopy = legalComplianceCopy[language];
+  const controllerCopy = controllerPrivacyCopy[language];
   
   return (
     <LegalLayout title={t.privacyPolicy}>
@@ -51,11 +56,29 @@ export function PrivacyPolicy() {
         </section>
 
         <section>
-          <h2 className="text-xl font-semibold mb-3"><AITranslationWrapper>{t.privacyPolicySection2}</AITranslationWrapper></h2>
-          <p>
-            <AITranslationWrapper>{t.privacyPolicySection2Content}</AITranslationWrapper>{' '}
-            <Link href="/contact" className="text-primary hover:underline">{t.contact}</Link>.
+          <h2 className="text-xl font-semibold mb-3">{controllerCopy.title}</h2>
+          <p>{controllerCopy.identity}</p>
+          <p className="mt-3 rounded-md border border-border bg-secondary/40 p-3 text-left">
+            {controllerCopy.pseudonymNote}
           </p>
+          <p className="mt-3">
+            <Link href="/contact" className="text-primary hover:underline">{t.privacyPolicyRightsContact}</Link>.
+          </p>
+          <p className="mt-3">{controllerCopy.contactIntro}</p>
+          <ul className="mt-2 list-disc space-y-1 pl-6 text-left">
+            {[
+              'tatik.space@outlook.com',
+              'tatik.space1@outlook.com',
+              'tatik.space2@outlook.com',
+              'tatik.space3@outlook.com',
+            ].map((email) => (
+              <li key={email}>
+                <a href={`mailto:${email}`} className="text-primary underline underline-offset-2">
+                  {email}
+                </a>
+              </li>
+            ))}
+          </ul>
         </section>
 
         <section>
@@ -125,19 +148,61 @@ export function PrivacyPolicy() {
 
         <section>
           <h2 className="text-xl font-semibold mb-3">{supplementalCopy.privacyTitle}</h2>
-          <p className="text-sm text-muted-foreground">{supplementalCopy.italianTextNotice}</p>
-          <p>
-            Per il marketplace vengono trattati i dati necessari al profilo venditore, alla pubblicazione dei listing,
-            alla revisione, agli acquisti, ai rimborsi, alle contestazioni e alla contabilizzazione del saldo.
-            I file dei venditori sono conservati in storage privato e non vengono resi disponibili prima
-            dell&apos;autorizzazione prevista dal flusso di acquisto.
-          </p>
-          <p className="mt-3">
-            Per il programma scuole vengono trattati i dati dell&apos;istituto, del referente, degli inviti e dei membri
-            necessari a controllare approvazione, durata, limite di 30 studenti per corso, revoche e audit. Gli inviti usano token
-            temporanei associati all&apos;email indicata dalla scuola. La scuola è responsabile della correttezza degli
-            indirizzi e delle autorizzazioni necessarie per invitare gli studenti.
-          </p>
+          <p>{supplementalCopy.privacyMarketplace}</p>
+          <p className="mt-3">{supplementalCopy.privacySchools}</p>
+        </section>
+
+        <AITransparencySection />
+        <section className="rounded-lg border border-border bg-secondary/40 p-4 text-left">
+          <h2 className="mb-3 text-xl font-semibold">{complianceCopy.privacyAiTitle}</h2>
+          <p>{complianceCopy.privacyAi}</p>
+          <p className="mt-3 text-sm text-muted-foreground">{controllerCopy.providerUpdateNotice}</p>
+        </section>
+        <section className="rounded-lg border border-border bg-secondary/40 p-4 text-left">
+          <h2 className="mb-3 text-xl font-semibold">{complianceCopy.aiLegalTitle}</h2>
+          <p>{complianceCopy.aiLegalContext}</p>
+          <h3 className="mt-4 mb-2 font-semibold">{complianceCopy.officialSources}</h3>
+          <ul className="list-disc space-y-1 pl-6">
+            <li>
+              <a href="https://eur-lex.europa.eu/eli/reg/2016/679/oj" target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">
+                {complianceCopy.gdprSource}
+              </a>
+            </li>
+            <li>
+              <a href="https://commission.europa.eu/law/law-topic/data-protection/information-individuals_en" target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">
+                {complianceCopy.gdprRightsSource}
+              </a>
+            </li>
+            <li>
+              <a href="https://eur-lex.europa.eu/eli/reg/2024/1689/oj" target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">
+                {complianceCopy.aiActSource}
+              </a>
+            </li>
+            <li>
+              <a href="https://digital-strategy.ec.europa.eu/en/policies/regulatory-framework-ai" target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">
+                {complianceCopy.commissionAiActSource}
+              </a>
+            </li>
+            <li>
+              <a href="https://www.normattiva.it/uri-res/N2Ls?urn:nir:stato:legge:2025-09-23;132" target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">
+                {complianceCopy.italianLawSource}
+              </a>
+            </li>
+          </ul>
+          <h3 className="mt-4 mb-2 font-semibold">{complianceCopy.moreInfo}</h3>
+          <p className="mb-2 text-sm text-muted-foreground">{complianceCopy.thirdPartySourcesNote}</p>
+          <ul className="list-disc space-y-1 pl-6">
+            <li>
+              <a href="https://aipia.it/normativa-ai/decreto-attuativo-ia-italia-legge-132-2025-cosa-cambia/" target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">
+                {complianceCopy.italianArticleSource}
+              </a>
+            </li>
+            <li>
+              <a href="https://go.nis2.org.ua/eu-ai-act/" target="_blank" rel="noopener noreferrer" className="text-primary underline underline-offset-2">
+                {complianceCopy.aiGuideSource}
+              </a>
+            </li>
+          </ul>
         </section>
       </div>
     </LegalLayout>
@@ -147,6 +212,7 @@ export function PrivacyPolicy() {
 export function TermsOfService() {
   const { language, t } = useLanguage();
   const supplementalCopy = legalSupplementalCopy[language];
+  const complianceCopy = legalComplianceCopy[language];
   
   return (
     <LegalLayout title={t.termsOfService}>
@@ -232,24 +298,18 @@ export function TermsOfService() {
 
         <section>
           <h2 className="text-xl font-semibold mb-3">{supplementalCopy.termsTitle}</h2>
-          <p className="text-sm text-muted-foreground">{supplementalCopy.italianTextNotice}</p>
-          <p>
-            Il venditore è responsabile del template e dei materiali caricati, dei diritti di utilizzo, della descrizione,
-            della qualità e sicurezza del prodotto, delle licenze e degli obblighi verso gli acquirenti previsti dalla legge.
-            Deve caricare esclusivamente contenuti leciti, sicuri e di cui possiede i diritti. Tatik può rifiutare,
-            sospendere o rimuovere un listing durante la revisione o in presenza di violazioni; la revisione non equivale
-            a una garanzia o certificazione del prodotto.
-            La commissione applicata alle vendite è pari al 15%; il saldo può restare sospeso per verifiche,
-            periodo anti-frode, rimborsi o contestazioni. Il venditore riceve l'85% del prezzo prima delle commissioni
-            del provider di pagamento. I payout richiedono Stripe Connect e la verifica KYC. Le recensioni sono
-            consentite agli acquirenti con un ordine pagato e non rimborsato.
-          </p>
-          <p className="mt-3">
-            La registrazione di un istituto scolastico diventa attiva solo dopo l&apos;approvazione di admin o collaboratori
-            Tatik. Gli inviti agli studenti sono creati e approvati dalla scuola, sono temporanei e non trasferibili.
-            L&apos;accesso dura 30 giorni dall&apos;approvazione dell&apos;istituto, è limitato a 30 studenti per corso e può essere revocato
-            in caso di abuso, violazione o dati non verificabili.
-          </p>
+          <p>{supplementalCopy.termsMarketplace}</p>
+          <p className="mt-3">{supplementalCopy.termsSchools}</p>
+        </section>
+
+        <section id="ai-use" className="scroll-mt-6 text-left">
+          <h2 className="text-xl font-semibold mb-3">{complianceCopy.aiTermsTitle}</h2>
+          <p>{complianceCopy.aiTerms}</p>
+        </section>
+
+        <section id="affiliate-disclosure" className="scroll-mt-6 text-left">
+          <h2 className="text-xl font-semibold mb-3">{complianceCopy.affiliateTitle}</h2>
+          <p>{complianceCopy.affiliateDisclosure}</p>
         </section>
       </div>
     </LegalLayout>
@@ -290,6 +350,11 @@ export function CookiePolicy() {
             <li><strong>Google Analytics:</strong> <AITranslationWrapper>{t.cookiePolicyGAContent}</AITranslationWrapper></li>
             <li><strong><AITranslationWrapper>{t.cookiePolicyStatsLabel}</AITranslationWrapper>:</strong> <AITranslationWrapper>{t.cookiePolicyStatsContent}</AITranslationWrapper></li>
           </ul>
+          <p className="mt-3">
+            <AITranslationWrapper>
+              Google Analytics usa la modalità di consenso avanzata con il consenso TCF di Gatekeeper. Prima della scelta invia segnali di visita senza cookie Analytics, che non identificano i visitatori e potrebbero non apparire in tempo reale. Dopo il consenso analitico, la visualizzazione della pagina corrente e le successive vengono misurate con il consenso concesso; se rifiuti, restano disattivati i cookie Analytics.
+            </AITranslationWrapper>
+          </p>
         </section>
 
         <section>

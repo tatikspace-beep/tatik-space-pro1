@@ -5,6 +5,7 @@ import { marketplaceListings, marketplaceOrders } from "../../drizzle/schema";
 const mocks = vi.hoisted(() => ({
   createSubscription: vi.fn(),
   getPaymentRecordByProviderEvent: vi.fn(),
+  getPaymentRecordByProviderOrder: vi.fn(),
   getPaymentRecordByProviderPayment: vi.fn(),
   getSubscriptionByStripeId: vi.fn(),
   updatePaymentRecord: vi.fn(),
@@ -21,6 +22,7 @@ vi.mock("../db", async importOriginal => {
     ...actual,
     createSubscription: mocks.createSubscription,
     getPaymentRecordByProviderEvent: mocks.getPaymentRecordByProviderEvent,
+    getPaymentRecordByProviderOrder: mocks.getPaymentRecordByProviderOrder,
     getPaymentRecordByProviderPayment: mocks.getPaymentRecordByProviderPayment,
     getSubscriptionByStripeId: mocks.getSubscriptionByStripeId,
     updatePaymentRecord: mocks.updatePaymentRecord,
@@ -169,5 +171,40 @@ describe("Stripe subscription webhooks", () => {
     }));
     expect(database.update).toHaveBeenCalled();
     expect(database.insert).toHaveBeenCalled();
+  });
+
+  it("records a paid analytics report without granting a subscription", async () => {
+    const reportId = "2fc2cba8-1fd5-49f5-89d1-186aeb31b2c2";
+    mocks.getPaymentRecordByProviderOrder.mockResolvedValue({
+      id: 82,
+      userId: 42,
+      kind: "analytics_report",
+      status: "pending",
+      amount: 199,
+      currency: "eur",
+      metadata: JSON.stringify({ reportId }),
+    });
+
+    await handleStripeEvent({
+      id: "evt_analytics_report_paid",
+      type: "checkout.session.completed",
+      data: {
+        object: {
+          id: "cs_analytics_report",
+          payment_status: "paid",
+          amount_total: 199,
+          currency: "eur",
+          payment_intent: "pi_analytics_report",
+          metadata: { userId: "42", kind: "analytics_report", reportId },
+        } as Stripe.Checkout.Session,
+      },
+    } as Stripe.Event);
+
+    expect(mocks.updatePaymentRecord).toHaveBeenCalledWith(82, expect.objectContaining({
+      status: "paid",
+      providerEventId: "evt_analytics_report_paid",
+      providerPaymentId: "pi_analytics_report",
+    }));
+    expect(mocks.createSubscription).not.toHaveBeenCalled();
   });
 });

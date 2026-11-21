@@ -2,8 +2,27 @@ import { createHash, timingSafeEqual } from "node:crypto";
 
 export const ADMIN_EMAIL = "tatik.space@gmail.com";
 
+const AGENT_EARLY_ACCESS_EMAILS = new Set([
+  "tatik.space@outlook.it",
+  "tatik.space@outlook.com",
+  "tatik.space1@outlook.it",
+  "tatik.space1@outlook.com",
+  "tatik.space2@outlook.it",
+  "tatik.space2@outlook.com",
+  "tatik.space3@outlook.it",
+  "tatik.space3@outlook.com",
+  "tatik.space@hotmail.com",
+  "tatik.space1@hotmail.com",
+  "tatik.space2@hotmail.com",
+  "tatik.space3@hotmail.com",
+]);
+
 export function normalizeEmail(email?: string | null): string {
   return String(email ?? "").trim().toLowerCase();
+}
+
+export function isAgentEarlyAccessEmail(email?: string | null): boolean {
+  return AGENT_EARLY_ACCESS_EMAILS.has(normalizeEmail(email));
 }
 
 export function isAdminEmail(email?: string | null): boolean {

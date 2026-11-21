@@ -16,6 +16,8 @@ import { CodeEditor } from '@/components/CodeEditor';
 import { PreviewPanel } from '@/components/PreviewPanel';
 import { PerfCheck } from '@/components/PerfCheck';
 import { AIAssistant } from '@/components/AIAssistant';
+import { ProjectCollaborators } from '@/components/ProjectCollaborators';
+import { ProjectLaunchWizard } from '@/components/ProjectLaunchWizard';
 import { TwoFactorSetup } from '@/components/TwoFactorSetup';
 import { VersionHistory } from '@/components/VersionHistory';
 import { TemplateMarketplace } from '@/components/TemplateMarketplace';
@@ -31,10 +33,19 @@ import { getLoginUrl } from '@/const';
 import { getEditorAppCopy } from '@/lib/editorAppCopy';
 import type { EditorAppCopyKey } from '@/lib/editorAppCopy';
 import { getEditorAppLabelFallback } from '@/lib/editorAppLabelFallbacks';
-import { Loader2, Save, Play, Bot, FolderOpen, FileCode, Search, Menu, X, LogOut, Download, Upload, FolderUp, FilePlus, FolderPlus, Monitor, Smartphone, RotateCw, ChevronDown, CheckCircle2, AlertCircle, Store } from 'lucide-react';
+import { normalizePreviewPath } from '@/lib/previewFileResolver';
+import { normalizeAssistantProjectPath } from '@/lib/assistantProjectContext';
+import type { AssistantProjectMove } from '@/lib/assistantCodeFiles';
+import { validateAssistantProjectReferences } from '@/lib/assistantProjectIntegrity';
+import { createPreviewAssetDocument, isPreviewBinaryAsset } from '@/lib/previewAssets';
+import { createPreviewDataDocument } from '@/lib/previewDataViewer';
+import { createPreviewRuntimeDocument, getPreviewExecutionSupport, getPreviewRuntimeNotice } from '@/lib/previewRuntime';
+import { Loader2, Save, Play, Bot, FolderOpen, FileCode, Search, Menu, X, LogOut, Download, Upload, FolderUp, FilePlus, FolderPlus, Monitor, Smartphone, RotateCw, ChevronDown, CheckCircle2, AlertCircle, Store, Minus, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu';
 import { Helmet } from "react-helmet-async";
+
+const normalizeExplorerPath = (path: string) => path.split('/').filter(Boolean).join('/');
 
 export default function EditorApp() {
   const { user, loading: authLoading } = useAuth();
@@ -49,12 +60,13 @@ export default function EditorApp() {
   const [currentFile, setCurrentFile] = useState<any>(null);
   const [editorContent, setEditorContent] = useState('');
   const [htmlContent, setHtmlContent] = useState('');
+  const [previewNavigationHash, setPreviewNavigationHash] = useState('');
   const [cssContent, setCssContent] = useState('');
   const [jsContent, setJsContent] = useState('');
   const [externalPreviewUrl, setExternalPreviewUrl] = useState<string | null>(null);
   const [isCheckingDevServer, setIsCheckingDevServer] = useState(false);
   const [detectedViteProject, setDetectedViteProject] = useState(false);
-  const [previewMode, setPreviewMode] = useState<'static' | 'vite-react'>('static');
+  const [previewMode, setPreviewMode] = useState<'static' | 'vite-react' | 'compiled'>('static');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchPanelOpen, setSearchPanelOpen] = useState(true);
   const [jumpToLine, setJumpToLine] = useState<number | null>(null);
@@ -80,7 +92,11 @@ export default function EditorApp() {
   const [previewKey, setPreviewKey] = useState(0);
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('desktop');
   const [editorRotated, setEditorRotated] = useState(false);
+  const [rotatedEditorExtraHeight, setRotatedEditorExtraHeight] = useState(0);
   const [previewRotated, setPreviewRotated] = useState(false);
+  const [rotatedPreviewExtraHeight, setRotatedPreviewExtraHeight] = useState(0);
+  const editorRotateAreaRef = useRef<HTMLDivElement>(null);
+  const editorRotateContentRef = useRef<HTMLDivElement>(null);
   const [savingFilePath, setSavingFilePath] = useState<string | null>(null);
   const [savingFileName, setSavingFileName] = useState<string | null>(null);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
@@ -97,7 +113,12 @@ export default function EditorApp() {
   const [newFolderName, setNewFolderName] = useState('');
   const [openFiles, setOpenFiles] = useState<any[]>([]);
   const [confirmCloseDialogOpen, setConfirmCloseDialogOpen] = useState(false);
-  const [pendingClosePath, setPendingClosePath] = useState<string | null>(null);
+  const [pendingCloseTarget, setPendingCloseTarget] = useState<{
+    type: 'file' | 'folder';
+    path: string;
+    hideFromExplorer: boolean;
+  } | null>(null);
+  const [closedExplorerPaths, setClosedExplorerPaths] = useState<string[]>([]);
   const [sidebarWidth, setSidebarWidth] = useState(256); // default 16rem (64 * 4)
   const [editorWidth, setEditorWidth] = useState(150); // Initial min width
   const [previewWidth, setPreviewWidth] = useState(200); // Preview panel width
@@ -111,7 +132,38 @@ export default function EditorApp() {
   const previewWidthRef = useRef(200);
   const projectSetupAttemptedRef = useRef(false);
 
-  const isBinaryAsset = (fileName: string) => /\.(avif|apng|bmp|gif|heic|jpe?g|png|svg|tiff?|webp|ico|mp3|wav|ogg|mp4|webm|mov|woff2?|ttf|otf)$/i.test(fileName);
+  useEffect(() => {
+    const area = editorRotateAreaRef.current;
+    const content = editorRotateContentRef.current;
+    if (!area || !content) return;
+
+    let measurementFrame = 0;
+    const updateRotatedSize = () => {
+      if (measurementFrame) cancelAnimationFrame(measurementFrame);
+      measurementFrame = requestAnimationFrame(() => {
+        measurementFrame = 0;
+        const { width, height } = area.getBoundingClientRect();
+        const rotatedWidth = `${height}px`;
+        const rotatedHeight = `${width}px`;
+        if (content.style.getPropertyValue('--rotated-content-width') !== rotatedWidth) {
+          content.style.setProperty('--rotated-content-width', rotatedWidth);
+        }
+        if (content.style.getPropertyValue('--rotated-content-height') !== rotatedHeight) {
+          content.style.setProperty('--rotated-content-height', rotatedHeight);
+        }
+      });
+    };
+
+    updateRotatedSize();
+    const observer = new ResizeObserver(updateRotatedSize);
+    observer.observe(area);
+    return () => {
+      observer.disconnect();
+      if (measurementFrame) cancelAnimationFrame(measurementFrame);
+    };
+  }, [editorRotated]);
+
+  const isBinaryAsset = (fileName: string) => isPreviewBinaryAsset(fileName);
 
   const readProjectFile = (file: File): Promise<string> => new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -274,6 +326,15 @@ export default function EditorApp() {
 
     return Array.from(merged.values());
   }, [files, localFiles, currentFile, editorContent]);
+  const explorerFiles = useMemo(
+    () => [...files, ...localFiles].filter(file =>
+      !closedExplorerPaths.some(path => {
+        const normalizedFilePath = normalizeExplorerPath(file.path);
+        return normalizedFilePath === path || normalizedFilePath.startsWith(`${path}/`);
+      })
+    ),
+    [files, localFiles, closedExplorerPaths],
+  );
   const createFileMutation = trpc.files.create.useMutation({
     onSuccess: (res) => {
       console.log('[DEBUG] createFileMutation onSuccess:', res);
@@ -287,6 +348,9 @@ export default function EditorApp() {
       toast.error(editorText('createFileError', { error: err.message }));
     },
   });
+  const createAssistantFilesMutation = trpc.files.createAssistantFiles.useMutation();
+  const updateFilePathMutation = trpc.files.updatePath.useMutation();
+  const renameFolderMutation = trpc.files.renameFolder.useMutation();
 
   // copied template helper
   const [copiedTemplate, setCopiedTemplate] = useState<{ code: string; name: string } | null>(null);
@@ -622,9 +686,15 @@ export default function EditorApp() {
       return;
     }
 
-    // If a folder is opened, ALWAYS load the complete project (all files together)
-    // Don't show individual files - show the whole project preview
+    // Keep the complete project available while allowing local HTML links to change pages.
     if (openedFolderName) {
+      const currentPath = currentFile?.path || currentFile?.name || '';
+      if (currentFile && getPreviewExecutionSupport(currentPath) === 'data') {
+        setHtmlContent(createPreviewDataDocument(currentPath, editorContent, language));
+        setCssContent('');
+        setJsContent('');
+        return;
+      }
       console.log('[Preview Effect] Folder opened - loading complete project');
       const allFiles = previewFiles;
       if (allFiles.length > 0) {
@@ -632,24 +702,28 @@ export default function EditorApp() {
         let cssContent = '';
         let jsContent = '';
 
-        // Find index.html or first HTML file
-        for (const f of allFiles) {
-          const fileName = (f.path || f.name).toLowerCase();
-          if (fileName.includes('index.html')) {
-            indexHtmlContent = f.content || '';
-            console.log('[Preview] Found index.html:', indexHtmlContent.length, 'bytes');
-            break;
-          }
-        }
-
-        // If no index.html, use first HTML file
-        if (!indexHtmlContent) {
+        if (currentFile && /\.html$/i.test(currentFile.path || currentFile.name || '')) {
+          indexHtmlContent = editorContent;
+        } else {
+          // Find index.html or first HTML file
           for (const f of allFiles) {
             const fileName = (f.path || f.name).toLowerCase();
-            if (fileName.endsWith('.html')) {
+            if (fileName.includes('index.html')) {
               indexHtmlContent = f.content || '';
-              console.log('[Preview] Found first HTML file:', fileName, indexHtmlContent.length, 'bytes');
+              console.log('[Preview] Found index.html:', indexHtmlContent.length, 'bytes');
               break;
+            }
+          }
+
+          // If no index.html, use first HTML file
+          if (!indexHtmlContent) {
+            for (const f of allFiles) {
+              const fileName = (f.path || f.name).toLowerCase();
+              if (fileName.endsWith('.html')) {
+                indexHtmlContent = f.content || '';
+                console.log('[Preview] Found first HTML file:', fileName, indexHtmlContent.length, 'bytes');
+                break;
+              }
             }
           }
         }
@@ -659,7 +733,7 @@ export default function EditorApp() {
           const fileName = (f.path || f.name).toLowerCase();
           if (fileName.endsWith('.css')) {
             cssContent += (f.content || '') + '\n';
-          } else if ((fileName.endsWith('.js') || fileName.endsWith('.ts')) && !fileName.includes('package.json')) {
+          } else if (fileName.endsWith('.js') && !fileName.includes('package.json')) {
             jsContent += (f.content || '') + '\n';
           }
         }
@@ -688,8 +762,21 @@ export default function EditorApp() {
       const allFiles = previewFiles;
 
       if (isBinaryAsset(fileName) && fileContent.startsWith('data:')) {
-        const escapedSource = fileContent.replace(/"/g, '&quot;');
-        setHtmlContent(`<main style="min-height:100%;display:grid;place-items:center;padding:24px;background:#f8fafc"><img src="${escapedSource}" alt="${currentFile.name}" style="max-width:100%;max-height:100%;object-fit:contain" /></main>`);
+        setHtmlContent(createPreviewAssetDocument(fileName, fileContent, language));
+        setCssContent('');
+        setJsContent('');
+        return;
+      }
+
+      const currentSupport = getPreviewExecutionSupport(fileName);
+      if (currentSupport === 'compiled') {
+        setHtmlContent('<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="root"></div></body></html>');
+        setCssContent('');
+        setJsContent('');
+        return;
+      }
+      if (currentSupport === 'data') {
+        setHtmlContent(createPreviewDataDocument(fileName, fileContent, language));
         setCssContent('');
         setJsContent('');
         return;
@@ -706,7 +793,7 @@ export default function EditorApp() {
           const fname = (f.path || f.name).toLowerCase();
           if (fname.endsWith('.css')) {
             relatedCss += (f.content || '') + '\n';
-          } else if ((fname.endsWith('.js') || fname.endsWith('.ts')) && !fname.includes('package.json')) {
+          } else if (fname.endsWith('.js') && !fname.includes('package.json')) {
             relatedJs += (f.content || '') + '\n';
           }
         }
@@ -749,7 +836,7 @@ export default function EditorApp() {
           const fname = (f.path || f.name).toLowerCase();
           if (fname.endsWith('.css') && fname !== fileName) {
             allCss += (f.content || '') + '\n';
-          } else if ((fname.endsWith('.js') || fname.endsWith('.ts')) && !fname.includes('package.json')) {
+          } else if (fname.endsWith('.js') && !fname.includes('package.json')) {
             allJs += (f.content || '') + '\n';
           }
         }
@@ -760,8 +847,8 @@ export default function EditorApp() {
         return;
       }
       // Show JS in preview with related HTML and CSS
-      else if (fileName.endsWith('.js') || fileName.endsWith('.ts')) {
-        console.log('[Preview] ✅ Showing JS/TS file:', fileName);
+      else if (fileName.endsWith('.js') || fileName.endsWith('.javascript')) {
+        console.log('[Preview] ✅ Showing JavaScript file:', fileName);
 
         // Find HTML file or create basic one
         let htmlContent = '';
@@ -796,7 +883,7 @@ export default function EditorApp() {
           const fname = (f.path || f.name).toLowerCase();
           if (fname.endsWith('.css')) {
             allCss += (f.content || '') + '\n';
-          } else if ((fname.endsWith('.js') || fname.endsWith('.ts')) && fname !== fileName && !fname.includes('package.json')) {
+          } else if (fname.endsWith('.js') && fname !== fileName && !fname.includes('package.json')) {
             allJs += (f.content || '') + '\n';
           }
         }
@@ -804,6 +891,21 @@ export default function EditorApp() {
         setHtmlContent(htmlContent);
         setCssContent(allCss);
         setJsContent(allJs);
+        return;
+      } else if (/\.(?:jsx|ts|tsx)$/i.test(fileName)) {
+        setHtmlContent('<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="root"></div></body></html>');
+        setCssContent('');
+        setJsContent('');
+        return;
+      } else {
+        const previewNotice = getPreviewRuntimeNotice(fileName, language);
+        setHtmlContent(createPreviewRuntimeDocument(
+          previewNotice.heading,
+          previewNotice.explanation,
+          language,
+        ));
+        setCssContent('');
+        setJsContent('');
         return;
       }
     }
@@ -845,7 +947,7 @@ export default function EditorApp() {
         const fileName = (f.path || f.name).toLowerCase();
         if (fileName.endsWith('.css')) {
           cssContent += (f.content || '') + '\n';
-        } else if ((fileName.endsWith('.js') || fileName.endsWith('.ts')) && !fileName.includes('package.json')) {
+        } else if (fileName.endsWith('.js') && !fileName.includes('package.json')) {
           jsContent += (f.content || '') + '\n';
         }
       }
@@ -886,12 +988,14 @@ export default function EditorApp() {
       || /(^|\/)(src\/)?index\.(jsx?|tsx?)$/.test(n),
     );
 
-    const detected = hasViteRuntime || (hasReactRuntime && hasRuntimeEntry);
+    const detectedReactProject = hasReactRuntime && hasRuntimeEntry;
+    const detected = hasViteRuntime || detectedReactProject;
     setDetectedViteProject(detected);
-    setPreviewMode(detected ? 'vite-react' : 'static');
+    setPreviewMode(detectedReactProject ? 'compiled' : detected ? 'vite-react' : 'static');
 
-    if (!detected) {
+    if (!detected || detectedReactProject) {
       setExternalPreviewUrl(null);
+      setIsCheckingDevServer(false);
       return;
     }
 
@@ -1012,45 +1116,161 @@ export default function EditorApp() {
     }
   };
 
-  const handleMoveFile = (sourcePath: string, destinationFolderPath: string) => {
-    setLocalFiles(prev => {
-      const updated = prev.map(file => {
-        if (file.path === sourcePath) {
-          // Move the file to the new folder
-          const fileName = sourcePath.split('/').pop();
-          const newPath = destinationFolderPath ? `${destinationFolderPath}/${fileName}` : fileName;
-          return { ...file, path: newPath };
-        }
-        return file;
-      });
+  const updateEditorFilePath = (oldPath: string, newPath: string, newName: string) => {
+    setLocalFiles(prev => prev.map(file =>
+      file.path === oldPath ? { ...file, name: newName, path: newPath } : file
+    ));
+    setOpenFiles(prev => prev.map(file =>
+      file.path === oldPath ? { ...file, name: newName, path: newPath } : file
+    ));
+    setCurrentFile((prev: any) => prev?.path === oldPath
+      ? { ...prev, name: newName, path: newPath }
+      : prev);
+  };
+
+  const updateEditorFolderPath = (oldPath: string, newPath: string) => {
+    const sourcePrefix = `${oldPath}/`;
+    const updateFilePath = (file: any) => {
+      if (!file.path.startsWith(sourcePrefix)) return file;
+      const path = `${newPath}${file.path.slice(oldPath.length)}`;
+      return { ...file, name: path.slice(path.lastIndexOf('/') + 1), path };
+    };
+
+    setLocalFiles(prev => prev.map(updateFilePath));
+    setOpenFiles(prev => prev.map(updateFilePath));
+    setCurrentFile((prev: any) => prev ? updateFilePath(prev) : prev);
+    setOpenedFolderName(prev =>
+      prev === oldPath ? newPath : prev?.startsWith(sourcePrefix) ? `${newPath}${prev.slice(oldPath.length)}` : prev
+    );
+  };
+
+  const handleMoveFile = async (sourcePath: string, destinationFolderPath: string) => {
+    const name = sourcePath.split('/').pop();
+    if (!name) throw new Error(editorText('invalidFileName'));
+    const destinationPath = destinationFolderPath ? `${destinationFolderPath}/${name}` : name;
+    if (destinationPath === sourcePath) return;
+    if (previewFiles.some(file => file.path === destinationPath)) {
+      throw new Error(language === 'it' ? 'Esiste già un file con questo percorso.' : 'A file already exists at this path.');
+    }
+
+    const localFile = localFiles.find(file => file.path === sourcePath);
+    if (localFile?.isLocal) {
+      updateEditorFilePath(sourcePath, destinationPath, name);
       toast.success(editorText('fileMoved', { path: destinationFolderPath }));
-      return updated;
+      return;
+    }
+
+    const serverFile = files.find(file => file.path === sourcePath);
+    if (!serverFile || !currentProject) {
+      throw new Error(language === 'it' ? 'File del progetto non trovato.' : 'Project file not found.');
+    }
+    await updateFilePathMutation.mutateAsync({
+      fileId: serverFile.id,
+      name,
+      path: destinationPath,
     });
+    updateEditorFilePath(sourcePath, destinationPath, name);
+    await utils.files.list.invalidate({ projectId: currentProject });
+    toast.success(editorText('fileMoved', { path: destinationFolderPath }));
   };
 
-  const handleRenameFile = (oldPath: string, newName: string) => {
-    setLocalFiles(prev => {
-      const updated = prev.map(file => {
-        if (file.path === oldPath) {
-          // Rename the file
-          const pathParts = oldPath.split('/');
-          pathParts[pathParts.length - 1] = newName;
-          const newPath = pathParts.join('/');
-          return { ...file, name: newName, path: newPath };
-        }
-        return file;
+  const handleRenameFile = async (oldPath: string, newName: string) => {
+    const normalizedName = newName.trim();
+    if (
+      !normalizedName
+      || normalizedName.length > 255
+      || normalizedName === '.'
+      || normalizedName === '..'
+      || /[\\/\u0000-\u001f]/.test(normalizedName)
+    ) {
+      throw new Error(editorText('invalidFileName'));
+    }
+    const pathParts = oldPath.split('/');
+    pathParts[pathParts.length - 1] = normalizedName;
+    const newPath = pathParts.join('/');
+    if (newPath.length > 500) throw new Error(editorText('invalidFileName'));
+    if (newPath !== oldPath && previewFiles.some(file => file.path === newPath)) {
+      throw new Error(language === 'it' ? 'Esiste già un file con questo percorso.' : 'A file already exists at this path.');
+    }
+
+    const localFile = localFiles.find(file => file.path === oldPath);
+    if (localFile?.isLocal) {
+      updateEditorFilePath(oldPath, newPath, normalizedName);
+      return;
+    }
+
+    const serverFile = files.find(file => file.path === oldPath);
+    if (!serverFile || !currentProject) {
+      throw new Error(language === 'it' ? 'File del progetto non trovato.' : 'Project file not found.');
+    }
+    await updateFilePathMutation.mutateAsync({
+      fileId: serverFile.id,
+      name: normalizedName,
+      path: newPath,
+    });
+    updateEditorFilePath(oldPath, newPath, normalizedName);
+    await utils.files.list.invalidate({ projectId: currentProject });
+  };
+
+  const handleRenameFolder = async (folderPath: string, newName: string) => {
+    const normalizedName = newName.trim();
+    if (
+      !normalizedName
+      || normalizedName.length > 255
+      || normalizedName === '.'
+      || normalizedName === '..'
+      || /[\\/\u0000-\u001f]/.test(normalizedName)
+    ) {
+      throw new Error(editorText('invalidFolderName'));
+    }
+    if (normalizedName === folderPath.slice(folderPath.lastIndexOf('/') + 1)) return;
+
+    const separator = folderPath.lastIndexOf('/');
+    const newPath = separator === -1
+      ? normalizedName
+      : `${folderPath.slice(0, separator)}/${normalizedName}`;
+    const sourcePrefix = `${folderPath}/`;
+    if (
+      newPath.length > 500
+      || newPath === folderPath
+      || newPath.startsWith(sourcePrefix)
+      || folderPath.startsWith(`${newPath}/`)
+    ) {
+      throw new Error(editorText('invalidFolderName'));
+    }
+
+    const descendants = previewFiles.filter(file => file.path.startsWith(sourcePrefix));
+    if (descendants.length === 0 || descendants.some(file =>
+      `${newPath}${file.path.slice(folderPath.length)}`.length > 500
+    )) {
+      throw new Error(editorText('invalidFolderName'));
+    }
+    const conflicts = previewFiles.some(file => {
+      if (file.path.startsWith(sourcePrefix)) return false;
+      return file.path === newPath
+        || file.path.startsWith(`${newPath}/`)
+        || newPath.startsWith(`${file.path}/`);
+    });
+    if (conflicts) {
+      throw new Error(language === 'it'
+        ? 'Esiste già un file o una cartella con questo percorso.'
+        : 'A file or folder already exists at this path.');
+    }
+
+    const cloudFiles = files.filter(file => file.path.startsWith(sourcePrefix));
+    if (cloudFiles.length > 0) {
+      if (!currentProject) {
+        throw new Error(language === 'it' ? 'Progetto non disponibile.' : 'Project unavailable.');
+      }
+      await renameFolderMutation.mutateAsync({
+        projectId: currentProject,
+        folderPath,
+        newName: normalizedName,
       });
-      toast.success(editorText('fileRenamed', { name: newName }));
-      return updated;
-    });
-  };
+      await utils.files.list.invalidate({ projectId: currentProject });
+    }
 
-  const handleDeleteFile = (path: string) => {
-    setLocalFiles(prev => {
-      const updated = prev.filter(file => file.path !== path);
-      toast.success(editorText('fileDeleted'));
-      return updated;
-    });
+    updateEditorFolderPath(folderPath, newPath);
   };
 
   const handleCreateNewFile = () => {
@@ -1130,6 +1350,7 @@ export default function EditorApp() {
           path: gitkeepPath,
           content: '',
           isLocal: true,
+          isFolderPlaceholder: true,
         }
       ];
       console.log('[DEBUG] Updated localFiles (folder):', newFiles);
@@ -1160,6 +1381,7 @@ export default function EditorApp() {
     console.log('[openFile] Setting currentFile and editorContent:', { name: file.name, contentLength: (file.content || '').length });
     setCurrentFile(file);
     setEditorContent(file.content || '');
+    setPreviewNavigationHash('');
   };
 
   const handleEditorChange = (val: string) => {
@@ -1180,7 +1402,8 @@ export default function EditorApp() {
           name: newFileName,
           path: newPath,
           content: val,
-          type: 'file'
+          type: 'file',
+          isLocal: true,
         };
 
         // Create or update - always remove old "nuovo-file" entries
@@ -1209,7 +1432,11 @@ export default function EditorApp() {
     }
   };
 
-  const closeFileImmediate = (path: string) => {
+  const closeFileImmediate = (path: string, hideFromExplorer = false) => {
+    if (hideFromExplorer) {
+      const normalizedPath = normalizeExplorerPath(path);
+      setClosedExplorerPaths(prev => prev.includes(normalizedPath) ? prev : [...prev, normalizedPath]);
+    }
     setOpenFiles(prev => {
       const next = prev.filter(f => f.path !== path);
       // If no more files and no folder opened, reset preview
@@ -1220,11 +1447,6 @@ export default function EditorApp() {
       }
       return next;
     });
-
-    // Remove file from localFiles if no folder is open (single file mode)
-    if (!openedFolderName) {
-      setLocalFiles((prev: any[]) => prev.filter(f => f.path !== path));
-    }
 
     setCurrentFile((prev: any) => {
       if (!prev) return null;
@@ -1243,99 +1465,152 @@ export default function EditorApp() {
     });
   };
 
-  const attemptCloseFile = (path: string) => {
-    const f = openFiles.find(x => x.path === path);
-    if (!f) return;
-    const saved = f.savedContent ?? '';
-    const current = f.content ?? '';
-    if (current !== saved) {
-      setPendingClosePath(path);
-      setConfirmCloseDialogOpen(true);
-    } else {
-      closeFileImmediate(path);
+  const attemptCloseFile = (path: string, hideFromExplorer = false) => {
+    setPendingCloseTarget({ type: 'file', path, hideFromExplorer });
+    setConfirmCloseDialogOpen(true);
+  };
+
+  const closeFolderImmediate = (path: string, hideFromExplorer = true) => {
+    const normalizedPath = normalizeExplorerPath(path);
+    const prefix = `${normalizedPath}/`;
+    if (hideFromExplorer) {
+      setClosedExplorerPaths(prev => prev.includes(normalizedPath) ? prev : [...prev, normalizedPath]);
     }
+    const remainingFiles = openFiles.filter(file => !normalizeExplorerPath(file.path).startsWith(prefix));
+    setOpenFiles(remainingFiles);
+
+    if (currentFile && normalizeExplorerPath(currentFile.path).startsWith(prefix)) {
+      const nextFile = remainingFiles[remainingFiles.length - 1] ?? null;
+      setCurrentFile(nextFile);
+      setEditorContent(nextFile?.content ?? '');
+      if (!nextFile) {
+        setHtmlContent('');
+        setCssContent('');
+        setJsContent('');
+      }
+    }
+    if (openedFolderName && normalizeExplorerPath(openedFolderName) === normalizedPath) setOpenedFolderName(null);
+    toast.success(editorText('folderClosed'));
+  };
+
+  const attemptCloseFolder = (path: string) => {
+    setPendingCloseTarget({ type: 'folder', path, hideFromExplorer: true });
+    setConfirmCloseDialogOpen(true);
+  };
+
+  const cancelClosePrompt = () => {
+    setConfirmCloseDialogOpen(false);
+    setPendingCloseTarget(null);
   };
 
   const handleConfirmCloseSave = async () => {
-    setConfirmCloseDialogOpen(false);
-    if (!pendingClosePath) return;
-    const fileToClose = openFiles.find(f => f.path === pendingClosePath);
-    if (!fileToClose) {
-      setPendingClosePath(null);
-      return;
-    }
-    // bring file to current so save uses correct currentFile
-    setCurrentFile(fileToClose as any);
-    setEditorContent(fileToClose.content || '');
+    const target = pendingCloseTarget;
+    if (!target) return;
+
     try {
-      await handleSaveFile();
-    } catch (err) {
-      console.error('Errore salvataggio durante chiusura:', err);
-    }
-    // remove after save
-    setOpenFiles((prev: any[]) => prev.filter(f => f.path !== pendingClosePath));
-    // switch current
-    setCurrentFile((prev: any) => {
-      if (prev && prev.path === pendingClosePath) {
-        const remaining = openFiles.filter(f => f.path !== pendingClosePath);
-        if (remaining.length > 0) {
-          setEditorContent(remaining[remaining.length - 1].content || '');
-          return remaining[remaining.length - 1] as any;
+      if (target.type === 'file') {
+        const file = openFiles.find(item => item.path === target.path)
+          ?? previewFiles.find(item => item.path === target.path);
+        if (!file) throw new Error(language === 'it' ? 'File non trovato.' : 'File not found.');
+        const content = currentFile?.path === target.path
+          ? editorContent
+          : openFiles.find(item => item.path === target.path)?.content ?? file.content ?? '';
+        const isLocalOnly = localFiles.some(item => item.path === target.path)
+          && !files.some(item => item.path === target.path);
+        if (isLocalOnly && !currentProject) {
+          throw new Error(language === 'it'
+            ? 'Apri un progetto prima di salvare questo file e chiuderlo.'
+            : 'Open a project before saving and closing this file.');
         }
-        setEditorContent('');
-        return null;
+        await handleExplorerSaveFile(target.path, content);
+        closeFileImmediate(target.path, target.hideFromExplorer);
+      } else {
+        const normalizedFolderPath = normalizeExplorerPath(target.path);
+        const prefix = `${normalizedFolderPath}/`;
+        const folderFiles = previewFiles.filter(file =>
+          normalizeExplorerPath(file.path).startsWith(prefix)
+        );
+        for (const file of folderFiles) {
+          const openFile = openFiles.find(item => item.path === file.path);
+          const content = currentFile?.path === file.path
+            ? editorContent
+            : openFile?.content ?? file.content ?? '';
+          const baseline = openFile?.savedContent ?? file.content ?? '';
+          const localOnly = localFiles.some(item => item.path === file.path)
+            && !files.some(item => item.path === file.path);
+          if (localOnly || content !== baseline) {
+            if (localOnly && !currentProject) {
+              throw new Error(language === 'it'
+                ? 'Apri un progetto prima di salvare i file della cartella.'
+                : 'Open a project before saving the folder files.');
+            }
+            await handleExplorerSaveFile(file.path, content);
+          }
+        }
+        closeFolderImmediate(target.path);
       }
-      return prev;
-    });
-    setPendingClosePath(null);
+      setConfirmCloseDialogOpen(false);
+      setPendingCloseTarget(null);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : editorText('serverSaveError'));
+    }
   };
 
   const handleConfirmCloseDiscard = () => {
+    const target = pendingCloseTarget;
+    if (!target) return;
+
+    if (target.type === 'file') {
+      const discardedFile = openFiles.find(file => file.path === target.path);
+      const originalContent = discardedFile?.savedContent
+        ?? localFiles.find(file => file.path === target.path)?.content
+        ?? files.find(file => file.path === target.path)?.content
+        ?? '';
+      setLocalFiles(prev => prev.map(file =>
+        file.path === target.path ? { ...file, content: originalContent } : file
+      ));
+      closeFileImmediate(target.path, target.hideFromExplorer);
+    } else {
+      const prefix = `${normalizeExplorerPath(target.path)}/`;
+      setLocalFiles(prev => prev.map(file => {
+        if (!normalizeExplorerPath(file.path).startsWith(prefix)) return file;
+        const openFile = openFiles.find(item => item.path === file.path);
+        return openFile ? { ...file, content: openFile.savedContent ?? file.content } : file;
+      }));
+      closeFolderImmediate(target.path);
+    }
     setConfirmCloseDialogOpen(false);
-    if (!pendingClosePath) return;
-    setOpenFiles((prev: any[]) => prev.filter(f => f.path !== pendingClosePath));
-    setCurrentFile((prev: any) => {
-      if (prev && prev.path === pendingClosePath) {
-        const remaining = openFiles.filter(f => f.path !== pendingClosePath);
-        if (remaining.length > 0) {
-          setEditorContent(remaining[remaining.length - 1].content || '');
-          return remaining[remaining.length - 1] as any;
-        }
-        setEditorContent('');
-        return null;
-      }
-      return prev;
-    });
-    setPendingClosePath(null);
+    setPendingCloseTarget(null);
   };
 
-  const handleSaveFile = async () => {
-    if (!currentFile) {
+  const handleSaveFile = async (contentOverride?: string, fileToSave: any = currentFile): Promise<boolean> => {
+    if (!fileToSave) {
       toast.error(editorText('noFileSelected'));
-      return;
+      return false;
     }
 
+    const contentToSave = contentOverride ?? editorContent;
     setSaveStatus('saving');
     console.log('[DEBUG] handleSaveFile called', {
-      currentFile: { name: currentFile.name, path: currentFile.path, isLocal: (currentFile as any).isLocal },
-      editorContent: { length: editorContent.length },
-      selectedLanguage,
+      currentFile: { name: fileToSave.name, path: fileToSave.path, isLocal: fileToSave.isLocal },
+      editorContent: { length: contentToSave.length },
+      selectedLanguage: fileToSave.language || selectedLanguage,
       currentProject
     });
 
     // If this is a local-only file (created in the client), it will have `isLocal: true`.
     // If there is a current project, create the file on the server and remove the local placeholder.
-    if ((currentFile as any).isLocal) {
+    if (fileToSave.isLocal) {
       console.log('[DEBUG] File is LOCAL - checking if project exists...');
       if (currentProject) {
         try {
           console.log('[DEBUG] HasProject - creating on server...');
           const payload = {
             projectId: currentProject,
-            name: currentFile.name,
-            path: currentFile.path,
-            content: editorContent,
-            language: selectedLanguage,
+            name: fileToSave.name,
+            path: fileToSave.path,
+            content: contentToSave,
+            language: fileToSave.language || selectedLanguage,
           } as const;
 
           console.log('[DEBUG] createFile payload:', payload);
@@ -1343,24 +1618,28 @@ export default function EditorApp() {
           const res = await createFileMutation.mutateAsync(payload as any);
 
           // Remove local placeholder and set currentFile to server file
-          setLocalFiles(prev => prev.filter(f => f.path !== currentFile.path));
+          setLocalFiles(prev => prev.filter(f => f.path !== fileToSave.path));
           const newServerFile = {
+            ...fileToSave,
             id: res.fileId,
-            name: currentFile.name,
+            name: fileToSave.name,
             type: 'file' as const,
-            path: currentFile.path,
-            content: editorContent,
+            path: fileToSave.path,
+            content: contentToSave,
+            isLocal: false,
           };
-          setCurrentFile(newServerFile as any);
+          setCurrentFile((prev: any) => prev?.path === fileToSave.path ? newServerFile : prev);
           // Invalidate server list handled by mutation onSuccess; optionally refetch now
           if (currentProject) utils.files.list.invalidate({ projectId: currentProject });
           // Update openFiles savedContent so tab reflects saved state
           setOpenFiles(prev => {
             const exists = prev.some(f => f.path === newServerFile.path);
             if (exists) {
-              return prev.map(f => f.path === newServerFile.path ? { ...f, content: editorContent, savedContent: editorContent } : f);
+              return prev.map(f => f.path === newServerFile.path
+                ? { ...newServerFile, content: contentToSave, savedContent: contentToSave }
+                : f);
             }
-            return [...prev, { ...newServerFile, savedContent: editorContent }];
+            return [...prev, { ...newServerFile, content: contentToSave, savedContent: contentToSave }];
           });
           toast.success(editorText('serverFileSaved'));
           setSaveStatus('saved');
@@ -1368,27 +1647,31 @@ export default function EditorApp() {
           console.error('Errore durante la creazione file sul server:', err);
           toast.error(editorText('serverSaveError'));
           setSaveStatus('error');
+          return false;
         }
       } else {
         // No project open: prompt user to save to local filesystem
         console.log('[DEBUG] No project - exporting to filesystem...');
-        handleExportFile(currentFile.path, editorContent);
+        handleExportFile(fileToSave.path, contentToSave);
       }
     } else {
       // Existing DB file: update via RPC
       console.log('[DEBUG] File is SERVER file - updating...');
       try {
         await updateFileMutation.mutateAsync({
-          fileId: currentFile.id,
-          content: editorContent,
+          fileId: fileToSave.id,
+          content: contentToSave,
         });
         // Mark the tab as saved only after the server confirms the update.
-        setOpenFiles(prev => prev.map(f => f.path === currentFile.path ? { ...f, content: editorContent, savedContent: editorContent } : f));
+        setOpenFiles(prev => prev.map(f => f.path === fileToSave.path ? { ...f, content: contentToSave, savedContent: contentToSave } : f));
+        setCurrentFile((prev: any) => prev?.path === fileToSave.path
+          ? { ...prev, content: contentToSave, savedContent: contentToSave }
+          : prev);
         setSaveStatus('saved');
       } catch (err) {
         console.error('Errore durante il salvataggio del file sul server:', err);
         setSaveStatus('error');
-        return;
+        return false;
       }
     }
 
@@ -1397,11 +1680,160 @@ export default function EditorApp() {
       {
         id: Date.now().toString(),
         timestamp: new Date(),
-        content: editorContent,
+        content: contentToSave,
         label: editorText('manualSave', { time: new Date().toLocaleTimeString(language) }),
       },
       ...prev.slice(0, 19),
     ]);
+    return true;
+  };
+
+  const handleAssistantApplyCode = async (code: string) => {
+    if (!currentFile) {
+      toast.error(editorText('noFileSelected'));
+      return;
+    }
+    setEditorContent(code);
+    setOpenFiles(prev => prev.map(file => file.path === currentFile.path ? { ...file, content: code } : file));
+    setLocalFiles(prev => prev.map(file => file.path === currentFile.path ? { ...file, content: code } : file));
+    const saved = await handleSaveFile(code);
+    if (!saved) throw new Error(editorText('serverSaveError'));
+  };
+
+  const handleAssistantCreateFiles = async (
+    assistantFiles: Array<{ path: string; content: string }>,
+    assistantMoves: AssistantProjectMove[] = [],
+  ) => {
+    if (!currentProject) {
+      throw new Error(language === 'it'
+        ? 'Apri o crea un progetto prima di generare file.'
+        : 'Open or create a project before generating files.');
+    }
+    const canonicalPath = (path: string) => normalizeAssistantProjectPath(path)?.toLowerCase() || null;
+    const existingByPath = new Map(files.map(file => [canonicalPath(file.path), file]));
+    const filesToSave = assistantFiles.map(file => {
+      const path = normalizeAssistantProjectPath(file.path);
+      if (!path) {
+        throw new Error(language === 'it' ? `Percorso file non valido: ${file.path}` : `Invalid file path: ${file.path}`);
+      }
+      const name = path.split('/').pop()!;
+      return { ...file, path, name, language: detectLanguageFromExtension(name) };
+    });
+    const outputPaths = new Set(filesToSave.map(file => canonicalPath(file.path)));
+    if (outputPaths.size !== filesToSave.length) {
+      throw new Error(language === 'it' ? 'La risposta contiene percorsi file duplicati.' : 'The response contains duplicate file paths.');
+    }
+
+    const normalizedMoves = assistantMoves.map(move => {
+      const fromPath = normalizeAssistantProjectPath(move.fromPath);
+      const toPath = normalizeAssistantProjectPath(move.toPath);
+      if (!fromPath || !toPath) {
+        throw new Error(language === 'it' ? 'Il piano contiene un percorso file non valido.' : 'The plan contains an invalid file path.');
+      }
+      const sourceKey = canonicalPath(fromPath)!;
+      const targetKey = canonicalPath(toPath)!;
+      if (!existingByPath.has(sourceKey)) {
+        throw new Error(language === 'it'
+          ? `Il file da spostare non è salvato nel progetto: ${fromPath}`
+          : `The file to move is not saved in this project: ${fromPath}`);
+      }
+      if (!outputPaths.has(targetKey)) {
+        throw new Error(language === 'it'
+          ? `Manca il contenuto generato per la destinazione: ${toPath}`
+          : `Generated destination content is missing: ${toPath}`);
+      }
+      if (existingByPath.has(targetKey)) {
+        throw new Error(language === 'it'
+          ? `La destinazione esiste già e non può essere sovrascritta durante uno spostamento: ${toPath}`
+          : `The destination already exists and cannot be overwritten by a move: ${toPath}`);
+      }
+      if (outputPaths.has(sourceKey)) {
+        throw new Error(language === 'it'
+          ? `Il file sorgente non deve essere generato di nuovo come file separato: ${fromPath}`
+          : `The source must not also be generated as a separate file: ${fromPath}`);
+      }
+      return { fromPath, toPath };
+    });
+
+    const moveSources = new Set(normalizedMoves.map(move => canonicalPath(move.fromPath)));
+    const moveTargets = new Set(normalizedMoves.map(move => canonicalPath(move.toPath)));
+    if (moveSources.size !== normalizedMoves.length || moveTargets.size !== normalizedMoves.length
+      || normalizedMoves.some(move => moveSources.has(canonicalPath(move.toPath)))) {
+      throw new Error(language === 'it'
+        ? 'Il piano contiene spostamenti duplicati o incrociati.'
+        : 'The plan contains duplicate or overlapping moves.');
+    }
+
+    const referenceIssues = validateAssistantProjectReferences(
+      files.map(file => ({ path: file.path, content: file.content })),
+      filesToSave,
+      normalizedMoves,
+    );
+    if (referenceIssues.length > 0) {
+      const issueLines = referenceIssues.slice(0, 8).map(issue => {
+        const detail = issue.reason === 'stale'
+          ? (language === 'it' ? 'riferimento al vecchio percorso' : 'reference still points to old path')
+          : (language === 'it' ? 'file non presente nel progetto' : 'file is not in the project');
+        return `• ${issue.sourcePath} → ${issue.reference} (${detail})`;
+      });
+      const extraCount = referenceIssues.length - issueLines.length;
+      throw new Error(language === 'it'
+        ? `Non ho salvato i file: ${referenceIssues.length} riferimenti locali non sono collegati correttamente.\n${issueLines.join('\n')}${extraCount > 0 ? `\n• e altri ${extraCount}` : ''}\nChiedi all'assistente di includere o correggere questi file prima di applicare il progetto.`
+        : `Files were not saved: ${referenceIssues.length} local references are not connected correctly.\n${issueLines.join('\n')}${extraCount > 0 ? `\n• and ${extraCount} more` : ''}\nAsk the assistant to include or fix these files before applying the project.`);
+    }
+
+    const filesToUpdate = filesToSave.filter(file => {
+      const path = canonicalPath(file.path);
+      return path ? existingByPath.has(path) : false;
+    });
+    if (filesToUpdate.length > 0 || normalizedMoves.length > 0) {
+      const lines = [
+        ...normalizedMoves.slice(0, 5).map(move => `• ${move.fromPath} → ${move.toPath}`),
+        ...filesToUpdate.slice(0, Math.max(0, 5 - normalizedMoves.length)).map(file => `• ${file.path}`),
+      ];
+      const remainingCount = normalizedMoves.length + filesToUpdate.length - lines.length;
+      const confirmation = language === 'it'
+        ? `L'assistente applicherà ${normalizedMoves.length} spostamenti e aggiornerà ${filesToUpdate.length} file esistenti:\n${lines.join('\n')}${remainingCount > 0 ? `\n• e altri ${remainingCount}` : ''}\n\nI percorsi sorgente saranno rimossi solo come parte dello spostamento confermato. Vuoi continuare?`
+        : `The assistant will apply ${normalizedMoves.length} moves and update ${filesToUpdate.length} existing files:\n${lines.join('\n')}${remainingCount > 0 ? `\n• and ${remainingCount} more` : ''}\n\nSource paths will be removed only as part of the confirmed move. Continue?`;
+      if (!window.confirm(confirmation)) return null;
+    }
+
+    const created = await createAssistantFilesMutation.mutateAsync({
+      projectId: currentProject,
+      files: filesToSave,
+      moves: normalizedMoves,
+    });
+    await utils.files.list.invalidate({ projectId: currentProject });
+    const savedByPath = new Map(created.files.map(file => [canonicalPath(file.path), file]));
+    const destinationBySource = new Map(normalizedMoves.map(move => [
+      canonicalPath(move.fromPath),
+      move.toPath,
+    ]));
+    setOpenFiles(prev => prev.map(openFile => {
+      const openPath = canonicalPath(openFile.path);
+      const destinationPath = openPath ? destinationBySource.get(openPath) : undefined;
+      const saved = savedByPath.get(canonicalPath(destinationPath || openFile.path));
+      return saved
+        ? { ...openFile, ...saved, content: saved.content || '', savedContent: saved.content || '' }
+        : openFile;
+    }));
+    const currentPath = currentFile ? canonicalPath(currentFile.path) : null;
+    const currentDestination = currentPath ? destinationBySource.get(currentPath) : undefined;
+    const currentSaved = savedByPath.get(canonicalPath(currentDestination || currentFile?.path || ''));
+    const first = currentSaved || created.files[0];
+    if (first) {
+      const file = {
+        ...first,
+        type: 'file' as const,
+        content: first.content || '',
+        savedContent: first.content || '',
+      };
+      setCurrentFile(file);
+      setEditorContent(file.content);
+      setSelectedLanguage(detectLanguageFromExtension(file.name) as any);
+      setOpenFiles(prev => [...prev.filter(openFile => canonicalPath(openFile.path) !== canonicalPath(file.path)), file]);
+    }
+    return { created: created.createdCount, updated: created.updatedCount, moved: created.movedCount };
   };
 
   const handleExportFile = (path: string, content: string) => {
@@ -1414,48 +1846,70 @@ export default function EditorApp() {
     setSaveDialogOpen(true);
   };
 
-  const handleCloseFolder = () => {
-    setLocalFiles([]);
-    setOpenedFolderName(null);
-    setCurrentFile(null);
-    setEditorContent('');
-    setOpenFiles([]);
-    setHtmlContent('');
-    setCssContent('');
-    setJsContent('');
-    setContextProject(null); // Reset the global project context
-    toast.success(editorText('folderClosed'));
-  };
+  const handleExplorerSaveFile = async (path: string, fileContent: string) => {
+    const openFile = openFiles.find(file => file.path === path);
+    const content = currentFile?.path === path
+      ? editorContent
+      : openFile?.content ?? localFiles.find(file => file.path === path)?.content ?? fileContent;
+    const localFile = localFiles.find(file => file.path === path);
 
-  const handleLinkClick = (href: string) => {
-    if (!openedFolderName) {
-      console.log('[EditorApp] No folder open, ignoring link click');
+    if (localFile && !files.some(file => file.path === path)) {
+      if (!currentProject) {
+        handleExportFile(path, content);
+        return;
+      }
+
+      const name = path.split('/').pop();
+      if (!name) throw new Error(editorText('invalidFileName'));
+      const result = await createFileMutation.mutateAsync({
+        projectId: currentProject,
+        name,
+        path,
+        content,
+        language: detectLanguageFromExtension(name),
+      });
+      const savedFile = {
+        ...localFile,
+        id: result.fileId,
+        content,
+        savedContent: content,
+        isLocal: false,
+      };
+      setLocalFiles(prev => prev.filter(file => file.path !== path));
+      setOpenFiles(prev => prev.map(file => file.path === path ? savedFile : file));
+      setCurrentFile((prev: any) => prev?.path === path ? savedFile : prev);
+      await utils.files.list.invalidate({ projectId: currentProject });
       return;
     }
 
-    console.log('[EditorApp] Link clicked:', href, 'in folder:', openedFolderName);
-
-    // Normalize the href (remove leading ./, /,  etc.)
-    let normalizedHref = href.replace(/^\.\/?/, '').replace(/^\//, '');
-
-    // Search for the file in localFiles
-    let foundFile = localFiles.find(f => {
-      const filePath = (f.path || f.name).toLowerCase();
-      return filePath.includes(normalizedHref.toLowerCase());
-    });
-
-    // If not found, try exact match
-    if (!foundFile) {
-      foundFile = localFiles.find(f => {
-        const fileName = (f.name || f.path).toLowerCase();
-        return fileName === normalizedHref.toLowerCase();
-      });
+    const serverFile = files.find(file => file.path === path);
+    if (!serverFile || !currentProject) {
+      throw new Error(language === 'it' ? 'File del progetto non trovato.' : 'Project file not found.');
     }
 
+    await updateFileMutation.mutateAsync({
+      fileId: serverFile.id,
+      content,
+    });
+    setOpenFiles(prev => prev.map(file =>
+      file.path === path ? { ...file, content, savedContent: content } : file
+    ));
+    setCurrentFile((prev: any) => prev?.path === path
+      ? { ...prev, content, savedContent: content }
+      : prev);
+    await utils.files.list.invalidate({ projectId: currentProject });
+  };
+
+  const handleLinkClick = (href: string, fragment = '') => {
+    const targetPath = normalizePreviewPath(href, openedFolderName || '').toLowerCase();
+    const files = previewFiles;
+    const foundFile = files.find(file =>
+      normalizePreviewPath(file.path || file.name || '', openedFolderName || '').toLowerCase() === targetPath,
+    );
+
     if (foundFile) {
-      console.log('[EditorApp] Found file for link:', foundFile.name);
-      setCurrentFile(foundFile);
-      setEditorContent(foundFile.content || '');
+      openFile(foundFile);
+      setPreviewNavigationHash(fragment);
 
       // Detect file type and set language
       const fileName = (foundFile.name || foundFile.path).toLowerCase();
@@ -1469,7 +1923,7 @@ export default function EditorApp() {
         setSelectedLanguage('typescript');
       }
     } else {
-      console.log('[EditorApp] File not found for link:', href);
+      setPreviewNavigationHash('');
       toast.info(editorText('fileNotFound', { path: href }));
     }
   };
@@ -1965,7 +2419,8 @@ export default function EditorApp() {
       name: newFileName,
       path: newPath,
       content: code,
-      type: 'file'
+      type: 'file',
+      isLocal: true,
     };
 
     setCurrentFile(newFile);
@@ -2000,14 +2455,34 @@ export default function EditorApp() {
   };
 
   const handleRunCode = () => {
-    if (selectedLanguage === 'html') {
+    const languageToRun = selectedLanguage === 'plaintext' ? detectLanguage(editorContent) : selectedLanguage;
+    const currentFileName = currentFile?.name || currentFile?.path || '';
+    const executionSupport = getPreviewExecutionSupport(currentFileName);
+    if (executionSupport === 'compiled') {
+      setHtmlContent('<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="root"></div></body></html>');
+      setJsContent('');
+      setCssContent('');
+    } else if (executionSupport === 'data') {
+      setHtmlContent(createPreviewDataDocument(currentFileName, editorContent, language));
+      setJsContent('');
+      setCssContent('');
+    } else if (languageToRun === 'html') {
       setHtmlContent(editorContent);
       setJsContent('');
       setCssContent('');
-    } else if (selectedLanguage === 'css') {
+    } else if (languageToRun === 'css') {
       setCssContent(editorContent);
-    } else if (selectedLanguage === 'javascript') {
+    } else if (/\.(?:jsx|tsx?)$/i.test(currentFileName)) {
+      setHtmlContent('<!doctype html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head><body><div id="root"></div></body></html>');
+      setCssContent('');
+      setJsContent('');
+    } else if (languageToRun === 'javascript') {
       setJsContent(editorContent);
+    } else {
+      const fileName = currentFileName || `file.${getExtensionByLanguage(languageToRun)}`;
+      const previewNotice = getPreviewRuntimeNotice(fileName, language);
+      toast.error(previewNotice.explanation);
+      return;
     }
     toast.success(editorText('codeExecuted'));
   };
@@ -2145,6 +2620,8 @@ export default function EditorApp() {
             variant="ghost"
             size="sm"
             onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            aria-expanded={isSidebarOpen}
+            aria-controls="editor-file-explorer"
             className="text-white hover:bg-slate-700"
           >
             {isSidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -2188,7 +2665,16 @@ export default function EditorApp() {
 
       <div className="editor-workspace-layout flex-1 flex overflow-hidden relative min-h-0 min-w-0">
         {isSidebarOpen && (
+          <button
+            type="button"
+            className="editor-file-explorer-backdrop"
+            aria-label={i18nT('close')}
+            onClick={() => setIsSidebarOpen(false)}
+          />
+        )}
+        {isSidebarOpen && (
           <aside
+            id="editor-file-explorer"
             className="editor-file-explorer bg-slate-800 border-r border-slate-700 flex flex-col"
             style={{ width: `${sidebarWidth}px`, minWidth: '150px', maxWidth: '400px', position: 'relative' }}
           >
@@ -2250,14 +2736,6 @@ export default function EditorApp() {
                   <p className="text-xs text-blue-400">
                     📁 {openedFolderName}
                   </p>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={handleCloseFolder}
-                    title={`${editorText('closeFolder')}: ${openedFolderName}`}
-                  >
-                    {editorText('closeFolder')}
-                  </Button>
                 </div>
               )}
             </div>
@@ -2284,18 +2762,8 @@ export default function EditorApp() {
               )}
               {!isLoadingFolder && (
                 <FileExplorer
-                  files={[
-                    ...files.map(f => ({
-                      id: f.id,
-                      name: f.name,
-                      type: 'file' as const,
-                      path: f.path,
-                      content: f.content || undefined
-                    })),
-                    ...localFiles
-                  ]}
+                  files={explorerFiles}
                   selectedPath={currentFile?.path}
-                  openedFolderName={openedFolderName}
                   onSelectFile={(file) => {
                     if (file.type === 'file') {
                       console.log('[FileExplorer Click]', {
@@ -2343,12 +2811,12 @@ export default function EditorApp() {
                     }
                   }}
                   onRefreshFile={(path) => { console.log('[FileExplorer] refresh requested for', path); setPreviewKey(k => k + 1); }}
-                  onCloseFile={(path) => { attemptCloseFile(path); }}
-                  onCloseFolder={handleCloseFolder}
+                  onCloseFile={(path) => { attemptCloseFile(path, true); }}
+                  onCloseFolder={attemptCloseFolder}
                   onMoveFile={handleMoveFile}
                   onRenameFile={handleRenameFile}
-                  onDeleteFile={handleDeleteFile}
-                  onSaveFile={handleExportFile}
+                  onRenameFolder={handleRenameFolder}
+                  onSaveFile={handleExplorerSaveFile}
                 />
               )}
             </div>
@@ -2430,6 +2898,10 @@ export default function EditorApp() {
             </div>
 
             <div className="p-3 border-t border-slate-700" style={{ position: 'relative' }}>
+              <AdBanner position="sidebar" />
+            </div>
+
+            <div className="p-3 border-t border-slate-700" style={{ position: 'relative' }}>
               <GreenBoxHybrid
                 stats={{
                   filesCount: localFiles.length + files.length,
@@ -2483,15 +2955,15 @@ export default function EditorApp() {
         )}
 
         <main className="editor-main-panel flex-1 flex flex-col min-w-0">
-          <div className="bg-slate-800 border-b border-slate-700 px-4 py-2 flex items-center gap-3 overflow-x-auto h-10">
-            <div className="flex items-center gap-2 min-w-0 flex-shrink-0">
+          <div className="editor-toolbar bg-slate-800 border-b border-slate-700 px-4 py-2 flex items-center gap-3 min-h-[40px] h-auto overflow-x-auto">
+            <div className="editor-toolbar-search flex items-center gap-2 min-w-0 flex-shrink-0">
               <Search className="h-4 w-4 text-slate-400" />
               <Input
                 placeholder={editorText('searchPlaceholder')}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onFocus={() => setSearchPanelOpen(true)}
-                className="max-w-[220px] bg-slate-900 border-slate-700 text-white"
+                className="editor-toolbar-search-input max-w-[220px] bg-slate-900 border-slate-700 text-white"
               />
               <button
                 onClick={() => setSearchPanelOpen(!searchPanelOpen)}
@@ -2502,8 +2974,7 @@ export default function EditorApp() {
               </button>
             </div>
 
-            {/* Buttons immediately after search - compact, no space between */}
-            <div className="flex items-center gap-1 flex-nowrap flex-shrink-0">
+            <div className="editor-toolbar-actions flex items-center gap-1 flex-wrap flex-shrink-0">
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" size="sm" className="gap-1 px-2 py-1">
@@ -2566,7 +3037,24 @@ export default function EditorApp() {
                 {i18nT('backup')}
               </Button>
               <VersionHistory versions={versions} onRestore={handleRestoreVersion} />
-              <AIAssistant />
+              <AIAssistant
+               projectId={currentProject}
+               projectName={projects.find(project => project.id === currentProject)?.name}
+                projectFiles={previewFiles}
+                currentFilePath={currentFile?.path}
+                currentFileContent={currentFile ? editorContent : undefined}
+                onCodeInsert={handleAssistantApplyCode}
+                onCreateFiles={handleAssistantCreateFiles}
+              />
+              {currentProject !== null && projects.find(project => project.id === currentProject)?.canManageMembers && (
+                <ProjectCollaborators projectId={currentProject} />
+              )}
+              <ProjectLaunchWizard
+                files={previewFiles}
+                projectId={currentProject}
+                projectName={projects.find(project => project.id === currentProject)?.name || `Progetto ${currentProject ?? ''}`}
+                language={language}
+              />
             </div>
           </div>
 
@@ -2576,12 +3064,14 @@ export default function EditorApp() {
             {/* EDITOR PANEL */}
             <div
               className="editor-code-panel border-r border-slate-700 flex flex-col min-h-0"
+              data-rotated={editorRotated}
               style={{
                 flex: `0 0 ${Math.round(editorWidth)}px`,
                 minWidth: '200px',
                 overflowX: 'auto',
-                overflowY: 'hidden'
-              }}
+                overflowY: 'hidden',
+                '--rotated-editor-extra-height': `${rotatedEditorExtraHeight}px`
+              } as React.CSSProperties}
             >
               {/* Tabs for open files */}
               <div className="flex items-center gap-2 px-4 py-2 bg-slate-900 border-b border-slate-700 overflow-hidden flex-shrink-0 min-w-0">
@@ -2615,21 +3105,51 @@ export default function EditorApp() {
                     </button>
                   ))
                 )}
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="ml-auto h-8 w-8 shrink-0 lg:hidden"
-                  aria-label="Ruota area editor di 90 gradi"
-                  aria-pressed={editorRotated}
-                  title="Ruota area editor di 90 gradi"
-                  onClick={() => setEditorRotated((rotated) => !rotated)}
-                >
-                  <RotateCw className={`h-4 w-4 transition-transform ${editorRotated ? 'rotate-90' : ''}`} />
-                </Button>
+                <div className="ml-auto flex shrink-0 items-center gap-1 lg:hidden">
+                  {editorRotated && (
+                    <>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-11 w-11"
+                        aria-label="Riduci altezza area editor"
+                        title="Riduci altezza area editor"
+                        disabled={rotatedEditorExtraHeight === 0}
+                        onClick={() => setRotatedEditorExtraHeight((height) => Math.max(0, height - 80))}
+                      >
+                        <Minus className="h-5 w-5" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-11 w-11"
+                        aria-label="Aumenta altezza area editor"
+                        title="Aumenta altezza area editor"
+                        disabled={rotatedEditorExtraHeight >= 640}
+                        onClick={() => setRotatedEditorExtraHeight((height) => Math.min(640, height + 80))}
+                      >
+                        <Plus className="h-5 w-5" />
+                      </Button>
+                    </>
+                  )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-11 w-11"
+                    aria-label="Ruota area editor di 90 gradi"
+                    aria-pressed={editorRotated}
+                    title="Ruota area editor di 90 gradi"
+                    onClick={() => setEditorRotated((rotated) => !rotated)}
+                  >
+                    <RotateCw className={`h-4 w-4 transition-transform ${editorRotated ? 'rotate-90' : ''}`} />
+                  </Button>
+                </div>
               </div>
-              <div className="mobile-rotate-area flex-1 flex flex-col min-h-0 h-full" data-rotated={editorRotated} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-                <div className="mobile-rotate-content flex-1 flex flex-col min-h-0">
+              <div ref={editorRotateAreaRef} className="mobile-rotate-area mobile-rotate-code-area flex-1 flex flex-col min-h-0 h-full" data-rotated={editorRotated} style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+                <div ref={editorRotateContentRef} className="mobile-rotate-content mobile-rotate-code-content flex-1 flex flex-col min-h-0">
                 {/* Language detection — subtle pill (non-intrusive) */}
                 {detectedLanguageLabel && detectedLanguageLabel !== 'plaintext' && (
                   <div className="flex items-center gap-3 px-3 py-1 mb-2">
@@ -2644,15 +3164,18 @@ export default function EditorApp() {
                     )}
                   </div>
                 )}
-                <CodeEditor
-                  value={editorContent}
-                  onChange={handleEditorChange}
-                  language={selectedLanguage}
-                  height="100%"
-                  highlightRanges={editorHighlights}
-                  jumpToLine={jumpToLine}
-                  autoDetectLanguage={selectedLanguage === 'plaintext'}
-                />
+                <div className="min-h-0 min-w-0 flex-1">
+                  <CodeEditor
+                    value={editorContent}
+                    onChange={handleEditorChange}
+                    language={selectedLanguage}
+                    height="100%"
+                    highlightRanges={editorHighlights}
+                    jumpToLine={jumpToLine}
+                    autoDetectLanguage={selectedLanguage === 'plaintext'}
+                    rotationFrame={editorRotated}
+                  />
+                </div>
                 </div>
               </div>
             </div>
@@ -2684,10 +3207,12 @@ export default function EditorApp() {
             {/* PREVIEW PANEL */}
             <div
               className="editor-preview-panel bg-white flex flex-col min-h-0 h-full"
+              data-rotated={previewRotated}
               style={{
                 flex: `1 1 0`,
-                overflow: 'hidden'
-              }}
+                overflow: 'hidden',
+                '--rotated-preview-extra-height': `${rotatedPreviewExtraHeight}px`
+              } as React.CSSProperties}
             >
               <div className="editor-preview-header px-4 py-2 bg-slate-800 border-b border-slate-700 text-white text-sm font-semibold flex-shrink-0 flex items-center justify-between gap-4">
                 {/* Left: ANTEPRIMA + Aggiorna button */}
@@ -2713,18 +3238,48 @@ export default function EditorApp() {
                       <Smartphone size={14} />
                     </Button>
                   </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    className="h-8 w-8 lg:hidden"
-                    aria-label="Ruota area anteprima di 90 gradi"
-                    aria-pressed={previewRotated}
-                    title="Ruota area anteprima di 90 gradi"
-                    onClick={() => setPreviewRotated((rotated) => !rotated)}
-                  >
-                    <RotateCw className={`h-4 w-4 transition-transform ${previewRotated ? 'rotate-90' : ''}`} />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    {previewRotated && (
+                      <>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="h-11 w-11 lg:hidden"
+                          aria-label="Riduci altezza area anteprima"
+                          title="Riduci altezza area anteprima"
+                          disabled={rotatedPreviewExtraHeight === 0}
+                          onClick={() => setRotatedPreviewExtraHeight((height) => Math.max(0, height - 80))}
+                        >
+                          <Minus className="h-5 w-5" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="icon"
+                          className="h-11 w-11 lg:hidden"
+                          aria-label="Aumenta altezza area anteprima"
+                          title="Aumenta altezza area anteprima"
+                          disabled={rotatedPreviewExtraHeight >= 640}
+                          onClick={() => setRotatedPreviewExtraHeight((height) => Math.min(640, height + 80))}
+                        >
+                          <Plus className="h-5 w-5" />
+                        </Button>
+                      </>
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-11 w-11 lg:hidden"
+                      aria-label="Ruota area anteprima di 90 gradi"
+                      aria-pressed={previewRotated}
+                      title="Ruota area anteprima di 90 gradi"
+                      onClick={() => setPreviewRotated((rotated) => !rotated)}
+                    >
+                      <RotateCw className={`h-4 w-4 transition-transform ${previewRotated ? 'rotate-90' : ''}`} />
+                    </Button>
+                  </div>
                 </div>
               </div>
               <div className="mobile-rotate-area flex-1 relative min-h-0 w-full p-4" data-rotated={previewRotated} style={{ height: '100%', overflow: 'auto' }}>
@@ -2768,9 +3323,25 @@ export default function EditorApp() {
                         htmlContent={htmlContent}
                         cssContent={cssContent}
                         jsContent={jsContent}
+                        pythonFileName={
+                          currentFile && /\.py$/i.test(currentFile.path || currentFile.name || '')
+                            ? currentFile.path || currentFile.name
+                            : undefined
+                        }
+                        pythonSource={
+                          currentFile && /\.py$/i.test(currentFile.path || currentFile.name || '')
+                            ? editorContent
+                            : undefined
+                        }
                         externalUrl={externalPreviewUrl}
-                        localFiles={localFiles}
+                        localFiles={previewFiles}
                         openedFolderName={openedFolderName}
+                        entryPath={
+                          currentFile && /\.(?:html?|jsx|tsx?|m?js|vue|svelte)$/i.test(currentFile.path || currentFile.name || '')
+                            ? currentFile.path || currentFile.name
+                            : previewFiles.find(file => file.content === htmlContent && /\.html?$/i.test(file.path || file.name || ''))?.path
+                        }
+                        navigationHash={previewNavigationHash}
                         onLinkClick={handleLinkClick}
                         key={previewKey}
                       />
@@ -2801,18 +3372,34 @@ export default function EditorApp() {
       </Dialog>
 
       {/* Confirm close dialog for unsaved files */}
-      <Dialog open={confirmCloseDialogOpen} onOpenChange={setConfirmCloseDialogOpen}>
+      <Dialog
+        open={confirmCloseDialogOpen}
+        onOpenChange={(open) => {
+          setConfirmCloseDialogOpen(open);
+          if (!open) setPendingCloseTarget(null);
+        }}
+      >
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{editorText('closeFileQuestion')}</DialogTitle>
+            <DialogTitle>
+              {pendingCloseTarget?.type === 'folder'
+                ? editorText('closeFolder')
+                : editorText('closeFileQuestion')}
+            </DialogTitle>
             <DialogDescription>
-              {editorText('saveChangesBeforeClose', { name: openFiles.find(f => f.path === pendingClosePath)?.name || pendingClosePath || '' })}
+              {editorText('saveChangesBeforeClose', {
+                name: pendingCloseTarget?.type === 'folder'
+                  ? pendingCloseTarget.path
+                  : openFiles.find(file => file.path === pendingCloseTarget?.path)?.name
+                    || pendingCloseTarget?.path
+                    || '',
+              })}
             </DialogDescription>
           </DialogHeader>
           <div className="flex gap-2 mt-4">
             <Button onClick={handleConfirmCloseSave}>{editorText('save')}</Button>
             <Button variant="destructive" onClick={handleConfirmCloseDiscard}>{editorText('discard')}</Button>
-            <Button variant="outline" onClick={() => setConfirmCloseDialogOpen(false)}>{editorText('cancel')}</Button>
+            <Button variant="outline" onClick={cancelClosePrompt}>{editorText('cancel')}</Button>
           </div>
         </DialogContent>
       </Dialog>

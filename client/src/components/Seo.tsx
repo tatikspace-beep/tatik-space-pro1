@@ -80,6 +80,18 @@ export function Seo({ title, description, path, noIndex = false, type = "website
                     title: `${blogPageCopy[locale].title} | Tatik.space`,
                     description: `${blogPageCopy[locale].heading}: ${blogPageCopy[locale].intro}.`,
                   }
+              : seoPath === "/analysis/portals"
+                ? locale === "it"
+                  ? { title: "Analisi dati | Tatik.space", description: "Analizza serie storiche ufficiali, importa dataset e confronta dati con metodi statistici." }
+                  : { title: "Data analysis | Tatik.space", description: "Analyze official time series, import datasets and compare data with statistical methods." }
+                : seoPath === "/analysis/remote-sensing"
+                  ? locale === "it"
+                    ? { title: "Telerilevamento e Machine Learning | Tatik.space", description: "Analizza scene Sentinel-2 L2A con Random Forest e SVM e genera una mappa GeoTIFF per la tua area di studio." }
+                    : { title: "Remote sensing & Machine Learning | Tatik.space", description: "Analyze Sentinel-2 L2A scenes with Random Forest and SVM and produce a GeoTIFF map for your area of interest." }
+                  : seoPath === "/analysis/ml-studio"
+                    ? locale === "it"
+                      ? { title: "ML Studio | Tatik.space", description: "Addestra e confronta modelli Random Forest, SVM e Ridge su dati tabellari in diversi settori." }
+                      : { title: "ML Studio | Tatik.space", description: "Train and compare Random Forest, SVM, and Ridge models on tabular data across sectors." }
                 : seoPath === "/privacy"
                   ? { title: `${translations[locale].privacyPolicy} | Tatik.space`, description: legalSeoCopy[locale].privacyDescription }
                   : seoPath === "/terms"
@@ -144,6 +156,7 @@ export const PUBLIC_SEO: Record<string, Omit<SeoProps, "path">> = {
   "/blog": {
     title: "Blog sviluppo web e AI | Tatik.space",
     description: "Guide, aggiornamenti e consigli per sviluppatori su web development, AI e strumenti cloud.",
+    noIndex: true,
   },
   "/pricing": {
     title: "Prezzi Tatik.space | Piano gratuito e Pro",
@@ -156,6 +169,14 @@ export const PUBLIC_SEO: Record<string, Omit<SeoProps, "path">> = {
   "/schools": {
     title: "Programma scuole | Tatik.space Pro",
     description: "Le scuole possono richiedere un corso di 30 giorni per un massimo di 30 studenti. L’attivazione richiede l’approvazione Tatik; gli inviti sono gestiti tramite token.",
+  },
+  "/analysis/portals": {
+    title: "Analisi dati | Tatik.space",
+    description: "Analizza serie storiche ufficiali, importa dataset e confronta dati con metodi statistici.",
+  },
+  "/analysis/remote-sensing": {
+    title: "Telerilevamento e Machine Learning | Tatik.space",
+    description: "Analizza scene Sentinel-2 L2A con Random Forest e SVM e genera una mappa GeoTIFF per la tua area di studio.",
   },
   "/deployment": {
     title: "Pubblicazione con provider esterni | Tatik.space Pro",
