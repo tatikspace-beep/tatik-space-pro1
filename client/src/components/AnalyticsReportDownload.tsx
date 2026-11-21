@@ -5,45 +5,69 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
+import type { AnalyticsReportVisual } from "@/lib/analyticsReportPdf";
 
 type StoredReport = {
   reportId: string;
   title: string;
   content: string;
+  visuals?: AnalyticsReportVisual[];
 };
 
 const REPORT_STORAGE_PREFIX = "tatik.analytics-report.";
+const MAX_STORED_IMAGE_CHARS = 600_000;
 
-async function downloadPdf(title: string, content: string) {
-  const { jsPDF } = await import("jspdf");
-  const pdf = new jsPDF();
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
-  const margin = 14;
-  const lines = pdf.splitTextToSize(content, pageWidth - margin * 2);
-  pdf.setProperties({ title, subject: "Report di analisi Tatik.space" });
-  pdf.setFontSize(18);
-  pdf.text(title.slice(0, 100), margin, 18);
-  pdf.setFontSize(10);
-  let y = 28;
-  for (const line of lines) {
-    if (y > pageHeight - margin) {
-      pdf.addPage();
-      y = margin;
-    }
-    pdf.text(line, margin, y);
-    y += 5;
+type PdfGenerator = typeof import("@/lib/analyticsReportPdf").createAnalyticsReportPdf;
+
+let pdfGenerator: PdfGenerator | null = null;
+let pdfGeneratorPromise: Promise<PdfGenerator> | null = null;
+
+function loadPdfGenerator() {
+  if (!pdfGeneratorPromise) {
+    pdfGeneratorPromise = import("@/lib/analyticsReportPdf").then((module) => {
+      pdfGenerator = module.createAnalyticsReportPdf;
+      return pdfGenerator;
+    });
   }
-  pdf.save(`${title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "tatik-report"}.pdf`);
+  return pdfGeneratorPromise;
+}
+
+async function compressVisualsForStorage(visuals: AnalyticsReportVisual[]) {
+  return Promise.all(visuals.map(async (visual) => {
+    if (visual.type !== "image" || visual.dataUrl.length <= MAX_STORED_IMAGE_CHARS) return visual;
+    if (!visual.dataUrl.startsWith("data:image/")) {
+      throw new Error(`L'immagine "${visual.title}" non può essere preparata per il report.`);
+    }
+
+    const image = new Image();
+    image.src = visual.dataUrl;
+    await new Promise<void>((resolve, reject) => {
+      image.onload = () => resolve();
+      image.onerror = () => reject(new Error(`Impossibile preparare l'immagine "${visual.title}" per il report.`));
+    });
+
+    const scale = Math.min(1, 1200 / image.naturalWidth, 900 / image.naturalHeight);
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+    const context = canvas.getContext("2d");
+    if (!context) throw new Error("Impossibile preparare l'immagine per il report.");
+    context.fillStyle = "#fff";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    return { ...visual, dataUrl: canvas.toDataURL("image/jpeg", 0.84) };
+  }));
 }
 
 export function AnalyticsReportDownload({
   title,
   content,
+  visuals = [],
   returnPath,
 }: {
   title: string;
   content: string;
+  visuals?: AnalyticsReportVisual[];
   returnPath: "/analysis/ml-studio" | "/analysis/remote-sensing" | "/analysis/portals";
 }) {
   const { isAuthenticated } = useAuth();
@@ -52,6 +76,9 @@ export function AnalyticsReportDownload({
   const verifyMutation = trpc.analyticsReports.verifyPurchase.useMutation();
   const [verifiedReport, setVerifiedReport] = useState<StoredReport | null>(null);
   const [error, setError] = useState("");
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [pdfReady, setPdfReady] = useState(false);
+  const [preparingReport, setPreparingReport] = useState(false);
   const [returnParams] = useState(() => {
     if (typeof window === "undefined") return { sessionId: "", reportId: "", cancelled: false };
     const params = new URLSearchParams(window.location.search);
@@ -113,38 +140,62 @@ export function AnalyticsReportDownload({
     if (content) void accessQuery.refetch();
   }, [content]);
 
-  const currentReport = content
-    ? { reportId: "", title, content }
+  const pdfContent = content || verifiedReport?.content || "";
+  useEffect(() => {
+    if (!pdfContent) return;
+    let active = true;
+    setPdfLoading(true);
+    void loadPdfGenerator()
+      .then(() => {
+        if (active) setPdfReady(true);
+      })
+      .catch((reason) => {
+        if (active) setError(reason instanceof Error ? reason.message : "Impossibile preparare il generatore PDF.");
+      })
+      .finally(() => {
+        if (active) setPdfLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [pdfContent]);
+
+  const currentReport: StoredReport | null = content
+    ? { reportId: "", title, content, visuals }
     : verifiedReport;
   const isCurrentReportPaid = Boolean(
     verifiedReport &&
     currentReport &&
     verifiedReport.title === currentReport.title &&
-    verifiedReport.content === currentReport.content,
+    verifiedReport.content === currentReport.content &&
+    JSON.stringify(verifiedReport.visuals ?? []) === JSON.stringify(currentReport.visuals ?? []),
   );
   const access = accessQuery.data;
   const freeDownload = Boolean(access?.staff);
-  const isPreparingCheckout = checkoutMutation.isPending || verifyMutation.isPending;
+  const isPreparingCheckout = checkoutMutation.isPending || verifyMutation.isPending || preparingReport;
 
   const startCheckout = async () => {
     if (!content.trim()) return;
     setError("");
     const reportId = crypto.randomUUID();
-    const report = { reportId, title, content };
+    setPreparingReport(true);
     try {
+      const report = { reportId, title, content, visuals: await compressVisualsForStorage(visuals) };
       sessionStorage.setItem(`${REPORT_STORAGE_PREFIX}${reportId}`, JSON.stringify(report));
       const checkout = await checkoutMutation.mutateAsync({ reportId, reportTitle: title, returnPath });
       window.location.assign(checkout.checkoutUrl);
     } catch (reason) {
       sessionStorage.removeItem(`${REPORT_STORAGE_PREFIX}${reportId}`);
       setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setPreparingReport(false);
     }
   };
 
   if (!content && !returnParams.sessionId && !returnParams.cancelled && !verifiedReport) return null;
 
   const reportToDownload = freeDownload && content
-    ? { title, content }
+    ? { title, content, visuals }
     : isCurrentReportPaid && verifiedReport
       ? verifiedReport
       : null;
@@ -152,10 +203,14 @@ export function AnalyticsReportDownload({
     ? new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR" }).format(access.reportPriceCents / 100)
     : null;
 
-  const download = (reportTitle: string, reportContent: string) => {
-    void downloadPdf(reportTitle, reportContent).catch((reason) => {
+  const download = (reportTitle: string, reportContent: string, reportVisuals: AnalyticsReportVisual[] = []) => {
+    try {
+      if (!pdfGenerator) throw new Error("Il PDF è ancora in preparazione. Riprova tra qualche secondo.");
+      const pdf = pdfGenerator(reportTitle, reportContent, reportVisuals);
+      pdf.save(`${reportTitle.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "tatik-report"}.pdf`);
+    } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Impossibile generare il PDF.");
-    });
+    }
   };
 
   return (
@@ -174,26 +229,27 @@ export function AnalyticsReportDownload({
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-xs text-muted-foreground">
-          Il PDF contiene solo risultati aggregati, non le righe originali. Per il ritorno dal checkout il riepilogo è conservato temporaneamente nella sessione di questa scheda.
+          Il PDF include i grafici e le immagini disponibili, contiene solo risultati aggregati e non include le righe originali. Per il ritorno dal checkout il riepilogo è conservato temporaneamente nella sessione di questa scheda.
         </p>
         {content && (
           freeDownload ? (
-            <Button onClick={() => download(title, content)}>
-              <Download className="mr-2 h-4 w-4" />Scarica PDF gratuitamente
+            <Button onClick={() => download(title, content, visuals)} disabled={!pdfReady}>
+              {pdfLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+              {pdfLoading ? "Preparazione PDF…" : "Scarica PDF gratuitamente"}
             </Button>
           ) : isCurrentReportPaid && verifiedReport ? (
-            <Button onClick={() => download(verifiedReport.title, verifiedReport.content)}>
+            <Button onClick={() => download(verifiedReport.title, verifiedReport.content, verifiedReport.visuals)} disabled={!pdfReady}>
               <Download className="mr-2 h-4 w-4" />Scarica il report acquistato
             </Button>
           ) : (
-            <Button onClick={startCheckout} disabled={!isAuthenticated || !access || isPreparingCheckout}>
+            <Button onClick={startCheckout} disabled={!isAuthenticated || !access || !pdfReady || isPreparingCheckout}>
               {isPreparingCheckout ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
               Acquista PDF{reportPrice ? ` · ${reportPrice}` : ""}
             </Button>
           )
         )}
         {!content && reportToDownload && (
-          <Button onClick={() => download(reportToDownload.title, reportToDownload.content)}>
+          <Button onClick={() => download(reportToDownload.title, reportToDownload.content, reportToDownload.visuals)} disabled={!pdfReady}>
             <Download className="mr-2 h-4 w-4" />Scarica il report acquistato
           </Button>
         )}

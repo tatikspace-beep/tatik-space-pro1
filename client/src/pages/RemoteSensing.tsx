@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { AlertCircle, Download, ExternalLink, Loader2, Map, Satellite } from "lucide-react";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { EuroSatCnn } from "@/components/EuroSatCnn";
 import { Seo } from "@/components/Seo";
 import { useLanguage } from "@/contexts/LanguageContext";
 import { trpc } from "@/lib/trpc";
+import type { AnalyticsReportVisual } from "@/lib/analyticsReportPdf";
 import type { SentinelAoiJob } from "../../../server/data-insight";
 
 const copy = {
@@ -327,10 +328,86 @@ export default function RemoteSensing() {
         "Superficie per classe:",
         ...result.classAreas.map((area) => `${area.name}: ${area.areaHa.toFixed(2)} ha`),
         "",
+        "Prestazioni per classe — Random Forest:",
+        ...result.models.randomForest.perClass.map((metric) => `${metric.className}: precision ${metric.precision.toFixed(3)}, recall ${metric.recall.toFixed(3)}, F1 ${metric.f1.toFixed(3)}, supporto ${metric.support}`),
+        "",
+        "Prestazioni per classe — SVM:",
+        ...result.models.svm.perClass.map((metric) => `${metric.className}: precision ${metric.precision.toFixed(3)}, recall ${metric.recall.toFixed(3)}, F1 ${metric.f1.toFixed(3)}, supporto ${metric.support}`),
+        "",
+        "Importanza feature — Random Forest:",
+        ...result.models.randomForest.featureImportance.map((feature) => `${feature.name}: ${feature.importance.toFixed(3)}`),
+        "",
         "Limiti:",
         ...result.limitations,
       ].join("\n")
     : "";
+  const reportVisuals = useMemo<AnalyticsReportVisual[]>(() => {
+    if (!result) return [];
+    const metricNames = ["Accuracy", "Balanced accuracy", "F1 macro", "Cohen's kappa"];
+    const modelMetricValues = (model: SentinelAoiJob["result"]["models"]["randomForest"]) => [
+      model.accuracy,
+      model.balancedAccuracy,
+      model.macroF1,
+      model.kappa,
+    ];
+    const confusionCodes = result.models.randomForest.confusionClassCodes;
+    const confusionLabels = confusionCodes.map((code) => result.classLegend.find((item) => item.code === code)?.name ?? String(code));
+    const visuals: AnalyticsReportVisual[] = [{
+      type: "image",
+      title: `Mappa tematica Sentinel-2 — ${result.scene.id}`,
+      dataUrl: result.mapImage,
+      caption: `Modello mappa: ${result.processing.mapModel}. Riferimento: ${result.reference.name}. ${result.reference.meaning}`,
+    }, {
+      type: "chart",
+      title: "Confronto delle metriche del modello",
+      chartType: "bar",
+      categories: metricNames,
+      series: [
+        { name: "Random Forest", color: "#2563eb", values: modelMetricValues(result.models.randomForest) },
+        { name: "SVM", color: "#16a34a", values: modelMetricValues(result.models.svm) },
+      ],
+      minValue: 0,
+      maxValue: 1,
+    }, {
+      type: "chart",
+      title: "F1 per classe",
+      chartType: "bar",
+      orientation: "horizontal",
+      categories: result.models.randomForest.perClass.map((metric) => metric.className),
+      series: [
+        { name: "Random Forest", color: "#2563eb", values: result.models.randomForest.perClass.map((metric) => metric.f1) },
+        { name: "SVM", color: "#16a34a", values: result.models.randomForest.perClass.map((metric) => result.models.svm.perClass.find((svmMetric) => svmMetric.code === metric.code)?.f1 ?? 0) },
+      ],
+      minValue: 0,
+      maxValue: 1,
+    }, {
+      type: "chart",
+      title: "Superficie stimata per classe (ettari)",
+      chartType: "bar",
+      orientation: "horizontal",
+      categories: result.classAreas.map((area) => area.name),
+      series: [{ name: "Ettari", color: "#0f766e", values: result.classAreas.map((area) => area.areaHa) }],
+      minValue: 0,
+    }, {
+      type: "chart",
+      title: "Importanza delle feature — Random Forest",
+      chartType: "bar",
+      orientation: "horizontal",
+      categories: result.models.randomForest.featureImportance.map((feature) => feature.name),
+      series: [{ name: "Importanza", color: "#9333ea", values: result.models.randomForest.featureImportance.map((feature) => feature.importance) }],
+      minValue: 0,
+    }];
+    if (confusionLabels.length && result.models.randomForest.confusionMatrix.length) {
+      visuals.push({
+        type: "matrix",
+        title: "Matrice di confusione — Random Forest",
+        rowLabels: confusionLabels,
+        columnLabels: confusionLabels,
+        values: result.models.randomForest.confusionMatrix,
+      });
+    }
+    return visuals;
+  }, [result]);
 
   return (
     <main className="min-h-screen bg-background">
@@ -532,6 +609,7 @@ export default function RemoteSensing() {
         <AnalyticsReportDownload
           title={result ? `Report Sentinel-2 - ${result.scene.id}` : "Report Sentinel-2"}
           content={reportContent}
+          visuals={reportVisuals}
           returnPath="/analysis/remote-sensing"
         />
 

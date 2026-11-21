@@ -32,6 +32,7 @@ import {
   YAxis,
 } from "recharts";
 import { createMlAssessment } from "@/lib/mlStudioAssessment";
+import type { AnalyticsReportVisual } from "@/lib/analyticsReportPdf";
 import { trpc } from "@/lib/trpc";
 
 const copy = {
@@ -228,6 +229,68 @@ export default function MlStudio() {
     : [];
   const bestConfusionMatrix = result?.models.find((model) => model.name === result.bestModel)?.confusionMatrix ?? [];
   const maxConfusionCount = Math.max(1, ...bestConfusionMatrix.flat());
+  const reportVisuals = useMemo<AnalyticsReportVisual[]>(() => {
+    if (!result) return [];
+    const visuals: AnalyticsReportVisual[] = [];
+    if (result.task === "classification") {
+      visuals.push({
+        type: "chart",
+        title: text.metricsChart,
+        chartType: "bar",
+        orientation: "horizontal",
+        categories: result.models.map((model) => model.name),
+        series: [
+          { name: text.accuracy, color: "#2563eb", values: result.models.map((model) => model.accuracy ?? null) },
+          { name: text.balancedAccuracy, color: "#16a34a", values: result.models.map((model) => model.balancedAccuracy ?? null) },
+          { name: text.macroF1, color: "#f59e0b", values: result.models.map((model) => model.macroF1 ?? null) },
+        ],
+        minValue: 0,
+        maxValue: 1,
+      });
+      if (result.classLabels.length && result.classLabels.length <= 10 && bestConfusionMatrix.length) {
+        visuals.push({
+          type: "matrix",
+          title: text.confusion,
+          rowLabels: result.classLabels,
+          columnLabels: result.classLabels,
+          values: bestConfusionMatrix,
+        });
+      }
+    } else {
+      visuals.push({
+        type: "chart",
+        title: text.r2,
+        chartType: "bar",
+        orientation: "horizontal",
+        categories: result.models.map((model) => model.name),
+        series: [{ name: text.r2, color: "#2563eb", values: result.models.map((model) => model.r2 ?? null) }],
+      }, {
+        type: "chart",
+        title: text.errorsChart,
+        chartType: "bar",
+        orientation: "horizontal",
+        categories: result.models.map((model) => model.name),
+        series: [
+          { name: text.mae, color: "#16a34a", values: result.models.map((model) => model.mae ?? null) },
+          { name: text.rmse, color: "#f59e0b", values: result.models.map((model) => model.rmse ?? null) },
+        ],
+        minValue: 0,
+      });
+    }
+    if (result.featureImportance.length) {
+      const topFeatures = result.featureImportance.slice(0, 12);
+      visuals.push({
+        type: "chart",
+        title: `${text.importance} (top ${topFeatures.length})`,
+        chartType: "bar",
+        orientation: "horizontal",
+        categories: topFeatures.map((feature) => feature.name),
+        series: [{ name: text.importance, color: "#0f766e", values: topFeatures.map((feature) => feature.importance) }],
+        minValue: 0,
+      });
+    }
+    return visuals;
+  }, [bestConfusionMatrix, result, text]);
   const activeChartType = chartType === "radar" && result?.task !== "classification" ? "bar" : chartType;
   const usableTargets = useMemo(
     () => preview?.columns.filter((column) => task === "classification" || column.kind === "numeric") ?? [],
@@ -663,6 +726,7 @@ export default function MlStudio() {
         <AnalyticsReportDownload
           title={result ? `Report ML - ${result.fileName}` : "Report ML Studio"}
           content={reportContent}
+          visuals={reportVisuals}
           returnPath="/analysis/ml-studio"
         />
       </section>

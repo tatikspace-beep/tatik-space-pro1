@@ -20,6 +20,7 @@ import { useAuth } from "@/_core/hooks/useAuth";
 import { trpc } from "@/lib/trpc";
 import { AnalyticsReportDownload, AnalyticsUsageNotice } from "@/components/AnalyticsReportDownload";
 import { useLanguage } from "@/contexts/LanguageContext";
+import type { AnalyticsReportVisual } from "@/lib/analyticsReportPdf";
 import type { AppRouter } from "../../../server/routers";
 
 type ProviderId = "worldbank" | "nasa" | "ecb" | "eurostat";
@@ -340,6 +341,31 @@ export function OfficialDataAnalysis() {
       analysis.disclaimer,
     ].filter(Boolean).join("\n");
   }, [analysis]);
+  const reportVisuals = useMemo<AnalyticsReportVisual[]>(() => {
+    if (!analysis || !series.length || !allDates.length) return [];
+    const observed = series.map((item, index) => ({
+      name: item.name,
+      color: palette[index % palette.length],
+      values: chartData.map((point) => typeof point[item.name] === "number" ? point[item.name] as number : null),
+    }));
+    const forecasts = series.flatMap((item, index) => {
+      const forecastName = `${item.name} (proiezione)`;
+      if (!analysis.reports.find((report) => report.name === item.name)?.forecast.length) return [];
+      return [{
+        name: forecastName,
+        color: palette[index % palette.length],
+        dashed: true,
+        values: chartData.map((point) => typeof point[forecastName] === "number" ? point[forecastName] as number : null),
+      }];
+    });
+    return [{
+      type: "chart",
+      title: "Andamento delle serie storiche (base 100)",
+      chartType: "line",
+      categories: allDates,
+      series: [...observed, ...forecasts],
+    }];
+  }, [allDates, analysis, chartData, series]);
 
   const addSource = () => setSourceRows((rows) => [
     ...rows,
@@ -687,7 +713,8 @@ export function OfficialDataAnalysis() {
         )}
         <AnalyticsReportDownload
           title="Report analisi serie storiche"
-          content=""
+          content={reportContent}
+          visuals={reportVisuals}
           returnPath="/analysis/portals"
         />
       </CardContent>
