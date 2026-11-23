@@ -8,6 +8,7 @@ const originalKey = ENV.dataInsightApiKey;
 const originalCookieSecret = ENV.cookieSecret;
 const originalVercelEnv = process.env.VERCEL_ENV;
 const originalVercelUrl = process.env.VERCEL_URL;
+const originalAppUrl = process.env.APP_URL;
 
 describe("Data Insight service proxy", () => {
   beforeEach(() => {
@@ -16,6 +17,7 @@ describe("Data Insight service proxy", () => {
     ENV.cookieSecret = originalCookieSecret;
     delete process.env.VERCEL_ENV;
     delete process.env.VERCEL_URL;
+    delete process.env.APP_URL;
     fetchMock.mockReset();
     vi.stubGlobal("fetch", fetchMock);
   });
@@ -28,6 +30,8 @@ describe("Data Insight service proxy", () => {
     else process.env.VERCEL_ENV = originalVercelEnv;
     if (originalVercelUrl === undefined) delete process.env.VERCEL_URL;
     else process.env.VERCEL_URL = originalVercelUrl;
+    if (originalAppUrl === undefined) delete process.env.APP_URL;
+    else process.env.APP_URL = originalAppUrl;
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
@@ -77,12 +81,13 @@ describe("Data Insight service proxy", () => {
     expect(new Headers(options.headers).get("cookie")).toBe("vercel-session=test");
   });
 
-  it("uses the protected same-deployment Python function for Production requests", async () => {
+  it("uses the canonical domain for Production function requests", async () => {
     ENV.dataInsightApiUrl = "";
     ENV.dataInsightApiKey = "";
     ENV.cookieSecret = "s".repeat(32);
     process.env.VERCEL_ENV = "production";
-    process.env.VERCEL_URL = "tatik-space-pro1-prod-tatikspace-beeps-projects.vercel.app";
+    process.env.VERCEL_URL = "tatik-space-pro1-protected-tatikspace-beeps-projects.vercel.app";
+    process.env.APP_URL = "https://www.tatik.space";
     fetchMock.mockResolvedValue(new Response("{}", {
       status: 200,
       headers: { "Content-Type": "application/json" },
@@ -92,15 +97,17 @@ describe("Data Insight service proxy", () => {
 
     const [url, options] = fetchMock.mock.calls[0] as [URL, RequestInit];
     expect(url.toString()).toBe(
-      "https://tatik-space-pro1-prod-tatikspace-beeps-projects.vercel.app/api/data_insight?path=%2Fapi%2Fanalyze",
+      "https://www.tatik.space/api/data_insight?path=%2Fapi%2Fanalyze",
     );
     expect(new Headers(options.headers).get("authorization")).toBe(`Bearer ${"s".repeat(32)}`);
     expect(new Headers(options.headers).get("cookie")).toBeNull();
   });
 
-  it("does not enable the internal function without a Vercel deployment URL", async () => {
+  it("does not enable the internal function without a configured URL", async () => {
     ENV.dataInsightApiUrl = "";
+    process.env.VERCEL_ENV = "production";
     delete process.env.VERCEL_URL;
+    delete process.env.APP_URL;
 
     await expect(callDataInsight("/api/analyze", {})).rejects.toMatchObject({
       code: "PRECONDITION_FAILED",

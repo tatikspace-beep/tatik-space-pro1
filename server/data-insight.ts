@@ -237,7 +237,12 @@ type DataInsightTarget = {
 
 function getServiceTarget(path: string): DataInsightTarget {
   const vercelUrl = process.env.VERCEL_URL;
-  const vercelFunction = !ENV.dataInsightApiUrl && Boolean(vercelUrl);
+  const vercelFunctionBaseUrl = process.env.VERCEL_ENV === "production"
+    ? process.env.APP_URL
+    : vercelUrl
+      ? `https://${vercelUrl}`
+      : undefined;
+  const vercelFunction = !ENV.dataInsightApiUrl && Boolean(vercelFunctionBaseUrl);
   if (!ENV.dataInsightApiUrl && !vercelFunction) {
     throw new TRPCError({
       code: "PRECONDITION_FAILED",
@@ -248,7 +253,7 @@ function getServiceTarget(path: string): DataInsightTarget {
   let base: URL;
   const vercelPreview = vercelFunction && process.env.VERCEL_ENV === "preview";
   try {
-    base = new URL(ENV.dataInsightApiUrl || `https://${vercelUrl}`);
+    base = new URL(ENV.dataInsightApiUrl || vercelFunctionBaseUrl || "");
   } catch {
     throw new TRPCError({
       code: "INTERNAL_SERVER_ERROR",
