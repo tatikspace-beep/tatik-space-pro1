@@ -231,6 +231,10 @@ export function GlobalNavbar() {
             </div>
           </div>
 
+          <Link href="/pausa-mentale" className="flex items-center px-3 py-2 rounded-md hover:bg-accent transition-colors">
+            <span className="font-medium">{language === "it" ? "Pausa mentale" : "Mind break"}</span>
+          </Link>
+
           <div
             className="relative"
             onMouseLeave={() => setOpenNavDropdown((open) => open === 'resources' ? null : open)}
@@ -354,6 +358,7 @@ export function GlobalNavbar() {
             <Link href="/analysis/portals" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{analysisNav.portals}</Link>
             <Link href="/analysis/remote-sensing" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{analysisNav.remoteSensing}</Link>
             <Link href="/analysis/ml-studio" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{analysisNav.mlStudio}</Link>
+            <Link href="/pausa-mentale" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{language === "it" ? "Pausa mentale" : "Mind break"}</Link>
             <span className="px-3 pt-2 text-xs font-semibold uppercase text-muted-foreground">{t.resources}</span>
             <Link href="/documentation" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{t.documentation}</Link>
             <Link href="/tutorials" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{t.tutorials}</Link>

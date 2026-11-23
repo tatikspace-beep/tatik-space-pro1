@@ -178,6 +178,14 @@ export const PUBLIC_SEO: Record<string, Omit<SeoProps, "path">> = {
     title: "Telerilevamento e Machine Learning | Tatik.space",
     description: "Analizza scene Sentinel-2 L2A con Random Forest e SVM e genera una mappa GeoTIFF per la tua area di studio.",
   },
+  "/pausa-mentale": {
+    title: "Pausa mentale | Tatik.space",
+    description: "Fai una pausa con sfide di logica, sequenze, deduzione e ragionamento per bambini, ragazzi e adulti.",
+  },
+  "/giochi-logica": {
+    title: "Pausa mentale | Tatik.space",
+    description: "Fai una pausa con sfide di logica, sequenze, deduzione e ragionamento per bambini, ragazzi e adulti.",
+  },
   "/deployment": {
     title: "Pubblicazione con provider esterni | Tatik.space Pro",
     description: "Tatik.space Pro non offre il deploy diretto né hosting di produzione. Scopri come salvare o scaricare un progetto e pubblicarlo con un provider esterno.",
