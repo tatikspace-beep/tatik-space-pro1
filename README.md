@@ -118,6 +118,8 @@ Gli account non staff hanno 3 analisi gratuite per mese UTC; le analisi tabellar
 
 La quota usa la tabella `analytics_monthly_usage`. La migrazione `drizzle/migrations/0020_analytics_monthly_usage.sql` crea soltanto la tabella e il relativo indice, senza modificare dati esistenti. In Preview applicarla solo dopo aver verificato che il database sia separato da Production. In Production applicarla solo dopo l'autorizzazione esplicita del rilascio e aver verificato che `0019_project_members` sia già presente; non usare `pnpm db:push` per questa migrazione.
 
+La Function Python di Analytics include dipendenze geospaziali e supera il limite standard di 500 MB. Nel progetto Vercel Production `tatik-space-pro1` deve quindi essere impostata la variabile `VERCEL_SUPPORT_LARGE_FUNCTIONS=1` per abilitare le Large Functions; non richiede un servizio aggiuntivo o un upgrade del piano. Restano valide le quote mensili Hobby, il cui superamento può sospendere i deployment.
+
 ### OAuth
 
 Configura OAuth per GitHub e Google nelle variabili d'ambiente.
