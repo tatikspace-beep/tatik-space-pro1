@@ -236,8 +236,9 @@ type DataInsightTarget = {
 };
 
 function getServiceTarget(path: string): DataInsightTarget {
-  const vercelUrl = process.env.VERCEL_ENV === "preview" ? process.env.VERCEL_URL : undefined;
-  if (!ENV.dataInsightApiUrl && !vercelUrl) {
+  const vercelUrl = process.env.VERCEL_URL;
+  const vercelFunction = !ENV.dataInsightApiUrl && Boolean(vercelUrl);
+  if (!ENV.dataInsightApiUrl && !vercelFunction) {
     throw new TRPCError({
       code: "PRECONDITION_FAILED",
       message: "Il servizio Data Insight non e configurato.",
@@ -245,7 +246,7 @@ function getServiceTarget(path: string): DataInsightTarget {
   }
 
   let base: URL;
-  const vercelPreview = !ENV.dataInsightApiUrl && Boolean(vercelUrl);
+  const vercelPreview = vercelFunction && process.env.VERCEL_ENV === "preview";
   try {
     base = new URL(ENV.dataInsightApiUrl || `https://${vercelUrl}`);
   } catch {
@@ -261,7 +262,7 @@ function getServiceTarget(path: string): DataInsightTarget {
       message: "Il servizio Data Insight remoto deve usare HTTPS.",
     });
   }
-  const apiKey = (vercelPreview ? ENV.dataInsightApiKey || ENV.cookieSecret : ENV.dataInsightApiKey) ?? "";
+  const apiKey = (vercelFunction ? ENV.dataInsightApiKey || ENV.cookieSecret : ENV.dataInsightApiKey) ?? "";
   if (!isLoopback && !apiKey) {
     throw new TRPCError({
       code: "PRECONDITION_FAILED",
@@ -274,10 +275,10 @@ function getServiceTarget(path: string): DataInsightTarget {
       message: "La chiave del servizio Data Insight deve contenere almeno 32 caratteri.",
     });
   }
-  if (vercelPreview) {
+  if (vercelFunction) {
     const url = new URL("/api/data_insight", base);
     url.searchParams.set("path", path);
-    return { url, apiKey, vercelPreview: true };
+    return { url, apiKey, vercelPreview };
   }
 
   return {

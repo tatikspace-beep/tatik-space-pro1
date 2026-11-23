@@ -116,7 +116,7 @@ Il proprietario del progetto o un amministratore può aggiungere e rimuovere col
 
 Gli account non staff hanno 3 analisi gratuite per mese UTC; le analisi tabellari gratuite accettano fino a 1.000 righe. Un abbonamento Pro attivo sblocca analisi più grandi e senza quota mensile. Amministratori e collaboratori hanno accesso illimitato e scaricano gratuitamente i report PDF; per gli altri utenti ogni report PDF è un acquisto singolo Stripe, €1,99 per impostazione predefinita. Il prezzo può essere impostato con `ANALYTICS_REPORT_PRICE_CENTS` (centesimi di euro, minimo 50). Per Checkout in Preview è obbligatoria una chiave Stripe `sk_test_`; le chiavi live vengono rifiutate.
 
-La quota usa la tabella `analytics_monthly_usage`. Applicare `drizzle/migrations/0020_analytics_monthly_usage.sql` solo al database Preview dopo aver verificato che sia separato da Production; non eseguire questa migrazione su Production prima dell'approvazione esplicita del rilascio.
+La quota usa la tabella `analytics_monthly_usage`. La migrazione `drizzle/migrations/0020_analytics_monthly_usage.sql` crea soltanto la tabella e il relativo indice, senza modificare dati esistenti. In Preview applicarla solo dopo aver verificato che il database sia separato da Production. In Production applicarla solo dopo l'autorizzazione esplicita del rilascio e aver verificato che `0019_project_members` sia già presente; non usare `pnpm db:push` per questa migrazione.
 
 ### OAuth
 

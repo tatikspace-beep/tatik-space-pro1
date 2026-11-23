@@ -68,6 +68,8 @@ temp
 __pycache__
 **/__pycache__/**
 data-insight-ai-test/test_*.py
+data-insight-ai-test/README.md
+api/_server-bundle.cjs
 *.pyc
 *.pyo
 *.pyd

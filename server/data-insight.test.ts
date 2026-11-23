@@ -77,8 +77,30 @@ describe("Data Insight service proxy", () => {
     expect(new Headers(options.headers).get("cookie")).toBe("vercel-session=test");
   });
 
-  it("does not enable the internal function outside a Vercel Preview", async () => {
+  it("uses the protected same-deployment Python function for Production requests", async () => {
     ENV.dataInsightApiUrl = "";
+    ENV.dataInsightApiKey = "";
+    ENV.cookieSecret = "s".repeat(32);
+    process.env.VERCEL_ENV = "production";
+    process.env.VERCEL_URL = "tatik-space-pro1-prod-tatikspace-beeps-projects.vercel.app";
+    fetchMock.mockResolvedValue(new Response("{}", {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+
+    await callDataInsight("/api/analyze", { value: 1 });
+
+    const [url, options] = fetchMock.mock.calls[0] as [URL, RequestInit];
+    expect(url.toString()).toBe(
+      "https://tatik-space-pro1-prod-tatikspace-beeps-projects.vercel.app/api/data_insight?path=%2Fapi%2Fanalyze",
+    );
+    expect(new Headers(options.headers).get("authorization")).toBe(`Bearer ${"s".repeat(32)}`);
+    expect(new Headers(options.headers).get("cookie")).toBeNull();
+  });
+
+  it("does not enable the internal function without a Vercel deployment URL", async () => {
+    ENV.dataInsightApiUrl = "";
+    delete process.env.VERCEL_URL;
 
     await expect(callDataInsight("/api/analyze", {})).rejects.toMatchObject({
       code: "PRECONDITION_FAILED",
