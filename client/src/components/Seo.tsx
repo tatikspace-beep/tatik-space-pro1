@@ -189,6 +189,10 @@ export const PUBLIC_SEO: Record<string, Omit<SeoProps, "path">> = {
     title: "Pausa mentale | Tatik.space",
     description: "Fai una pausa con sfide di logica, sequenze, deduzione e ragionamento per bambini, ragazzi e adulti.",
   },
+  "/sfida-logica-avanzata": {
+    title: "Enigma: sfida avanzata | Tatik.space",
+    description: "Affronta enigmi avanzati di deduzione, codici e ragionamento per fasce d'età, con spiegazioni dopo ogni risposta.",
+  },
   "/deployment": {
     title: "Pubblicazione con provider esterni | Tatik.space Pro",
     description: "Tatik.space Pro non offre il deploy diretto né hosting di produzione. Scopri come salvare o scaricare un progetto e pubblicarlo con un provider esterno.",

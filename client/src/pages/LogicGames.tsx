@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { BrainCircuit, Clock3, RotateCcw, Sparkles, Trophy } from "lucide-react";
+import { Link } from "wouter";
 import { Seo } from "@/components/Seo";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +28,9 @@ const content = {
       { value: "adult", label: "18+ anni" },
     ],
     start: "Inizia le sfide",
+    advancedTitle: "Vuoi una sfida più complessa?",
+    advancedDescription: "Enigmi a più passaggi, codici e deduzioni, in un gioco separato con spiegazioni.",
+    advancedLink: "Scopri Enigma: sfida avanzata",
     question: "Domanda",
     of: "di",
     choose: "Scegli una risposta",
@@ -50,6 +54,9 @@ const content = {
       { value: "adult", label: "Ages 18+" },
     ],
     start: "Start challenges",
+    advancedTitle: "Ready for a tougher challenge?",
+    advancedDescription: "Multi-step enigmas, codes, and deduction in a separate game with explanations.",
+    advancedLink: "Explore Enigma: advanced challenge",
     question: "Question",
     of: "of",
     choose: "Choose an answer",
@@ -213,26 +220,39 @@ export default function LogicGames() {
 
       <section className="container max-w-5xl px-4 py-8 md:py-12">
         {!started ? (
-          <Card className="mx-auto max-w-2xl">
-            <CardHeader>
-              <CardTitle>{text.ageLabel}</CardTitle>
-              <CardDescription>{text.disclaimer}</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <select
-                value={ageKey}
-                onChange={(event) => setAgeKey(event.target.value as AgeKey)}
-                className="h-11 w-full rounded-md border border-input bg-background px-3"
-              >
-                {text.ages.map((age) => (
-                  <option key={age.value} value={age.value}>{age.label}</option>
-                ))}
-              </select>
-              <Button type="button" className="w-full" onClick={begin}>
-                <Sparkles className="mr-2 h-4 w-4" /> {text.start}
-              </Button>
-            </CardContent>
-          </Card>
+          <div className="mx-auto grid max-w-4xl gap-5 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>{text.ageLabel}</CardTitle>
+                <CardDescription>{text.disclaimer}</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <select
+                  value={ageKey}
+                  onChange={(event) => setAgeKey(event.target.value as AgeKey)}
+                  className="h-11 w-full rounded-md border border-input bg-background px-3"
+                >
+                  {text.ages.map((age) => (
+                    <option key={age.value} value={age.value}>{age.label}</option>
+                  ))}
+                </select>
+                <Button type="button" className="w-full" onClick={begin}>
+                  <Sparkles className="mr-2 h-4 w-4" /> {text.start}
+                </Button>
+              </CardContent>
+            </Card>
+            <Card className="flex flex-col">
+              <CardHeader>
+                <CardTitle>{text.advancedTitle}</CardTitle>
+                <CardDescription>{text.advancedDescription}</CardDescription>
+              </CardHeader>
+              <CardContent className="mt-auto">
+                <Button asChild variant="outline" className="w-full">
+                  <Link href="/sfida-logica-avanzata">{text.advancedLink}</Link>
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
         ) : finished ? (
           <Card className="mx-auto max-w-2xl overflow-hidden">
             <div className="bg-primary px-6 py-8 text-center text-primary-foreground">

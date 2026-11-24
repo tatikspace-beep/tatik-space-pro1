@@ -30,6 +30,7 @@ import PortalExplorer from "./pages/PortalExplorer";
 import RemoteSensing from "./pages/RemoteSensing";
 import MlStudio from "./pages/MlStudio";
 import LogicGames from "./pages/LogicGames";
+import AdvancedLogicGame from "./pages/AdvancedLogicGame";
 import SchoolProgram from "./pages/SchoolProgram";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink } from "@trpc/client";
@@ -73,6 +74,7 @@ function Router() {
                   : location === "/analysis/remote-sensing" ? (language === "it" ? "Telerilevamento e Machine Learning" : "Remote sensing & Machine Learning")
                     : location === "/analysis/ml-studio" ? (language === "it" ? "ML Studio" : "ML Studio")
                       : location === "/pausa-mentale" || location === "/giochi-logica" ? (language === "it" ? "Pausa mentale" : "Mind break")
+                        : location === "/sfida-logica-avanzata" ? (language === "it" ? "Enigma: sfida avanzata" : "Enigma: advanced challenge")
                 : currentShellCopy.notFoundTitle;
   const fallbackSeo = {
     title: `${routeTitle} | Tatik.space`,
@@ -106,6 +108,7 @@ function Router() {
       <Route path={"/analysis/ml-studio"} component={MlStudio} />
       <Route path={"/pausa-mentale"} component={LogicGames} />
       <Route path={"/giochi-logica"} component={LogicGames} />
+      <Route path={"/sfida-logica-avanzata"} component={AdvancedLogicGame} />
       <Route path={"/files"} component={Files} />
       <Route path={"/templates"} component={Templates} />
       <Route path={"/collaboration"} component={Collaboration} />
