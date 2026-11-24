@@ -15,8 +15,8 @@
 
 export const commercialSeoCopy: Record<string, CommercialSeoCopy> = {
   it: {
-    marketplaceTitle: "Template web | Tatik.space Pro",
-    marketplaceDescription: "Esplora template web gratuiti e premium. Anteprima, checkout e accesso rapido per i template a pagamento; i listing degli sviluppatori sono sottoposti a controllo e revisione.",
+    marketplaceTitle: "Marketplace di template web | Tatik.space Pro",
+    marketplaceDescription: "Esplora template web gratuiti e premium su Tatik.space Pro: consulta anteprime e dettagli prima di copiare o acquistare i template disponibili.",
     marketplaceHeading: "Template per dare forma al tuo prossimo progetto",
     marketplaceIntro: "Esplora template web gratuiti e premium, controlla l’anteprima prima dell’acquisto e copia il codice solo quando il template è gratuito o hai già ottenuto l’accesso.",
     pricingTitle: "Prezzi e piani | Tatik.space Pro",
@@ -29,8 +29,8 @@ export const commercialSeoCopy: Record<string, CommercialSeoCopy> = {
     schoolsIntro: "Il programma scuole offre 30 giorni di accesso per corso per un massimo di 30 studenti. L’istituzione deve essere approvata da Tatik.",
   },
   en: {
-    marketplaceTitle: "Web templates | Tatik.space Pro",
-    marketplaceDescription: "Explore free and premium web templates. Preview them before buying and complete checkout in a few steps; developer listings are reviewed before publication.",
+    marketplaceTitle: "Web Template Marketplace | Tatik.space Pro",
+    marketplaceDescription: "Explore free and premium web templates on Tatik.space Pro. Preview available templates and review their details before copying or buying.",
     marketplaceHeading: "Templates to shape your next project",
     marketplaceIntro: "Explore free and premium web templates, preview them before buying, and copy code only when a template is free or you already have access.",
     pricingTitle: "Plans and pricing | Tatik.space Pro",

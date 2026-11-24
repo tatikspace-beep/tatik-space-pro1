@@ -17,10 +17,10 @@ export type PublicHomeCopy = {
 
 export const publicHomeCopy: Record<string, PublicHomeCopy> = {
   it: {
-    badge: "Il tuo spazio per creare sul web",
-    headline: "Dai forma alle tue idee web",
-    highlight: "con gli strumenti giusti",
-    description: "Scrivi e organizza codice nell’editor online, visualizza l’anteprima dei contenuti supportati ed esplora template per dare slancio al tuo prossimo progetto.",
+    badge: "Sviluppo web e analisi dati",
+    headline: "Crea, sviluppa e analizza",
+    highlight: "con Tatik.space Pro",
+    description: "Crea progetti web con editor cloud e assistente AI; analizza immagini Sentinel-2, serie storiche e dataset con strumenti statistici e machine learning.",
     editorTitle: "Editor online",
     editorDescription: "Modifica i file del progetto nel browser e consulta l’anteprima per i contenuti web supportati.",
     assistantTitle: "Assistenza AI",
@@ -29,8 +29,8 @@ export const publicHomeCopy: Record<string, PublicHomeCopy> = {
     backupDescription: "Organizza i file e usa gli strumenti disponibili per salvare il lavoro e gestire copie di backup.",
     editorCta: "Apri l’editor",
     marketplaceCta: "Esplora i template",
-    seoTitle: "Tatik.space Pro | Editor di codice online",
-    seoDescription: "Crea e modifica progetti web con l’editor online Tatik.space Pro. Anteprima, assistenza AI, backup, template e programma scuole.",
+    seoTitle: "Tatik.space Pro | IDE Web AI e analisi dati",
+    seoDescription: "IDE web cloud con assistente AI, anteprima e backup; analizza Sentinel-2, serie storiche e dataset con strumenti statistici e machine learning. Scopri i template.",
   },
   en: {
     badge: "Your workspace for building on the web",
@@ -45,8 +45,8 @@ export const publicHomeCopy: Record<string, PublicHomeCopy> = {
     backupDescription: "Organize files and use the available tools to save your work and manage backups.",
     editorCta: "Open the editor",
     marketplaceCta: "Explore templates",
-    seoTitle: "Tatik.space Pro | Online code editor",
-    seoDescription: "Edit web projects online with Tatik.space Pro. Preview supported content, use AI assistance and backup tools, and explore templates and the school program.",
+    seoTitle: "Tatik.space Pro | AI Web IDE & Data Analysis",
+    seoDescription: "Cloud web IDE with AI assistance, preview, and backups; analyze Sentinel-2 imagery, time series, and datasets with statistical and machine-learning tools. Explore templates.",
   },
   es: {
     badge: "Tu espacio para crear en la web",

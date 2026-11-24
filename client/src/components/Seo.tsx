@@ -109,6 +109,9 @@ export function Seo({ title, description, path, noIndex = false, type = "website
       <html lang={locale} />
       <title>{pageTitle}</title>
       <meta name="description" content={pageDescription} />
+      {seoPath === "/" ? (
+        <meta name="keywords" content="IDE web cloud, editor di codice online, sviluppo web, assistente AI, template web, marketplace, analisi dati, Sentinel-2, remote sensing, machine learning, serie storiche" />
+      ) : null}
       <meta name="robots" content={noIndex ? "noindex, nofollow" : "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"} />
       <link rel="canonical" href={canonical} />
       <meta property="og:type" content={type} />
@@ -138,7 +141,7 @@ export function Seo({ title, description, path, noIndex = false, type = "website
 
 export const PUBLIC_SEO: Record<string, Omit<SeoProps, "path">> = {
   "/": {
-    title: "Tatik.space Pro | Editor di codice online con AI",
+    title: "Tatik.space Pro | IDE Web AI e analisi dati",
     description: publicHomeCopy.it.seoDescription,
   },
   "/marketplace": {
