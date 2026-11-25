@@ -31,6 +31,9 @@ const content = {
     advancedTitle: "Vuoi una sfida più complessa?",
     advancedDescription: "Enigmi a più passaggi, codici e deduzioni, in un gioco separato con spiegazioni.",
     advancedLink: "Scopri Enigma: sfida avanzata",
+    chessTitle: "Scacchi contro IA",
+    chessDescription: "Gioca una partita completa contro l'intelligenza artificiale e scegli la difficoltà.",
+    chessLink: "Gioca a scacchi",
     question: "Domanda",
     of: "di",
     choose: "Scegli una risposta",
@@ -57,6 +60,9 @@ const content = {
     advancedTitle: "Ready for a tougher challenge?",
     advancedDescription: "Multi-step enigmas, codes, and deduction in a separate game with explanations.",
     advancedLink: "Explore Enigma: advanced challenge",
+    chessTitle: "Chess vs AI",
+    chessDescription: "Play a full game against the AI and choose your difficulty.",
+    chessLink: "Play chess",
     question: "Question",
     of: "of",
     choose: "Choose an answer",
@@ -220,7 +226,7 @@ export default function LogicGames() {
 
       <section className="container max-w-5xl px-4 py-8 md:py-12">
         {!started ? (
-          <div className="mx-auto grid max-w-4xl gap-5 md:grid-cols-2">
+          <div className="mx-auto grid max-w-5xl gap-5 md:grid-cols-2 xl:grid-cols-3">
             <Card>
               <CardHeader>
                 <CardTitle>{text.ageLabel}</CardTitle>
@@ -249,6 +255,17 @@ export default function LogicGames() {
               <CardContent className="mt-auto">
                 <Button asChild variant="outline" className="w-full">
                   <Link href="/sfida-logica-avanzata">{text.advancedLink}</Link>
+                </Button>
+              </CardContent>
+            </Card>
+            <Card className="flex flex-col">
+              <CardHeader>
+                <CardTitle>{text.chessTitle}</CardTitle>
+                <CardDescription>{text.chessDescription}</CardDescription>
+              </CardHeader>
+              <CardContent className="mt-auto">
+                <Button asChild variant="outline" className="w-full">
+                  <Link href="/scacchi">{text.chessLink}</Link>
                 </Button>
               </CardContent>
             </Card>
