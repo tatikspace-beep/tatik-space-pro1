@@ -56,6 +56,7 @@ export function GlobalNavbar() {
   const analysisNav = language === "it"
     ? { title: "Analitica", portals: "Analisi dati", remoteSensing: "Telerilevamento e ML", mlStudio: "ML Studio (altri settori)" }
     : { title: "Analytics", portals: "Data analysis", remoteSensing: "Remote sensing & ML", mlStudio: "ML Studio (all sectors)" };
+  const chessNavLabel = language === "it" ? "Scacchi contro IA" : "Chess vs AI";
   const { currentProject } = useProject();
   const [location, setLocation] = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -234,6 +235,9 @@ export function GlobalNavbar() {
           <Link href="/pausa-mentale" className="flex items-center px-3 py-2 rounded-md hover:bg-accent transition-colors">
             <span className="font-medium">{language === "it" ? "Pausa mentale" : "Mind break"}</span>
           </Link>
+          <Link href="/scacchi" className="flex items-center px-3 py-2 rounded-md hover:bg-accent transition-colors">
+            <span className="font-medium">{chessNavLabel}</span>
+          </Link>
 
           <div
             className="relative"
@@ -359,6 +363,7 @@ export function GlobalNavbar() {
             <Link href="/analysis/remote-sensing" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{analysisNav.remoteSensing}</Link>
             <Link href="/analysis/ml-studio" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{analysisNav.mlStudio}</Link>
             <Link href="/pausa-mentale" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{language === "it" ? "Pausa mentale" : "Mind break"}</Link>
+            <Link href="/scacchi" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{chessNavLabel}</Link>
             <span className="px-3 pt-2 text-xs font-semibold uppercase text-muted-foreground">{t.resources}</span>
             <Link href="/documentation" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{t.documentation}</Link>
             <Link href="/tutorials" className="rounded-md px-3 py-2 hover:bg-accent" onClick={() => setMobileMenuOpen(false)}>{t.tutorials}</Link>

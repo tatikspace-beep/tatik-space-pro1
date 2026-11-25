@@ -193,6 +193,10 @@ export const PUBLIC_SEO: Record<string, Omit<SeoProps, "path">> = {
     title: "Enigma: sfida avanzata | Tatik.space",
     description: "Affronta enigmi avanzati di deduzione, codici e ragionamento per fasce d'età, con spiegazioni dopo ogni risposta.",
   },
+  "/scacchi": {
+    title: "Scacchi contro IA | Tatik.space",
+    description: "Gioca una partita completa contro un'IA locale, scegli la difficoltà e prova a dare scacco matto.",
+  },
   "/deployment": {
     title: "Pubblicazione con provider esterni | Tatik.space Pro",
     description: "Tatik.space Pro non offre il deploy diretto né hosting di produzione. Scopri come salvare o scaricare un progetto e pubblicarlo con un provider esterno.",
